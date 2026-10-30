@@ -70,6 +70,22 @@ type Props = {
  *      get a rapid-press window: presses inside it are ignored.
  */
 const RAPID_PRESS_IGNORE_MS = 650;
+const BUTTON_LAYOUT_KEYS = new Set([
+  'flex', 'flexBasis', 'flexGrow', 'flexShrink', 'alignSelf', 'aspectRatio',
+  'width', 'minWidth', 'maxWidth', 'height', 'minHeight', 'maxHeight',
+  'position', 'top', 'bottom', 'left', 'right', 'start', 'end', 'zIndex',
+  'display', 'direction', 'margin', 'marginTop', 'marginBottom', 'marginLeft',
+  'marginRight', 'marginHorizontal', 'marginVertical', 'marginStart', 'marginEnd',
+]);
+
+function splitButtonStyle(style: StyleProp<ViewStyle>) {
+  const layout: Record<string, unknown> = {};
+  const appearance: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(StyleSheet.flatten(style) ?? {})) {
+    (BUTTON_LAYOUT_KEYS.has(key) ? layout : appearance)[key] = value;
+  }
+  return { layout: layout as ViewStyle, appearance: appearance as ViewStyle };
+}
 
 /**
  * Resolves the correct size dimensions and typography from the token system.
@@ -104,6 +120,7 @@ export function Button({
 }: Props) {
   const { theme } = useTheme();
   const sz = sizeStyles(size);
+  const { layout, appearance } = splitButtonStyle(style);
   const pendingPressRef = React.useRef(false);
   const lastPressAtRef = React.useRef(0);
   const [pendingPress, setPendingPress] = React.useState(false);
@@ -294,7 +311,12 @@ export function Button({
   })();
 
   return (
-    <Animated.View style={[styles.scaleWrap, { transform: [{ scale }, { translateY }] }]}>
+    <Animated.View style={[
+      styles.scaleWrap,
+      { minHeight: sz.height, width: fullWidth ? '100%' : undefined },
+      layout,
+      { transform: [{ scale }, { translateY }] },
+    ]}>
       <Pressable
         testID={testID}
         accessibilityRole="button"
@@ -308,12 +330,13 @@ export function Button({
           styles.container,
           variantContainer,
           {
-            height: sz.height,
+            minHeight: sz.height,
+            paddingVertical: tokens.spacing.sm,
             paddingHorizontal: sz.paddingHorizontal,
             width: fullWidth ? '100%' : undefined,
             opacity: isInert ? 1 : isBusy ? 0.75 : 1,
           },
-          style,
+          appearance,
         ]}
       >
         {showTactileOverlay && (
@@ -338,7 +361,6 @@ export function Button({
                 },
                 textStyle,
               ]}
-              numberOfLines={1}
             >
               {title}
             </AppText>
@@ -358,8 +380,10 @@ export function Button({
 const styles = StyleSheet.create({
   scaleWrap: {
     alignSelf: 'stretch',
+    minWidth: 44,
   },
   container: {
+    flexGrow: 1,
     minWidth: 44,
     overflow: 'hidden',
     position: 'relative',
@@ -393,6 +417,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   text: {
+    textAlign: 'center',
     letterSpacing: 0,
     textTransform: 'none',
   },

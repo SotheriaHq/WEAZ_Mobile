@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "test:button-layout": "node scripts/test-button-layout.cjs",
     "test:creator-options": "node scripts/test-creator-option-races.cjs",
     "test:profile-root": "node scripts/test-profile-root-navigation.cjs",
     "test:runway-categories": "node scripts/test-runway-categories.cjs",
@@ -65,7 +66,7 @@
     "audit:theme": "node scripts/audit-theme-system.js",
     "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
     "test:adire-rotation": "node scripts/test-adire-rotation.js",
-    "ci:phase8": "npm run test:analytics-consent && npm run test:display-currency && npm run test:push-registration-recovery-contract && npm run test:app-link-routing-contract &&npm run test:customer-entitlement-expiry && npm run test:scoped-media-picker && npm run test:upload-finalize-retry && npm run test:media-url-policy && npm run test:image-compression && npm run test:creator-options && npm run test:profile-root && npm run test:runway-categories && npm run check:borders && npm exec tsc -- --noEmit && npm run test:custom-order-queue-contract && npm run test:security-dependency-compat && npm run test:subscription-billing-routing && npm run test:adire-rotation && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:category-proposals && npm run test:refund-presentation-contract && npm run test:store-api-contract && npm run test:runway-responsiveness-contract && npm run test:runway-transit-curves && npm run test:runway-calm-media-contract && npm run test:measurement-catalog-contract && npm run test:location-cascade-contract && npm run test:profile-gender-contract && npm run test:brand-identity-contract && npm run test:product-identity-contract && npm run test:base-url-candidates && npm run test:country-flag && npm run test:profile-size-preference && npm run test:latency-phase3-contract && npm run test:studio-nav-latency-contract && npm run test:perf-instrumentation-contract && npm run test:clipping-market-chrome-contract && npm run test:auth-user-equality && npm run check:perf-regressions && npm run test:market-section-concurrency",
+    "ci:phase8": "npm run test:button-layout && npm run test:analytics-consent && npm run test:display-currency && npm run test:push-registration-recovery-contract && npm run test:app-link-routing-contract &&npm run test:customer-entitlement-expiry && npm run test:scoped-media-picker && npm run test:upload-finalize-retry && npm run test:media-url-policy && npm run test:image-compression && npm run test:creator-options && npm run test:profile-root && npm run test:runway-categories && npm run check:borders && npm exec tsc -- --noEmit && npm run test:custom-order-queue-contract && npm run test:security-dependency-compat && npm run test:subscription-billing-routing && npm run test:adire-rotation && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:category-proposals && npm run test:refund-presentation-contract && npm run test:store-api-contract && npm run test:runway-responsiveness-contract && npm run test:runway-transit-curves && npm run test:runway-calm-media-contract && npm run test:measurement-catalog-contract && npm run test:location-cascade-contract && npm run test:profile-gender-contract && npm run test:brand-identity-contract && npm run test:product-identity-contract && npm run test:base-url-candidates && npm run test:country-flag && npm run test:profile-size-preference && npm run test:latency-phase3-contract && npm run test:studio-nav-latency-contract && npm run test:perf-instrumentation-contract && npm run test:clipping-market-chrome-contract && npm run test:auth-user-equality && npm run check:perf-regressions && npm run test:market-section-concurrency",
     "test:profile-gender-contract": "node scripts/test-profile-gender-contract.js",
     "test:brand-identity-contract": "node scripts/test-brand-identity-contract.js",
     "test:base-url-candidates": "node scripts/test-base-url-candidates.js",
@@ -144,7 +145,8 @@
     "@types/react": "~19.2.14",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "react-test-renderer": "^19.2.3",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "yoga-layout": "3.2.1"
   },
   "overrides": {
     "uuid": "^11.1.1",

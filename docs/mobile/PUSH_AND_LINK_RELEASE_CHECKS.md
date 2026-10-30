@@ -46,3 +46,15 @@ Before marking device delivery complete:
 
 Code tests do not establish Firebase credential validity, domain association or
 delivery on a physical device.
+
+## Selector actions
+
+Native buttons keep caller layout properties on their outer animation container
+and visual styles on the interactive control. A `flex: 1` action inside an
+auto-height row must allocate width in the row, rather than collapse the nested
+control's height. Minimum touch heights and wrapped labels also apply to loading
+states. The Yoga regression measures the rendered component at narrow phone,
+normal phone and tablet widths; its pre-fix negative control fails.
+
+Check the privacy choice and bag-selector footer on a real phone after changing
+the shared button. This fix does not change system bars or app safe-area math.

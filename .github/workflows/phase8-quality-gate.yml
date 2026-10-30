@@ -32,6 +32,8 @@ jobs:
 
       - name: Native border policy
         run: npm run check:borders
+      - name: Selector footer and button layout
+        run: npm run test:button-layout
 
       - name: Scoped image picking and media completion
         run: |
