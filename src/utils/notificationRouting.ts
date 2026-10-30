@@ -55,6 +55,7 @@ import {
 } from './mobileRouting';
 import { drillDownPush } from './mobileNavigation';
 import { resolveMobileAuthRoute } from './authLinkRouting';
+import { nativePathForWebLink } from '@/src/navigation/webLinkRouting';
 
 function resolvePaymentReturnRoute(url: string | null) {
   if (!url) return null;
@@ -199,6 +200,14 @@ export function useNotificationRouting() {
         // mounted. They must still be recognised here: falling through would
         // route them to the notifications list.
         if (resolveMobileAuthRoute(url)) {
+          return;
+        }
+
+        // An App Link to the web app (an emailed https://<web host>/orders/…)
+        // is routed by `+native-intent` before Expo Router navigates. Acting on
+        // it here too would build a notification with no route and replace the
+        // screen it just opened with the notifications list.
+        if (nativePathForWebLink(url)) {
           return;
         }
 

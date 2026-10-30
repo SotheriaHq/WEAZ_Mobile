@@ -37,11 +37,19 @@ const PUSH_REGISTRATION_STORAGE_KEY = 'wiez.pushTokenRegistration.v1';
 const PUSH_REGISTRATION_REVALIDATION_MS = 24 * 60 * 60 * 1000;
 const REGISTRATION_RETRY_DELAYS_MS = [30_000, 2 * 60_000, 10 * 60_000, 30 * 60_000];
 
-let inFlightRegistrationKey: string | null = null;
-let inFlightRegistrationPromise: Promise<PushRegistrationResult> | null = null;
+// Server ownership and its durable local record must change in the same order.
+// Include logout in this queue so late cleanup cannot erase the next account.
+let pushMutationTail: Promise<void> = Promise.resolve();
+
+function enqueuePushMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const pending = pushMutationTail.then(operation);
+  pushMutationTail = pending.then(() => undefined, () => undefined);
+  return pending;
+}
 let lastSuccessfulRegistrationKey: string | null = null;
 let lastSuccessfulRegistrationAt = 0;
 let registrationEpoch = 0;
+let acceptedPushRegistration: PushRegistrationRecord | null = null;
 
 export type PushRegistrationState = {
   result: PushRegistrationResult | null;
@@ -268,12 +276,19 @@ async function writeStoredPushRegistration(record: PushRegistrationRecord) {
   await SecureStore.setItemAsync(PUSH_REGISTRATION_STORAGE_KEY, JSON.stringify(record));
 }
 
-export async function clearStoredPushRegistration() {
+function invalidatePushRegistration() {
   registrationEpoch += 1;
   lastSuccessfulRegistrationKey = null;
   lastSuccessfulRegistrationAt = 0;
   publishRegistrationState({ result: null, attemptedAt: null });
-  await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+}
+
+export function clearStoredPushRegistration(): Promise<void> {
+  invalidatePushRegistration();
+  return enqueuePushMutation(async () => {
+    acceptedPushRegistration = null;
+    await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+  });
 }
 
 /**
@@ -290,8 +305,11 @@ export async function registerAuthenticatedPushToken(params: {
   requirePushEnabled?: boolean;
   force?: boolean;
 }): Promise<PushRegistrationResult> {
+  const epochAtStart = registrationEpoch;
   const result = await attemptPushRegistration(params);
-  publishRegistrationState({ result, attemptedAt: Date.now() });
+  if (epochAtStart === registrationEpoch) {
+    publishRegistrationState({ result, attemptedAt: Date.now() });
+  }
   return result;
 }
 
@@ -361,79 +379,64 @@ async function attemptPushRegistration(params: {
   };
   const nextKey = buildPushRegistrationKey(nextRecord);
 
-  if (
-    !params.force &&
-    lastSuccessfulRegistrationKey === nextKey &&
-    Date.now() - lastSuccessfulRegistrationAt < PUSH_REGISTRATION_REVALIDATION_MS
-  ) {
-    return { status: 'skipped', reason: 'already-registered' };
-  }
+  return enqueuePushMutation(async (): Promise<PushRegistrationResult> => {
+    if (registrationEpochAtStart !== registrationEpoch) {
+      return { status: 'skipped', reason: 'registration-cancelled' };
+    }
+    if (
+      !params.force &&
+      lastSuccessfulRegistrationKey === nextKey &&
+      Date.now() - lastSuccessfulRegistrationAt < PUSH_REGISTRATION_REVALIDATION_MS
+    ) {
+      return { status: 'skipped', reason: 'already-registered' };
+    }
 
-  const previousRecord = await readStoredPushRegistration();
-  if (
-    !params.force &&
-    !shouldRegisterPushToken(previousRecord, nextRecord) &&
-    !shouldRevalidatePushRegistration(previousRecord)
-  ) {
-    lastSuccessfulRegistrationKey = nextKey;
-    lastSuccessfulRegistrationAt = Number(previousRecord?.registeredAt) || Date.now();
-    return { status: 'skipped', reason: 'already-registered' };
-  }
+    // A disk record cannot prove the server is still subscribed (logout may
+    // have deactivated it even if deleting the local record failed). Only a
+    // successful write in this runtime can take the shortcut above.
 
-  if (inFlightRegistrationKey === nextKey && inFlightRegistrationPromise) {
-    return inFlightRegistrationPromise;
-  }
-  // One write at a time. The server gives the device token to whichever
-  // account registers it last, so another account's write must land first.
-  if (inFlightRegistrationPromise) {
-    await inFlightRegistrationPromise.catch(() => undefined);
-  }
+    const payload: RegisterPushTokenPayload = {
+      token,
+      provider: 'EXPO',
+      platform,
+      appVersion: appVersion ?? undefined,
+      expoProjectId,
+    };
 
-  const payload: RegisterPushTokenPayload = {
-    token,
-    provider: 'EXPO',
-    platform,
-    appVersion: appVersion ?? undefined,
-    expoProjectId,
-  };
+    if (registrationEpochAtStart !== registrationEpoch) {
+      return { status: 'skipped', reason: 'registration-cancelled' };
+    }
 
-  if (registrationEpochAtStart !== registrationEpoch) {
-    return { status: 'skipped', reason: 'registration-cancelled' };
-  }
-
-  // Sent as the account that started it (`asAccount`), never as whoever is
-  // signed in by the time it leaves.
-  inFlightRegistrationKey = nextKey;
-  const write: Promise<PushRegistrationResult> = NotificationsApi.registerPushToken(payload, {
-    asAccount: authToken,
-  })
-    .then(async (): Promise<PushRegistrationResult> => {
-      if (registrationEpochAtStart !== registrationEpoch) {
-        // That account signed out while this was in flight: undo it as itself.
-        await NotificationsApi.deactivateCurrentPushToken(token, { asAccount: authToken }).catch(
-          () => undefined,
-        );
-        return { status: 'skipped', reason: 'registration-cancelled' };
-      }
-
-      await writeStoredPushRegistration(nextRecord);
-      lastSuccessfulRegistrationKey = nextKey;
-      lastSuccessfulRegistrationAt = nextRecord.registeredAt ?? Date.now();
-      return { status: 'registered', token };
+    // Sent as the account that started it (`asAccount`), never as whoever is
+    // signed in by the time it leaves.
+    return NotificationsApi.registerPushToken(payload, {
+      asAccount: authToken,
     })
-    .catch((error): PushRegistrationResult => {
-      if (__DEV__) console.warn('[Push] WIEZ could not save this device:', error);
-      return { status: 'failed', stage: 'server', reason: 'server-registration-failed' };
-    })
-    .finally(() => {
-      if (inFlightRegistrationPromise === write) {
-        inFlightRegistrationKey = null;
-        inFlightRegistrationPromise = null;
-      }
-    });
-  inFlightRegistrationPromise = write;
+      .then(async (): Promise<PushRegistrationResult> => {
+        // Keep the cleanup identity even if secure storage cannot write.
+        acceptedPushRegistration = nextRecord;
+        if (registrationEpochAtStart !== registrationEpoch) {
+          // That account signed out while this was in flight: undo it as itself.
+          await NotificationsApi.deactivateCurrentPushToken(token, { asAccount: authToken }).catch(
+            () => undefined,
+          );
+          return { status: 'skipped', reason: 'registration-cancelled' };
+        }
 
-  return write;
+        // This is a durable cleanup cache, not the registration authority.
+        await writeStoredPushRegistration(nextRecord).catch(() => undefined);
+        if (registrationEpochAtStart !== registrationEpoch) {
+          return { status: 'skipped', reason: 'registration-cancelled' };
+        }
+        lastSuccessfulRegistrationKey = nextKey;
+        lastSuccessfulRegistrationAt = nextRecord.registeredAt ?? Date.now();
+        return { status: 'registered', token };
+      })
+      .catch((error): PushRegistrationResult => {
+        if (__DEV__) console.warn('[Push] WIEZ could not save this device:', error);
+        return { status: 'failed', stage: 'server', reason: 'server-registration-failed' };
+      });
+  });
 }
 
 /**
@@ -445,27 +448,33 @@ async function attemptPushRegistration(params: {
  * previous account's notifications. A registration still in flight lands first
  * so it cannot re-register the device afterwards.
  */
-export async function deactivateRegisteredPushTokenForLogout(
+export function deactivateRegisteredPushTokenForLogout(
   options: { asAccount?: string | null } = {},
 ): Promise<void> {
-  if (inFlightRegistrationPromise) {
-    await inFlightRegistrationPromise.catch(() => undefined);
-  }
-  const previousRecord = await readStoredPushRegistration();
-  if (!previousRecord?.token) {
-    await clearStoredPushRegistration();
-    return;
-  }
+  // Fence the outgoing session before returning control to sign-in. Never
+  // invalidate here again after awaiting the network or durable storage.
+  invalidatePushRegistration();
+  const outgoingAccount = readString(options.asAccount);
+  return enqueuePushMutation(async () => {
+    const previousRecord = acceptedPushRegistration ?? await readStoredPushRegistration();
+    if (!previousRecord?.token) {
+      return;
+    }
 
-  try {
-    await NotificationsApi.deactivateCurrentPushToken(previousRecord.token, {
-      asAccount: readString(options.asAccount),
-    });
-  } catch {
-    // Logout must not be blocked by a best-effort token cleanup call.
-  } finally {
-    await clearStoredPushRegistration();
-  }
+    try {
+      // Never fall back to the incoming account's global API credentials.
+      if (outgoingAccount) {
+        await NotificationsApi.deactivateCurrentPushToken(previousRecord.token, {
+          asAccount: outgoingAccount,
+        });
+      }
+    } catch {
+      // Logout must not be blocked by a best-effort token cleanup call.
+    } finally {
+      acceptedPushRegistration = null;
+      await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+    }
+  });
 }
 
 /**

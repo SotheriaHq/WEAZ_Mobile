@@ -28,17 +28,20 @@ async function main() {
   const invalid = ['', '/bad%ZZ', '/bad%E0%A4%A', '/%FE%FF', '/%00', '/line\r\nnext', '/' + 'a'.repeat(16384), '/%' + 'FE%FF'.repeat(200)];
   for (const value of invalid) assert.equal(input.isSafeMobileNavigationPath(value), false);
   let routed = 0;
+  let webRouted = 0;
   const intent = load(path.join(root, 'app/+native-intent.tsx'), {
     '@/src/utils/navigationInput': input,
     '@/src/utils/authLinkRouting': { resolveMobileAuthRoute: () => { routed++; return null; } },
     '@/src/navigation/launchLinkLedger': { claimFreshLaunchUrl: async value => value },
     '@/src/auth/pendingEmailVerification': { rememberPendingEmailVerification: async () => undefined },
+    '@/src/navigation/webLinkRouting': { nativePathForWebLink: () => { webRouted++; return null; } },
   });
   for (const value of invalid) {
     assert.equal(await intent.redirectSystemPath({ path: value, initial: true }), '/');
     assert.equal(await intent.redirectSystemPath({ path: value, initial: false }), '');
   }
   assert.equal(routed, 0, 'Malformed system input must not reach URI routing');
+  assert.equal(webRouted, 0, 'Malformed system input must not reach web-link routing');
   assert.equal(await intent.redirectSystemPath({ path: '/orders/order-1', initial: true }), '/orders/order-1');
 
   const renderer = require.resolve('react-native-markdown-display/package.json');
