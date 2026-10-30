@@ -48,6 +48,7 @@ type ToggleConfig = {
   description?: string;
   section: NotificationSettingsSection;
   key: string;
+  emoji?: string;
 };
 
 type ToggleSectionConfig = {
@@ -338,15 +339,21 @@ function ToggleSettingRow({
       onPress={() => onToggle(!value)}
       style={({ pressed }) => [
         styles.toggleRow,
-        { borderBottomColor: theme.colors.border },
         pressed && !disabled ? styles.rowPressed : null,
       ]}
     >
+      {item.emoji ? (
+        <View style={styles.emojiWrap}>
+          <AppText variant="body">{item.emoji}</AppText>
+        </View>
+      ) : null}
       <View style={styles.rowCopy}>
         <AppText variant="bodyBold">{item.label}</AppText>
-        <AppText variant="captionRegular" tone="muted">
-          {item.description}
-        </AppText>
+        {item.description ? (
+          <AppText variant="captionRegular" tone="muted">
+            {item.description}
+          </AppText>
+        ) : null}
         {/*
           Show the receipt states in the colours the thread actually uses.
 
@@ -367,14 +374,15 @@ function ToggleSettingRow({
         ) : null}
       </View>
       <View style={styles.switchSlot}>
-        {pending ? <MuseLoader size={20} /> : null}
-        <View pointerEvents="none">
+        {pending ? <MuseLoader size={18} /> : null}
+        <View pointerEvents="none" style={styles.switchWrapper}>
           <Switch
             value={value}
             disabled={disabled}
-            trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.primarySoft }}
-            thumbColor={value ? theme.colors.primary : theme.colors.textMuted}
+            trackColor={{ false: theme.colors.surfaceAlt, true: theme.colors.primary }}
+            thumbColor={Platform.OS === 'android' ? (value ? theme.colors.surface : theme.colors.textMuted) : undefined}
             ios_backgroundColor={theme.colors.surfaceAlt}
+            style={styles.compactSwitch}
           />
         </View>
       </View>
@@ -395,41 +403,32 @@ function ToggleSectionBlock({
   saving: boolean;
   onPatch: (patch: NotificationSettingPatchDescriptor) => void;
 }) {
-  const { theme } = useTheme();
-
   return (
-    // Same shape as the Privacy screen: an uppercase label separates the group
-    // and a single hairline closes it. The old treatment wrapped every group in
-    // a bordered, filled card INSIDE an already-labelled section, so the screen
-    // read as a stack of boxes and each group fought its neighbour for weight.
-    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
+    <View style={styles.sectionWrap}>
       <View style={styles.sectionHeading}>
         <AppText variant="captionBold" tone="secondary" style={styles.sectionTitle}>
           {section.title.toUpperCase()}
         </AppText>
       </View>
-      <View>
-        {section.items.map((item, index) => {
+      <View style={styles.sectionRows}>
+        {section.items.map((item) => {
           const value = readBooleanSetting(settings, item);
           const patchKey = `${item.section}.${item.key}`;
           return (
-            <View key={item.id} style={index === section.items.length - 1 ? styles.lastRowWrap : null}>
-              <ToggleSettingRow
-                item={item}
-                value={value}
-                // Only the row being saved goes inert. `saving` disabled EVERY
-                // row on the screen, so one tap greyed the whole list.
-                disabled={pendingKey === patchKey}
-                pending={pendingKey === patchKey}
-                onToggle={(nextValue) =>
-                  onPatch({
-                    section: item.section,
-                    key: item.key,
-                    value: nextValue,
-                  })
-                }
-              />
-            </View>
+            <ToggleSettingRow
+              key={item.id}
+              item={item}
+              value={value}
+              disabled={pendingKey === patchKey}
+              pending={pendingKey === patchKey}
+              onToggle={(nextValue) =>
+                onPatch({
+                  section: item.section,
+                  key: item.key,
+                  value: nextValue,
+                })
+              }
+            />
           );
         })}
       </View>
@@ -518,15 +517,15 @@ function DeviceStatusSection({
     status.retryable && status.server !== 'saved' && status.phone !== 'not-checked';
 
   return (
-    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
+    <View style={styles.sectionWrap}>
       <View style={styles.sectionHeading}>
         <AppText variant="captionBold" tone="secondary" style={styles.sectionTitle}>
           THIS DEVICE
         </AppText>
       </View>
-      <View>
+      <View style={[styles.moduleCard, { backgroundColor: theme.colors.surface }]}>
         {rows.map(([label, value]) => (
-          <View key={label} style={[styles.statusRow, { borderBottomColor: theme.colors.border }]}>
+          <View key={label} style={styles.statusRow}>
             <AppText variant="body" style={styles.statusLabel}>
               {label}
             </AppText>
@@ -539,21 +538,21 @@ function DeviceStatusSection({
             </AppText>
           </View>
         ))}
+        {detail ? (
+          <AppText variant="captionRegular" tone="muted">
+            {detail}
+          </AppText>
+        ) : null}
+        {showRetry ? (
+          <Button
+            title={retrying ? 'Trying again…' : 'Try again'}
+            size="sm"
+            variant="outline"
+            disabled={retrying}
+            onPress={onRetry}
+          />
+        ) : null}
       </View>
-      {detail ? (
-        <AppText variant="captionRegular" tone="muted">
-          {detail}
-        </AppText>
-      ) : null}
-      {showRetry ? (
-        <Button
-          title={retrying ? 'Trying again…' : 'Try again'}
-          size="sm"
-          variant="outline"
-          disabled={retrying}
-          onPress={onRetry}
-        />
-      ) : null}
     </View>
   );
 }
@@ -593,7 +592,7 @@ function QuietHoursSection({
     // delivery during a daily window" and the toggle under it said "Mute
     // supported push notifications during your selected hours" — the same
     // sentence twice, in two type sizes, about one switch.
-    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
+    <View style={styles.sectionWrap}>
       <View style={styles.sectionHeading}>
         <AppText variant="captionBold" tone="secondary" style={styles.sectionTitle}>
           QUIET HOURS
@@ -603,7 +602,7 @@ function QuietHoursSection({
         </AppText>
       </View>
 
-      <View>
+      <View style={[styles.moduleCard, { backgroundColor: theme.colors.surface }]}>
         <ToggleSettingRow
           item={{
             id: 'push.quietHoursEnabled',
@@ -635,7 +634,6 @@ function QuietHoursSection({
           accessibilityLabel="Quiet hours start time"
           style={({ pressed }) => [
             styles.timeRow,
-            { borderBottomColor: theme.colors.border },
             pressed ? styles.timeRowPressed : null,
           ]}
         >
@@ -656,7 +654,6 @@ function QuietHoursSection({
           accessibilityLabel="Quiet hours end time"
           style={({ pressed }) => [
             styles.timeRow,
-            { borderBottomColor: theme.colors.border },
             pressed ? styles.timeRowPressed : null,
           ]}
         >
@@ -672,7 +669,7 @@ function QuietHoursSection({
 
         {(pendingKey === 'push.quietHoursStart' || pendingKey === 'push.quietHoursEnd') ? (
           <View style={styles.inlineSaving}>
-            <MuseLoader size={20} />
+            <MuseLoader size={18} />
             <AppText variant="captionRegular" tone="muted">
               Saving quiet hours...
             </AppText>
@@ -856,7 +853,7 @@ export default function NotificationSettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+      <View style={styles.header}>
         <AppBackButton fallbackHref="/settings" />
         <View style={styles.headerCopy}>
           <AppText variant="title">Notifications</AppText>
@@ -957,7 +954,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -965,7 +961,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
   },
   content: {
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.xl,
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.lg,
   },
@@ -981,31 +977,36 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     gap: tokens.spacing.sm,
-    paddingBottom: tokens.spacing.md,
-    borderBottomWidth: 2,
   },
   sectionHeading: {
     gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.xs,
   },
   sectionTitle: {
     letterSpacing: 0,
   },
-  sectionCard: {
+  sectionRows: {
+    gap: tokens.spacing.xs,
+  },
+  moduleCard: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
-    overflow: 'hidden',
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+    ...tokens.elevation.sm,
   },
   toggleRow: {
-    minHeight: 72,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
-    borderBottomWidth: 2,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
   },
-  lastRowWrap: {
-    overflow: 'hidden',
+  emojiWrap: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   rowPressed: {
     opacity: 0.78,
@@ -1023,11 +1024,19 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.xs,
   },
   switchSlot: {
-    minWidth: 82,
+    minWidth: 44,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: tokens.spacing.sm,
+  },
+  switchWrapper: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactSwitch: {
+    transform: [{ scale: Platform.OS === 'ios' ? 0.82 : 0.88 }],
   },
   warningCard: {
     flexDirection: 'row',
@@ -1051,23 +1060,23 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
   },
   timeRow: {
-    minHeight: 56,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: 2,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
   },
   timeRowLabel: {
     flex: 1,
     minWidth: 0,
   },
   statusRow: {
-    minHeight: 52,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: 2,
+    paddingVertical: tokens.spacing.xs,
   },
   statusLabel: {
     flex: 1,
@@ -1084,7 +1093,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.md,
-    paddingBottom: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
   },
 });

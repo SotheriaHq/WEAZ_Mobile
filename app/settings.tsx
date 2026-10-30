@@ -30,7 +30,15 @@ type SettingsSection = {
   rows: SettingsRow[];
 };
 
-function SettingRow({ row }: { row: SettingsRow }) {
+function SettingRow({
+  row,
+  isDestructive,
+}: {
+  row: SettingsRow;
+  isDestructive?: boolean;
+}) {
+  const { theme } = useTheme();
+
   return (
     <Pressable
       onPress={row.onPress}
@@ -39,7 +47,14 @@ function SettingRow({ row }: { row: SettingsRow }) {
       accessibilityLabel={row.title}
       style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
     >
-      <View style={styles.iconWrap}>
+      <View
+        style={[
+          styles.iconWrap,
+          {
+            backgroundColor: theme.colors.surfaceAlt,
+          },
+        ]}
+      >
         <AppText variant="body" accessibilityLabel={`${row.title} icon`}>
           {row.emoji}
         </AppText>
@@ -79,18 +94,35 @@ function SettingRow({ row }: { row: SettingsRow }) {
 
 function SettingsSectionBlock({ section }: { section: SettingsSection }) {
   const { theme } = useTheme();
+  const isActions = section.title === 'Account actions';
 
   return (
-    <View
-      style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}
-    >
+    <View style={styles.sectionWrap}>
       <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
         {section.title.toUpperCase()}
       </AppText>
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {section.rows.map((row) => (
-          <SettingRow key={`${section.title}-${row.title}`} row={row} />
-        ))}
+      <View
+        style={[
+          styles.section,
+          isActions
+            ? { backgroundColor: theme.colors.surfaceAlt }
+            : {
+                backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface,
+                ...tokens.elevation.sm,
+              },
+        ]}
+      >
+        {section.rows.map((row, index) => {
+          const isLast = index === section.rows.length - 1;
+          return (
+            <View
+              key={`${section.title}-${row.title}`}
+              style={isLast ? null : [styles.rowDivider, { borderBottomColor: theme.colors.border }]}
+            >
+              <SettingRow row={row} isDestructive={row.danger} />
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -373,7 +405,7 @@ export default function SettingsScreen() {
       style={[styles.root, { backgroundColor: theme.colors.bg }]}
       edges={['top']}
     >
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+      <View style={styles.header}>
         <AppBackButton fallbackHref="/(tabs)" />
         <View style={styles.headerCopy}>
           <AppText variant="title">Settings</AppText>
@@ -408,7 +440,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -420,9 +451,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.lg,
   },
   sectionWrap: {
-    gap: tokens.spacing.xs,
-    paddingBottom: tokens.spacing.md,
-    borderBottomWidth: 2,
+    gap: tokens.spacing.sm,
   },
   sectionTitle: {
     paddingHorizontal: tokens.spacing.xs,
@@ -431,6 +460,9 @@ const styles = StyleSheet.create({
   section: {
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
+  },
+  rowDivider: {
+    borderBottomWidth: 2,
   },
   row: {
     minHeight: 64,
@@ -444,8 +476,9 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   iconWrap: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
+    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
