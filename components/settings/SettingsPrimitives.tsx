@@ -13,22 +13,24 @@ export function SettingsHeader({
   title,
   subtitle,
   fallbackHref = '/settings',
+  style,
 }: {
   title: string;
   subtitle?: string;
   fallbackHref?: string;
+  style?: StyleProp<ViewStyle>;
 }) {
   const { theme } = useTheme();
 
   return (
-    <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+    <View style={[styles.header, { borderBottomColor: theme.colors.border }, style]}>
       <AppBackButton fallbackHref={fallbackHref as never} />
       <View style={styles.headerCopy}>
-        <AppText variant="title" numberOfLines={1}>
+        <AppText variant="title">
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+          <AppText variant="captionRegular" tone="muted">
             {subtitle}
           </AppText>
         ) : null}
