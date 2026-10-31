@@ -247,10 +247,11 @@ export const tokens = {
         mutedSurface: '#ffffff',
         controlSurface: '#ffffff',
         controlSurfaceActive: 'rgba(17,24,39,0.08)',
-        glassSurfaceSoft: 'rgba(255,255,255,0.42)',
-        glassSurface: 'rgba(255,255,255,0.78)',
-        glassSurfaceStrong: 'rgba(255,255,255,0.92)',
-        glassBorder: 'rgba(15,23,42,0.12)',
+        /* Liquid Glass (Rule 36 - High-saturation optical refraction & specular rim) */
+        glassSurfaceSoft: 'rgba(255,255,255,0.45)',
+        glassSurface: 'rgba(255,255,255,0.70)',
+        glassSurfaceStrong: 'rgba(255,255,255,0.85)',
+        glassBorder: 'rgba(255,255,255,0.45)',
         glassBlur: 32,
       },
     } satisfies Theme,
@@ -329,10 +330,11 @@ export const tokens = {
         mutedSurface: 'rgba(255,255,255,0.07)',
         controlSurface: 'rgba(255,255,255,0.08)',
         controlSurfaceActive: 'rgba(255,255,255,0.14)',
-        glassSurfaceSoft: 'rgba(3,7,18,0.52)',
-        glassSurface: 'rgba(0,0,0,0.58)',
-        glassSurfaceStrong: 'rgba(3,7,18,0.74)',
-        glassBorder: 'rgba(255,255,255,0.12)',
+        /* Liquid Glass (Rule 36 - High-saturation optical refraction & specular rim) */
+        glassSurfaceSoft: 'rgba(12,10,20,0.50)',
+        glassSurface: 'rgba(12,10,20,0.70)',
+        glassSurfaceStrong: 'rgba(15,12,24,0.85)',
+        glassBorder: 'rgba(255,255,255,0.14)',
         glassBlur: 36,
       },
     } satisfies Theme,
@@ -394,8 +396,8 @@ export const tokens = {
     bootBackground: '#FFFFFF',
     /** Opaque white. Chrome over media, where the backdrop is unknown. */
     light: '#FFFFFF',
-    /** Frosted plate for controls floating over a photograph. */
-    glassPlateDark: 'rgba(18, 18, 24, 0.78)',
+    /** Liquid Glass plate for controls floating over a photograph (Rule 36: Liquid Glass Architecture). */
+    glassPlateDark: 'rgba(14, 12, 22, 0.70)',
     /** Faint blue-black wash used behind light-theme header chrome. */
     inkWash: 'rgba(8,10,18,0.08)',
     /** QR modules and quiet zone. Fixed high contrast — scanners depend on it. */

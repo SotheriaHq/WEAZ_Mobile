@@ -18,7 +18,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * barely-there wash of the brand purple for surfaces that would otherwise be
  * bare — metric tiles, summary panels. See `surfaceTintGradient`.
  */
-export type CardVariant = 'surface' | 'elevated' | 'overlay' | 'tinted' | 'recessed' | 'bordered' | 'interactive';
+export type CardVariant = 'surface' | 'elevated' | 'overlay' | 'tinted' | 'recessed' | 'bordered' | 'interactive' | 'liquidGlass';
 
 type Props = {
   variant?: CardVariant;
@@ -66,6 +66,13 @@ export function Card({
               borderWidth: 0,
               ...tokens.elevation.sm,
             }
+          : variant === 'liquidGlass'
+            ? {
+                backgroundColor: theme.colors.glassSurface,
+                borderWidth: 2,
+                borderColor: theme.colors.glassBorder,
+                ...tokens.elevation.md,
+              }
           : variant === 'bordered'
             ? {
                 backgroundColor: cardSurfaceColor,
@@ -81,10 +88,8 @@ export function Card({
               : {
                   backgroundColor: variant === 'recessed' ? theme.colors.surfaceAlt : cardSurfaceColor,
                   borderWidth: 2,
-                  borderTopColor: theme.colors.border,
-                  borderLeftColor: theme.colors.border,
-                  borderBottomColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
-                  borderRightColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
+                  borderColor: theme.colors.border,
+                  ...tokens.elevation.sm,
                 };
 
   const content =
