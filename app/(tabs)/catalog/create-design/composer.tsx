@@ -60,10 +60,8 @@ import {
 } from '@/src/features/design-editor/DesignEditorProvider';
 import {
   DESIGN_EDITOR_MAX_MEDIA,
-  DESIGN_CREATION_SIZING_OPTIONS,
   DESIGN_FIT_PREFERENCE_LABELS,
   DESIGN_MEDIA_SLOTS,
-  DESIGN_SIZING_LABELS,
   DESIGN_TARGET_AGE_LABELS,
   DESIGN_VISIBILITY_LABELS,
   getMediaViewSlotLabel,
@@ -241,17 +239,8 @@ export default function CreateDesignComposerScreen() {
   }, []);
 
   const audienceLabel = getAudienceLabel(form.audience);
-  const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
   const targetAgeLabel = DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup];
-  // Reflect the actual availability selection instead of a static label so the
-  // chosen state (custom order vs standard) is always visible (Issue #6).
-  const availabilityLabel =
-    form.customOrderEnabled ||
-    form.sizingMode === 'CUSTOM' ||
-    form.sizingMode === 'RTW_PLUS_FITTINGS'
-      ? 'Custom order'
-      : 'Standard';
   const selectedSubCategory =
     selectedCategory?.subCategories.find(
       (entry) => entry.id === form.subCategoryId,
@@ -375,17 +364,6 @@ export default function CreateDesignComposerScreen() {
   // delivery 1-7, rush 1-3) so the creator sees the problem next to the field and
   // is blocked before Preview — never as a submit-time 400. Null per field = valid.
   const customOrderFieldErrors = useMemo(() => {
-    const empty = {
-      baseCharge: null as string | null,
-      fabricCost: null as string | null,
-      fallbackYards: null as string | null,
-      productionTime: null as string | null,
-      delivery: null as string | null,
-      rushFee: null as string | null,
-      rushTime: null as string | null,
-    };
-    if (!form.customOrderEnabled) return empty;
-
     const baseCharge = form.baseProductionCharge.trim()
       ? null
       : 'Enter a base charge.';
@@ -451,7 +429,6 @@ export default function CreateDesignComposerScreen() {
     };
   }, [
     form.baseProductionCharge,
-    form.customOrderEnabled,
     form.deliveryMaxDays,
     form.deliveryMinDays,
     form.fabricCostPerYard,
@@ -476,7 +453,7 @@ export default function CreateDesignComposerScreen() {
     if (!form.audience) missing.push('Who is it for?');
     if (selectedDiscoveryFilterCount === 0) missing.push('Style details');
     if (selectedTags.length === 0) missing.push('Tags');
-    if (form.customOrderEnabled && customMeasurementKeys.length === 0)
+    if (customMeasurementKeys.length === 0)
       missing.push('Required custom-order fields');
     if (
       customOrderFieldErrors.baseCharge ||
@@ -498,7 +475,6 @@ export default function CreateDesignComposerScreen() {
     form.audience,
     form.categoryId,
     hasPendingTaxonomy,
-    form.customOrderEnabled,
     form.subCategoryId,
     form.title,
     selectedDiscoveryFilterCount,
@@ -506,21 +482,20 @@ export default function CreateDesignComposerScreen() {
     missingRequiredMediaSlots,
   ]);
   const canPreview = missingRequiredFields.length === 0;
-  // True when custom orders are on but something inside the (collapsed) Custom
-  // orders sheet is missing/invalid — used to flag the row on the main form so
-  // the creator knows to open it, since the inline field errors live in there.
+  // True when something inside the (collapsed) Custom orders sheet is
+  // missing/invalid — used to flag the row on the main form so the creator
+  // knows to open it, since the inline field errors live in there.
   const customOrderNeedsAttention =
-    form.customOrderEnabled &&
-    (customMeasurementKeys.length === 0 ||
-      Boolean(
-        customOrderFieldErrors.baseCharge ||
-          customOrderFieldErrors.fabricCost ||
-          customOrderFieldErrors.fallbackYards ||
-          customOrderFieldErrors.productionTime ||
-          customOrderFieldErrors.delivery ||
-          customOrderFieldErrors.rushFee ||
-          customOrderFieldErrors.rushTime,
-      ));
+    customMeasurementKeys.length === 0 ||
+    Boolean(
+      customOrderFieldErrors.baseCharge ||
+        customOrderFieldErrors.fabricCost ||
+        customOrderFieldErrors.fallbackYards ||
+        customOrderFieldErrors.productionTime ||
+        customOrderFieldErrors.delivery ||
+        customOrderFieldErrors.rushFee ||
+        customOrderFieldErrors.rushTime,
+    );
 
   const handlePickMedia = useCallback(
     async (source: 'camera' | 'library') => {
@@ -1066,9 +1041,8 @@ export default function CreateDesignComposerScreen() {
             />
             <OptionRow
               leading="📦"
-              title="Availability"
-              subtitle={`${sizingLabel} · ${fitPreferenceLabel}`}
-              value={availabilityLabel}
+              title="Fit preference"
+              value={fitPreferenceLabel}
               valueState="selected"
               onPress={() => setAvailabilityOpen(true)}
             />
@@ -1076,13 +1050,11 @@ export default function CreateDesignComposerScreen() {
               leading="🧵"
               title="Custom orders"
               subtitle={
-                form.customOrderEnabled
-                  ? customOrderNeedsAttention
-                    ? 'Fix custom order details to continue'
-                    : `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
-                  : 'Off'
+                customOrderNeedsAttention
+                  ? 'Complete this to submit your design'
+                  : `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
               }
-              value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
+              value="Required"
               valueTone={customOrderNeedsAttention ? 'danger' : undefined}
               valueState={customOrderNeedsAttention ? 'error' : 'selected'}
               onPress={() => setCustomOrdersOpen(true)}
@@ -1339,30 +1311,12 @@ export default function CreateDesignComposerScreen() {
 
       <AppBottomSheet
         visible={availabilityOpen}
-        title="Availability"
+        title="Fit preference"
         onClose={() => setAvailabilityOpen(false)}
         showCloseButton
         keyboardBehavior="none"
       >
         <View style={styles.sheetSection}>
-          <AppText variant="bodyBold">Sizing mode</AppText>
-          <View style={styles.sheetChipWrap}>
-            {DESIGN_CREATION_SIZING_OPTIONS.map((value) => (
-              <Chip
-                key={value}
-                label={DESIGN_SIZING_LABELS[value]}
-                selected={form.sizingMode === value}
-                onPress={() => {
-                  updateField('sizingMode', value);
-                  updateField('customOrderEnabled', value === 'CUSTOM');
-                }}
-              />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.sheetSection}>
-          <AppText variant="bodyBold">Fit preference</AppText>
           <View style={styles.sheetChipWrap}>
             {(['SLIM', 'REGULAR', 'LOOSE', 'OVERSIZED'] as const).map((value) => (
               <Chip key={value} label={DESIGN_FIT_PREFERENCE_LABELS[value]} selected={form.fitPreference === value} onPress={() => updateField('fitPreference', value)} />
@@ -1379,281 +1333,262 @@ export default function CreateDesignComposerScreen() {
         showCloseButton
         scrollable
       >
-        <View style={styles.switchRow}>
-          <View style={styles.switchCopy}>
-            <AppText variant="bodyBold">Accept custom orders</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              Buyers can request this design as a custom job.
-            </AppText>
+        <AppText variant="captionRegular" tone="muted">
+          Every design is made to order. Complete this setup to submit your design and take orders.
+        </AppText>
+
+        <View style={styles.sheetSection}>
+          <RequiredFieldLabel required>Required custom-order fields</RequiredFieldLabel>
+          <AppText variant="captionRegular" tone="muted">
+            Select the exact buyer measurement fields for this design.
+          </AppText>
+          <View style={styles.sheetChipWrap}>
+            {measurementPoints.length > 0 ? measurementPoints.map((point) => (
+              <Chip
+                key={point.key}
+                label={point.label || point.key}
+                selected={customMeasurementKeys.includes(point.key)}
+                onPress={() => toggleMeasurementKey(point.key)}
+              />
+            )) : (
+              <AppText variant="body" tone="muted">
+                No measurement fields are available for this audience.
+              </AppText>
+            )}
           </View>
-          <ThemedSwitch
-            value={form.customOrderEnabled}
-            onValueChange={(value) => {
-              updateField('customOrderEnabled', value);
-              updateField('sizingMode', value ? 'CUSTOM' : 'NONE');
-            }}
+          <View style={styles.priceRow}>
+            <Input
+              label="Base charge (₦)"
+              value={form.baseProductionCharge}
+              onChangeText={(value) => updateField('baseProductionCharge', value.replace(/[^0-9.]/g, ''))}
+              keyboardType="decimal-pad"
+              placeholder="5000"
+              containerStyle={styles.priceInput}
+              error={customOrderFieldErrors.baseCharge ?? undefined}
+            />
+            <Input
+              label="Fabric / yd (₦)"
+              value={form.fabricCostPerYard}
+              onChangeText={(value) => updateField('fabricCostPerYard', value.replace(/[^0-9.]/g, ''))}
+              keyboardType="decimal-pad"
+              placeholder="2500"
+              containerStyle={styles.priceInput}
+              error={customOrderFieldErrors.fabricCost ?? undefined}
+            />
+          </View>
+          <View style={[styles.switchRow, { marginTop: tokens.spacing.md }]}>
+            <View style={styles.switchCopy}>
+              <AppText variant="bodyBold">Rush orders</AppText>
+              <AppText variant="captionRegular" tone="muted">
+                Allow buyers to pay extra for faster production.
+              </AppText>
+            </View>
+            <ThemedSwitch
+              value={form.rushEnabled}
+              onValueChange={(value) => updateField('rushEnabled', value)}
+            />
+          </View>
+          {form.rushEnabled ? (
+            <Reanimated.View
+              entering={FadeIn.duration(140)}
+              exiting={FadeOut.duration(120)}
+              layout={LinearTransition.duration(180)}
+              style={styles.sheetSection}
+            >
+              <View style={styles.priceRow}>
+                <Input
+                  label="Rush fee (₦)"
+                  value={form.rushFee}
+                  onChangeText={(value) => updateField('rushFee', value.replace(/[^0-9.]/g, ''))}
+                  keyboardType="decimal-pad"
+                  placeholder="2000"
+                  containerStyle={styles.priceInput}
+                  error={customOrderFieldErrors.rushFee ?? undefined}
+                />
+                <Input
+                  label="Rush lead (days)"
+                  value={form.rushProductionLeadDays}
+                  onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                  placeholder="3"
+                  containerStyle={styles.priceInput}
+                  error={customOrderFieldErrors.rushTime ?? undefined}
+                />
+              </View>
+              <AppText variant="captionRegular" tone="muted">
+                1-3 days (72 hours max), shorter than production time.
+              </AppText>
+            </Reanimated.View>
+          ) : null}
+
+          <View style={styles.sheetSection}>
+            <RequiredFieldLabel required>Fabric sourcing</RequiredFieldLabel>
+            <View style={styles.segmentedControl}>
+              {([
+                { value: 'BRAND_SOURCED', label: 'Brand Sourced' },
+                { value: 'BUYER_SUPPLIED', label: 'Buyer Supplied' },
+                { value: 'EITHER', label: 'Either' },
+              ] as const).map((opt) => {
+                const isSelected = form.fabricSourcingMode === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => updateField('fabricSourcingMode', opt.value)}
+                    style={[
+                      styles.segmentButton,
+                      {
+                        backgroundColor: isSelected ? theme.colors.primary : 'transparent',
+                        borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <AppText
+                      variant="captionBold"
+                      tone={isSelected ? 'inverse' : 'default'}
+                      style={styles.segmentButtonText}
+                    >
+                      {opt.label}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.priceRow}>
+            <Input
+              label="Delivery min (days)"
+              value={form.deliveryMinDays}
+              onChangeText={(value) => updateField('deliveryMinDays', value.replace(/[^0-9]/g, ''))}
+              keyboardType="numeric"
+              placeholder="2"
+              containerStyle={styles.priceInput}
+              error={
+                deliveryRangeError.min ??
+                (customOrderFieldErrors.delivery?.includes('min')
+                  ? customOrderFieldErrors.delivery
+                  : undefined)
+              }
+            />
+            <Input
+              label="Delivery max (days)"
+              value={form.deliveryMaxDays}
+              onChangeText={(value) => updateField('deliveryMaxDays', value.replace(/[^0-9]/g, ''))}
+              keyboardType="numeric"
+              placeholder="5"
+              containerStyle={styles.priceInput}
+              error={
+                deliveryRangeError.max ??
+                (customOrderFieldErrors.delivery &&
+                !customOrderFieldErrors.delivery.includes('min')
+                  ? customOrderFieldErrors.delivery
+                  : undefined)
+              }
+            />
+          </View>
+          <View style={styles.priceRow}>
+            <Input
+              label="Production (days)"
+              value={form.productionLeadDays}
+              onChangeText={(value) => updateField('productionLeadDays', value.replace(/[^0-9]/g, ''))}
+              keyboardType="numeric"
+              placeholder="7"
+              containerStyle={styles.priceInput}
+              error={customOrderFieldErrors.productionTime ?? undefined}
+            />
+            <Input
+              label="Fallback (yards)"
+              value={form.fallbackOutputYards}
+              onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
+              keyboardType="decimal-pad"
+              placeholder="4"
+              containerStyle={styles.priceInput}
+              error={customOrderFieldErrors.fallbackYards ?? undefined}
+            />
+          </View>
+
+          <View style={styles.priceRow}>
+            <Input
+              label="Average base (yards)"
+              value={form.averageBaseYards}
+              onChangeText={(value) => updateField('averageBaseYards', value.replace(/[^0-9.]/g, ''))}
+              keyboardType="decimal-pad"
+              placeholder="3.5"
+              containerStyle={styles.priceInput}
+            />
+            <Input
+              label="Delivery scope"
+              value={form.deliveryScope}
+              onChangeText={(value) => updateField('deliveryScope', value)}
+              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope}
+              containerStyle={styles.priceInput}
+            />
+          </View>
+          <Input
+            label="Additional instructions"
+            value={form.buyerInstructionText}
+            onChangeText={(value) => updateField('buyerInstructionText', value)}
+            multiline
+            placeholder="Any special instructions for buyers..."
+          />
+          <Input
+            label="Private notes"
+            value={form.notes}
+            onChangeText={(value) => updateField('notes', value)}
+            multiline
+            placeholder="Internal notes about this configuration..."
+          />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
+            <AppText variant="captionBold">Revision policy</AppText>
+            <Pressable onPress={() => setRevisionPolicyOpen(true)}>
+              <AppText variant="captionBold" tone="primary">Presets</AppText>
+            </Pressable>
+          </View>
+          <Input
+            label="Revision policy"
+            hideLabel
+            value={form.revisionPolicy}
+            onChangeText={(value) => updateField('revisionPolicy', value)}
+            multiline
+            placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy}
+            containerStyle={{ marginTop: 4 }}
+          />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
+            <AppText variant="captionBold">Return policy</AppText>
+            <Pressable onPress={() => setReturnPolicyOpen(true)}>
+              <AppText variant="captionBold" tone="primary">Presets</AppText>
+            </Pressable>
+          </View>
+          <Input
+            label="Return policy"
+            hideLabel
+            value={form.returnPolicy}
+            onChangeText={(value) => updateField('returnPolicy', value)}
+            multiline
+            placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy}
+            containerStyle={{ marginTop: 4 }}
+          />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
+            <AppText variant="captionBold">Defect policy</AppText>
+            <Pressable onPress={() => setDefectPolicyOpen(true)}>
+              <AppText variant="captionBold" tone="primary">Presets</AppText>
+            </Pressable>
+          </View>
+          <Input
+            label="Defect policy"
+            hideLabel
+            value={form.defectPolicy}
+            onChangeText={(value) => updateField('defectPolicy', value)}
+            multiline
+            placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy}
+            containerStyle={{ marginTop: 4 }}
           />
         </View>
-
-        {form.customOrderEnabled ? (
-          <Reanimated.View
-            entering={FadeIn.duration(140)}
-            exiting={FadeOut.duration(120)}
-            layout={LinearTransition.duration(180)}
-            style={styles.sheetSection}
-          >
-            <RequiredFieldLabel required>Required custom-order fields</RequiredFieldLabel>
-            <AppText variant="captionRegular" tone="muted">
-              Select the exact buyer measurement fields for this design.
-            </AppText>
-            <View style={styles.sheetChipWrap}>
-              {measurementPoints.length > 0 ? measurementPoints.map((point) => (
-                <Chip
-                  key={point.key}
-                  label={point.label || point.key}
-                  selected={customMeasurementKeys.includes(point.key)}
-                  onPress={() => toggleMeasurementKey(point.key)}
-                />
-              )) : (
-                <AppText variant="body" tone="muted">
-                  No measurement fields are available for this audience.
-                </AppText>
-              )}
-            </View>
-            <View style={styles.priceRow}>
-              <Input
-                label="Base charge (₦)"
-                value={form.baseProductionCharge}
-                onChangeText={(value) => updateField('baseProductionCharge', value.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                placeholder="5000"
-                containerStyle={styles.priceInput}
-                error={customOrderFieldErrors.baseCharge ?? undefined}
-              />
-              <Input
-                label="Fabric / yd (₦)"
-                value={form.fabricCostPerYard}
-                onChangeText={(value) => updateField('fabricCostPerYard', value.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                placeholder="2500"
-                containerStyle={styles.priceInput}
-                error={customOrderFieldErrors.fabricCost ?? undefined}
-              />
-            </View>
-            <View style={[styles.switchRow, { marginTop: tokens.spacing.md }]}>
-              <View style={styles.switchCopy}>
-                <AppText variant="bodyBold">Rush orders</AppText>
-                <AppText variant="captionRegular" tone="muted">
-                  Allow buyers to pay extra for faster production.
-                </AppText>
-              </View>
-              <ThemedSwitch
-                value={form.rushEnabled}
-                onValueChange={(value) => updateField('rushEnabled', value)}
-              />
-            </View>
-            {form.rushEnabled ? (
-              <Reanimated.View
-                entering={FadeIn.duration(140)}
-                exiting={FadeOut.duration(120)}
-                layout={LinearTransition.duration(180)}
-                style={styles.sheetSection}
-              >
-                <View style={styles.priceRow}>
-                  <Input
-                    label="Rush fee (₦)"
-                    value={form.rushFee}
-                    onChangeText={(value) => updateField('rushFee', value.replace(/[^0-9.]/g, ''))}
-                    keyboardType="decimal-pad"
-                    placeholder="2000"
-                    containerStyle={styles.priceInput}
-                    error={customOrderFieldErrors.rushFee ?? undefined}
-                  />
-                  <Input
-                    label="Rush lead (days)"
-                    value={form.rushProductionLeadDays}
-                    onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
-                    keyboardType="numeric"
-                    placeholder="3"
-                    containerStyle={styles.priceInput}
-                    error={customOrderFieldErrors.rushTime ?? undefined}
-                  />
-                </View>
-                <AppText variant="captionRegular" tone="muted">
-                  1-3 days (72 hours max), shorter than production time.
-                </AppText>
-              </Reanimated.View>
-            ) : null}
-
-            <View style={styles.sheetSection}>
-              <RequiredFieldLabel required>Fabric sourcing</RequiredFieldLabel>
-              <View style={styles.segmentedControl}>
-                {([
-                  { value: 'BRAND_SOURCED', label: 'Brand Sourced' },
-                  { value: 'BUYER_SUPPLIED', label: 'Buyer Supplied' },
-                  { value: 'EITHER', label: 'Either' },
-                ] as const).map((opt) => {
-                  const isSelected = form.fabricSourcingMode === opt.value;
-                  return (
-                    <Pressable
-                      key={opt.value}
-                      onPress={() => updateField('fabricSourcingMode', opt.value)}
-                      style={[
-                        styles.segmentButton,
-                        {
-                          backgroundColor: isSelected ? theme.colors.primary : 'transparent',
-                          borderColor: isSelected ? theme.colors.primary : theme.colors.border,
-                        },
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected }}
-                    >
-                      <AppText
-                        variant="captionBold"
-                        tone={isSelected ? 'inverse' : 'default'}
-                        style={styles.segmentButtonText}
-                      >
-                        {opt.label}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.priceRow}>
-              <Input
-                label="Delivery min (days)"
-                value={form.deliveryMinDays}
-                onChangeText={(value) => updateField('deliveryMinDays', value.replace(/[^0-9]/g, ''))}
-                keyboardType="numeric"
-                placeholder="2"
-                containerStyle={styles.priceInput}
-                error={
-                  deliveryRangeError.min ??
-                  (customOrderFieldErrors.delivery?.includes('min')
-                    ? customOrderFieldErrors.delivery
-                    : undefined)
-                }
-              />
-              <Input
-                label="Delivery max (days)"
-                value={form.deliveryMaxDays}
-                onChangeText={(value) => updateField('deliveryMaxDays', value.replace(/[^0-9]/g, ''))}
-                keyboardType="numeric"
-                placeholder="5"
-                containerStyle={styles.priceInput}
-                error={
-                  deliveryRangeError.max ??
-                  (customOrderFieldErrors.delivery &&
-                  !customOrderFieldErrors.delivery.includes('min')
-                    ? customOrderFieldErrors.delivery
-                    : undefined)
-                }
-              />
-            </View>
-            <View style={styles.priceRow}>
-              <Input
-                label="Production (days)"
-                value={form.productionLeadDays}
-                onChangeText={(value) => updateField('productionLeadDays', value.replace(/[^0-9]/g, ''))}
-                keyboardType="numeric"
-                placeholder="7"
-                containerStyle={styles.priceInput}
-                error={customOrderFieldErrors.productionTime ?? undefined}
-              />
-              <Input
-                label="Fallback (yards)"
-                value={form.fallbackOutputYards}
-                onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                placeholder="4"
-                containerStyle={styles.priceInput}
-                error={customOrderFieldErrors.fallbackYards ?? undefined}
-              />
-            </View>
-
-            <View style={styles.priceRow}>
-              <Input
-                label="Average base (yards)"
-                value={form.averageBaseYards}
-                onChangeText={(value) => updateField('averageBaseYards', value.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                placeholder="3.5"
-                containerStyle={styles.priceInput}
-              />
-              <Input
-                label="Delivery scope"
-                value={form.deliveryScope}
-                onChangeText={(value) => updateField('deliveryScope', value)}
-                placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope}
-                containerStyle={styles.priceInput}
-              />
-            </View>
-            <Input
-              label="Additional instructions"
-              value={form.buyerInstructionText}
-              onChangeText={(value) => updateField('buyerInstructionText', value)}
-              multiline
-              placeholder="Any special instructions for buyers..."
-            />
-            <Input
-              label="Private notes"
-              value={form.notes}
-              onChangeText={(value) => updateField('notes', value)}
-              multiline
-              placeholder="Internal notes about this configuration..."
-            />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
-              <AppText variant="captionBold">Revision policy</AppText>
-              <Pressable onPress={() => setRevisionPolicyOpen(true)}>
-                <AppText variant="captionBold" tone="primary">Presets</AppText>
-              </Pressable>
-            </View>
-            <Input
-              label="Revision policy"
-              hideLabel
-              value={form.revisionPolicy}
-              onChangeText={(value) => updateField('revisionPolicy', value)}
-              multiline
-              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy}
-              containerStyle={{ marginTop: 4 }}
-            />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
-              <AppText variant="captionBold">Return policy</AppText>
-              <Pressable onPress={() => setReturnPolicyOpen(true)}>
-                <AppText variant="captionBold" tone="primary">Presets</AppText>
-              </Pressable>
-            </View>
-            <Input
-              label="Return policy"
-              hideLabel
-              value={form.returnPolicy}
-              onChangeText={(value) => updateField('returnPolicy', value)}
-              multiline
-              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy}
-              containerStyle={{ marginTop: 4 }}
-            />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
-              <AppText variant="captionBold">Defect policy</AppText>
-              <Pressable onPress={() => setDefectPolicyOpen(true)}>
-                <AppText variant="captionBold" tone="primary">Presets</AppText>
-              </Pressable>
-            </View>
-            <Input
-              label="Defect policy"
-              hideLabel
-              value={form.defectPolicy}
-              onChangeText={(value) => updateField('defectPolicy', value)}
-              multiline
-              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy}
-              containerStyle={{ marginTop: 4 }}
-            />
-          </Reanimated.View>
-        ) : null}
       </AppBottomSheet>
 
       <AppSelectSheet

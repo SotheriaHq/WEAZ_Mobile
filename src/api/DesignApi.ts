@@ -186,8 +186,6 @@ export type DesignSavePayload = {
   tags: string[];
   minPrice?: number;
   maxPrice?: number;
-  sizingMode?: 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
-  customOrderEnabled?: boolean;
   customMeasurementKeys?: string[];
   customOrderConfigurationTemplateId?: string;
   customOrderConfiguration?: DesignCustomOrderConfigurationInput;
@@ -576,8 +574,6 @@ const buildMetadata = (payload: DesignSavePayload) => ({
   categoryTypeId: payload.subCategoryId,
   tags: payload.tags,
   filterValueIds: payload.filterValueIds,
-  sizingMode: payload.sizingMode,
-  customOrderEnabled: payload.customOrderEnabled,
   customMeasurementKeys: payload.customMeasurementKeys,
   fitPreference: payload.fitPreference,
   targetAgeGroup: payload.targetAgeGroup,
@@ -631,9 +627,8 @@ async function initializeNewDesignUploads(payload: DesignSavePayload): Promise<I
     // NOTE: do NOT send `isAvailableInStore` — it is not part of the backend
     // InitializeDesignUploadDto/DesignMetadataDto and the global ValidationPipe
     // runs with forbidNonWhitelisted, so including it 400s with
-    // "property isAvailableInStore should not exist". Availability (RTW / custom
-    // only / both) is expressed via `sizingMode` + `customOrderEnabled`, which
-    // are already part of buildMetadata above.
+    // "property isAvailableInStore should not exist". A design is always made
+    // to order, so the server sets its sizing itself.
     draftOnly: payload.action === 'draft',
   });
 
@@ -851,8 +846,6 @@ async function ensureDesignCustomOrderConfiguration(
   designId: string,
   payload: DesignSavePayload,
 ): Promise<DesignCustomOrderConfiguration | null> {
-  if (!payload.customOrderEnabled) return null;
-
   const active = await getActiveDesignCustomConfiguration(designId);
   const keys = payload.customMeasurementKeys ?? [];
   if (active) {
@@ -1138,7 +1131,7 @@ export async function saveDesignEditor(
     // Custom-order setup needs only the design id, so it runs alongside the
     // uploads rather than after them. It still completes before finalize.
     const customOrderReady =
-      payload.action === 'publish' && payload.customOrderEnabled
+      payload.action === 'publish'
         ? ensureDesignCustomOrderConfiguration(designId, payload)
         : null;
     customOrderReady?.catch(() => undefined);
@@ -1201,7 +1194,7 @@ export async function saveDesignEditor(
 
   // As in the new-design path: custom-order setup overlaps the uploads.
   const customOrderReady =
-    payload.action === 'publish' && payload.customOrderEnabled
+    payload.action === 'publish'
       ? ensureDesignCustomOrderConfiguration(payload.designId, payload)
       : null;
   customOrderReady?.catch(() => undefined);
