@@ -377,7 +377,7 @@ export const tokens = {
      * Elevation shadow colour. Eleven files had written `shadowColor: '#000'`
      * independently; it is one concept and belongs in one place.
      */
-    shadow: '#000000',
+    shadow: '#4c1d95',
     /** Neutral (not black) wash used for inline message/attachment surfaces. */
     neutralWash: 'rgba(128,128,128,0.15)',
     /**
@@ -825,21 +825,21 @@ export const tokens = {
   // ─── Elevation / Shadows ──────────────────────────────────────────────────
   elevation: {
     sm: {
-      shadowColor: '#000',
+      shadowColor: '#4c1d95',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.1,
       shadowRadius: 2,
       elevation: 2,
     },
     md: {
-      shadowColor: '#000',
+      shadowColor: '#4c1d95',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.15,
       shadowRadius: 8,
       elevation: 6,
     },
     lg: {
-      shadowColor: '#000',
+      shadowColor: '#4c1d95',
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.2,
       shadowRadius: 16,
