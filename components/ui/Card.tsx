@@ -41,7 +41,7 @@ export function Card({
 
   const baseStyle: ViewStyle = {
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
+    borderWidth: 0,
     borderColor: theme.colors.border,
     padding: paddingValue,
   };
@@ -69,25 +69,25 @@ export function Card({
           : variant === 'liquidGlass'
             ? {
                 backgroundColor: theme.colors.glassSurface,
-                borderWidth: 2,
+                borderWidth: 0,
                 borderColor: theme.colors.glassBorder,
                 ...tokens.elevation.md,
               }
           : variant === 'bordered'
             ? {
                 backgroundColor: cardSurfaceColor,
-                borderWidth: 2,
+                borderWidth: 0,
                 borderColor: theme.colors.border,
               }
             : variant === 'interactive'
               ? {
                   backgroundColor: cardSurfaceColor,
-                  borderWidth: 2,
+                  borderWidth: 0,
                   borderColor: theme.colors.border,
                 }
               : {
                   backgroundColor: variant === 'recessed' ? theme.colors.surfaceAlt : cardSurfaceColor,
-                  borderWidth: 2,
+                  borderWidth: 0,
                   borderColor: theme.colors.border,
                   ...tokens.elevation.sm,
                 };

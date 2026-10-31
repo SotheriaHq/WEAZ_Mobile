@@ -9,12 +9,14 @@ import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Card } from '@/components/ui/Card';
+import { AppBadge } from '@/components/ui/AppBadge';
 import {
   SubscriptionApi,
   type SubscriptionPreview,
   type SubscriptionPayment,
 } from '@/src/api/SubscriptionApi';
+import { BrandApi } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { getActiveBrandId, isBrandOwner } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -33,15 +35,18 @@ const tierName = (key?: string | null) =>
   })[key || ''] ||
   key ||
   'No plan';
+
 const money = (value: number) =>
   new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(
     value,
   );
+
 const date = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }) +
       ' WAT'
     : 'Not scheduled';
+
 function confirmed(
   title: string,
   message: string,
@@ -81,10 +86,12 @@ export default function SubscriptionSettingsScreen() {
       isBrandOwner(user, requestedBrandId),
   );
   const [switchError, setSwitchError] = useState(false);
+
   useEffect(() => {
     if (!switching || !requestedBrandId) return;
     void setActiveBrandId(requestedBrandId).catch(() => setSwitchError(true));
   }, [switching, requestedBrandId, setActiveBrandId]);
+
   if (requestedBrandId && requestedBrandId !== activeBrandId)
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
@@ -96,15 +103,18 @@ export default function SubscriptionSettingsScreen() {
             />
           }
         />
-        <AppText>
-          {switching
-            ? switchError
-              ? 'Unable to switch billing workspace. Reopen billing to retry.'
-              : 'Opening your billing workspace…'
-            : 'Only the brand owner can open this billing workspace.'}
-        </AppText>
+        <View style={styles.content}>
+          <AppText>
+            {switching
+              ? switchError
+                ? 'Unable to switch billing workspace. Reopen billing to retry.'
+                : 'Opening your billing workspace…'
+              : 'Only the brand owner can open this billing workspace.'}
+          </AppText>
+        </View>
       </SafeAreaView>
     );
+
   return (
     <SubscriptionSettingsContent
       key={`${user?.id || ''}:${getActiveBrandId(user) || ''}`}
@@ -123,23 +133,46 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
   const brandId = getActiveBrandId(user);
   const owner = Boolean(brandId && isBrandOwner(user, brandId));
   const key = ['brand-queue-subscription', user?.id, brandId];
+
+  const brandProfile = useQuery({
+    queryKey: ['brand-profile-sub', brandId],
+    queryFn: () => BrandApi.get(brandId!),
+    enabled: owner,
+  });
+
+  const isBrandVerified =
+    brandProfile.data?.verificationStatus === 'APPROVED' ||
+    brandProfile.data?.verified === true ||
+    Boolean((user as any)?.isVerifiedBrand);
+
   const billing = useQuery({
     queryKey: key,
     queryFn: () => SubscriptionApi.get(brandId!),
     enabled: owner,
   });
-  useEffect(() => { void client.invalidateQueries({ queryKey: ['brand-commerce-access'] }); }, [client, billing.data?.subscription?.tierKey, billing.data?.subscription?.status, billing.data?.subscription?.currentPeriodEnd]);
+
+  useEffect(() => {
+    void client.invalidateQueries({ queryKey: ['brand-commerce-access'] });
+  }, [
+    client,
+    billing.data?.subscription?.tierKey,
+    billing.data?.subscription?.status,
+    billing.data?.subscription?.currentPeriodEnd,
+  ]);
+
   const cards = useQuery({
     queryKey: [...key, 'cards'],
     queryFn: () => SubscriptionApi.cards(brandId!),
     enabled: owner,
   });
+
   const [tab, setTab] = useState<
     'plans' | 'payments' | 'history' | 'cards' | 'preferences'
   >('plans');
   const [cursors, setCursors] = useState<Array<string | undefined>>([
     undefined,
   ]);
+
   const history = useQuery({
     queryKey: [...key, 'history', tab, cursors[cursors.length - 1]],
     queryFn: () =>
@@ -150,32 +183,36 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
       ),
     enabled: owner && (tab === 'payments' || tab === 'history'),
   });
+
   const queue = useQuery({
     queryKey: [...key, 'preferences'],
     queryFn: () => CustomOrderQueueApi.brand(brandId!),
     enabled: owner && tab === 'preferences',
   });
+
   const [tier, setTier] = useState('');
   const [preview, setPreview] = useState<SubscriptionPreview | null>(null);
   const [consent, setConsent] = useState(false);
   const [cardId, setCardId] = useState('');
   const [cardConsent, setCardConsent] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [nickname, setNickname] = useState('');
   const [pending, setPending] = useState<SubscriptionPayment | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
   const mounted = useRef(true);
+
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+
   const verification = useRef<{
     reference: string;
     promise: ReturnType<typeof SubscriptionApi.verify>;
   } | null>(null);
+
   useEffect(() => {
     if (!owner || !brandId || !reference) return;
     if (verification.current?.reference !== reference)
@@ -204,6 +241,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
       active = false;
     };
   }, [owner, brandId, reference, client, user?.id]);
+
   async function run(action: () => Promise<void>) {
     if (busy || !owner) return;
     setBusy(true);
@@ -222,6 +260,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
       setBusy(false);
     }
   }
+
   async function openPayment(payment: SubscriptionPayment) {
     if (!mounted.current) return;
     if (!payment.authorizationUrl) return;
@@ -234,15 +273,16 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
       setMessage(`Payment status: ${result.status}.`);
     }
   }
+
   const subscription = billing.data?.subscription;
-  const rowStyle = [styles.section, { borderBottomColor: theme.colors.border }];
+
   return (
     <SafeAreaView
       edges={['top']}
       style={[styles.root, { backgroundColor: theme.colors.bg }]}
     >
       <Header
-        title="Billing & subscriptions"
+        title="Billing & Subscriptions"
         left={
           <AppBackButton
             emoji="👈"
@@ -263,56 +303,94 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
           </AppText>
         ) : (
           <>
-            <View style={styles.tabs}>
-              {(
-                [
-                  'plans',
-                  'payments',
-                  'history',
-                  'cards',
-                  'preferences',
-                ] as const
-              ).map((value) => (
-                <Pressable
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: tab === value }}
-                  key={value}
-                  onPress={() => {
-                    setTab(value);
-                    setCursors([undefined]);
-                  }}
-                  style={[
-                    styles.tab,
-                    tab === value
-                      ? { borderBottomColor: theme.colors.primary }
-                      : null,
-                  ]}
-                >
-                  <AppText variant="bodyBold">
-                    {
-                      {
-                        plans: 'Plans',
-                        payments: 'Billing history',
-                        history: 'Subscription history',
-                        cards: 'Payment methods',
-                        preferences: 'Order preferences',
-                      }[value]
-                    }
-                  </AppText>
-                </Pressable>
-              ))}
+            {/* Pill Navigation Tabs */}
+            <View style={styles.tabsContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabsScroll}
+              >
+                {(
+                  [
+                    'plans',
+                    'payments',
+                    'history',
+                    'cards',
+                    'preferences',
+                  ] as const
+                ).map((value) => {
+                  const isSelected = tab === value;
+                  return (
+                    <Pressable
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: isSelected }}
+                      key={value}
+                      onPress={() => {
+                        setTab(value);
+                        setCursors([undefined]);
+                      }}
+                      style={[
+                        styles.tabPill,
+                        {
+                          backgroundColor: isSelected
+                            ? theme.colors.primarySoft
+                            : theme.colors.surfaceCard,
+                        },
+                      ]}
+                    >
+                      <AppText
+                        variant={isSelected ? 'bodyBold' : 'body'}
+                        tone={isSelected ? 'primary' : 'default'}
+                      >
+                        {
+                          {
+                            plans: 'Plans & Capacity',
+                            payments: 'Billing History',
+                            history: 'Subscription History',
+                            cards: 'Payment Methods',
+                            preferences: 'Queue Preferences',
+                          }[value]
+                        }
+                      </AppText>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
+
+            {/* Error or Loading Banners */}
             {billing.isPending ? (
-              <AppText>Loading billing…</AppText>
+              <Card variant="elevated">
+                <AppText>Loading subscription details…</AppText>
+              </Card>
             ) : billing.isError ? (
-              <>
+              <Card variant="elevated">
                 <AppText>Unable to load billing.</AppText>
                 <Button title="Retry" onPress={() => void billing.refetch()} />
-              </>
+              </Card>
             ) : null}
+
+            {/* Seller Verification Required Banner if unverified */}
+            {!isBrandVerified && tab === 'plans' ? (
+              <Card variant="tinted" padding="lg">
+                <AppText variant="h3">🛡️ Brand Verification Required</AppText>
+                <AppText variant="caption" style={{ marginTop: 4 }}>
+                  Subscription upgrades and custom order queue capacity are reserved for verified WIEZ brands. Complete seller verification to unlock all paid tiers.
+                </AppText>
+                <View style={{ marginTop: tokens.spacing.md }}>
+                  <Button
+                    title="Start Verification"
+                    variant="brand"
+                    onPress={() => drillDownPush('/studio/store/verification' as never)}
+                  />
+                </View>
+              </Card>
+            ) : null}
+
+            {/* Preferences Tab */}
             {tab === 'preferences' ? (
-              <View style={rowStyle}>
-                <AppText variant="h2">Order preferences</AppText>
+              <Card variant="elevated" padding="lg">
+                <AppText variant="h2">Order Preferences</AppText>
                 {queue.isPending ? (
                   <AppText>Loading queue preferences…</AppText>
                 ) : queue.isError ? (
@@ -324,30 +402,39 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     />
                   </>
                 ) : queue.data ? (
-                  <>
-                    <AppText>
-                      {queue.data.intakeAllowed
-                        ? 'Accepting custom orders'
-                        : 'New custom-order intake paused'}
-                    </AppText>
+                  <View style={styles.preferenceBody}>
+                    <View style={styles.preferenceRow}>
+                      <AppText variant="bodyBold">Intake Status:</AppText>
+                      <AppBadge
+                        variant="status"
+                        tone={queue.data.intakeAllowed ? 'success' : 'muted'}
+                        label={queue.data.intakeAllowed ? 'Accepting Orders' : 'Intake Paused'}
+                      />
+                    </View>
                     <AppText>
                       Active: {queue.data.counts.ACTIVE} /{' '}
                       {queue.data.capacity.active ?? 'Unlimited'} · In delivery:{' '}
                       {queue.data.counts.IN_DELIVERY} /{' '}
                       {queue.data.capacity.inDelivery ?? 'Unlimited'}
                     </AppText>
-                    <AppText>
-                      Paid queue jumps:{' '}
-                      {queue.data.queueJumpEnabled ? 'Enabled' : 'Disabled'}.
-                      Available on Aru and Igwe. Existing paid jumps keep their
-                      priority when disabled.
+                    <View style={styles.preferenceRow}>
+                      <AppText variant="bodyBold">Paid Queue Jumps:</AppText>
+                      <AppBadge
+                        variant="status"
+                        tone={queue.data.queueJumpEnabled ? 'success' : 'muted'}
+                        label={queue.data.queueJumpEnabled ? 'Enabled' : 'Disabled'}
+                      />
+                    </View>
+                    <AppText variant="caption">
+                      Paid queue jumps allow shoppers to pay a 20% expedited priority fee. Available on Aru and Igwe tiers.
                     </AppText>
                     <Button
                       title={
                         queue.data.queueJumpEnabled
-                          ? 'Disable paid jumps'
-                          : 'Enable paid jumps'
+                          ? 'Disable Paid Jumps'
+                          : 'Enable Paid Jumps'
                       }
+                      variant="secondary"
                       disabled={busy || !queue.data.capacity.queueJumpAllowed}
                       onPress={() =>
                         void run(async () => {
@@ -369,61 +456,89 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       }
                     />
                     {!queue.data.capacity.queueJumpAllowed ? (
-                      <AppText>
-                        Review Aru or Igwe under Plans to enable paid jumps.
+                      <AppText variant="caption">
+                        Upgrade to Aru or Igwe under Plans to enable client paid jumps.
                       </AppText>
                     ) : null}
-                  </>
+                  </View>
                 ) : null}
-              </View>
+              </Card>
             ) : null}
+
+            {/* Plans Tab */}
             {tab === 'plans' && billing.data ? (
               <>
-                <View style={rowStyle}>
-                  <AppText variant="h2">
-                    {tierName(subscription?.tierKey)}
-                  </AppText>
-                  <AppText>
-                    {subscription?.status ||
-                      'Choose a plan to open custom-order intake'}
-                  </AppText>
-                  {subscription ? (
-                    <>
-                      <AppText>
-                        {money(subscription.lockedMonthlyPriceNgn)} / month
+                {/* Current Subscription Overview Card (ITEM 24) */}
+                {subscription ? (
+                  <Card variant="liquidGlass" padding="lg">
+                    <View style={styles.headerRow}>
+                      <View>
+                        <AppText variant="caption" tone="primary" weight="bold">
+                          CURRENT SUBSCRIPTION
+                        </AppText>
+                        <AppText variant="h2" style={{ marginTop: 2 }}>
+                          {tierName(subscription.tierKey)} Plan
+                        </AppText>
+                      </View>
+                      <AppBadge
+                        variant="status"
+                        tone={
+                          subscription.status === 'ACTIVE'
+                            ? 'success'
+                            : subscription.status === 'PAST_DUE'
+                              ? 'warning'
+                              : 'muted'
+                        }
+                        label={subscription.status}
+                      />
+                    </View>
+
+                    <View style={{ marginTop: tokens.spacing.sm }}>
+                      <AppText variant="h3">
+                        {money(subscription.lockedMonthlyPriceNgn)}{' '}
+                        <AppText variant="caption">/ month</AppText>
                       </AppText>
-                      <AppText>
-                        {date(subscription.currentPeriodStart)} —{' '}
-                        {date(subscription.currentPeriodEnd)}
+                      <AppText variant="caption">
+                        Cycle: {date(subscription.currentPeriodStart)} — {date(subscription.currentPeriodEnd)}
                       </AppText>
-                      <AppText>
+                      <AppText variant="caption" style={{ marginTop: 4 }}>
                         {subscription.cancelAtPeriodEnd
-                          ? 'Renewal stopped. Access continues until the paid period ends.'
+                          ? 'Automatic renewal stopped. Access continues until the current paid period ends.'
                           : 'Renews monthly on your Lagos billing anniversary.'}
                       </AppText>
                       {subscription.pendingTierKey ? (
-                        <AppText>
+                        <AppText variant="caption" tone="primary" style={{ marginTop: 2 }}>
                           Next renewal: {tierName(subscription.pendingTierKey)}
                         </AppText>
                       ) : null}
                       {subscription.recoveryUntil ? (
-                        <AppText>
-                          Payment recovery deadline:{' '}
-                          {date(subscription.recoveryUntil)}. New intake pauses
-                          at paid expiry.
-                        </AppText>
+                        <View style={styles.recoveryNotice}>
+                          <AppText variant="caption">
+                            Payment recovery deadline: {date(subscription.recoveryUntil)}. Retries occur on days 1, 3, and 7 preserving your locked price.
+                          </AppText>
+                        </View>
                       ) : null}
+                    </View>
+
+                    <View style={styles.cardActionsRow}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        title="Payment Methods"
+                        onPress={() => setTab('cards')}
+                      />
                       {!subscription.cancelAtPeriodEnd ? (
                         <Button
-                          variant="secondary"
-                          title="Cancel automatic renewal"
+                          variant="ghost"
+                          size="sm"
+                          title="Stop Renewal"
                           disabled={busy}
                           onPress={() =>
                             void run(async () => {
                               if (
                                 await confirmed(
                                   'Stop renewal?',
-                                  'Your current paid period is not refunded. Access lasts until its end; existing paid orders continue.',
+                                  'Your current paid period is not refunded. Access lasts until its end; existing captured orders continue.',
                                   'Stop renewal',
                                   true,
                                 )
@@ -435,91 +550,202 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                           }
                         />
                       ) : null}
-                    </>
-                  ) : null}
+                    </View>
+                  </Card>
+                ) : (
+                  <Card variant="elevated" padding="lg">
+                    <AppText variant="h3">No Active Subscription</AppText>
+                    <AppText variant="caption" style={{ marginTop: 4 }}>
+                      Select a tier below to open custom-order intake and expand your production bandwidth.
+                    </AppText>
+                  </Card>
+                )}
+
+                {/* Available Tier Cards (ITEM 25) */}
+                <AppText variant="h3" style={{ marginTop: tokens.spacing.md }}>
+                  Available Studio Tiers
+                </AppText>
+
+                <View style={styles.tierCardsStack}>
+                  {billing.data.tiers.map((plan) => {
+                    const isCurrent = subscription?.tierKey === plan.tierKey;
+                    const isSelected = tier === plan.tierKey;
+                    const isAru = plan.tierKey === 'ARU';
+                    const isIgwe = plan.tierKey === 'IGWE';
+
+                    return (
+                      <Card
+                        key={plan.tierKey}
+                        variant={isSelected ? 'liquidGlass' : 'elevated'}
+                        padding="lg"
+                      >
+                        <View style={styles.headerRow}>
+                          <View>
+                            <AppText variant="h3">{plan.label}</AppText>
+                            <AppText variant="bodyBold" tone="primary" style={{ marginTop: 2 }}>
+                              {money(plan.monthlyPriceNgn)} / month
+                            </AppText>
+                          </View>
+                          {isCurrent ? (
+                            <AppBadge variant="status" tone="success" label="CURRENT PLAN" />
+                          ) : isAru ? (
+                            <AppBadge variant="status" tone="brand" label="⭐ POPULAR" />
+                          ) : isIgwe ? (
+                            <AppBadge variant="status" tone="muted" label="👑 COUTURE" />
+                          ) : null}
+                        </View>
+
+                        <View style={styles.tierDetails}>
+                          <AppText variant="caption">
+                            • {plan.maxActive ?? 'Unlimited'} Active Custom Orders
+                          </AppText>
+                          <AppText variant="caption">
+                            • {plan.maxInDelivery ?? 'Unlimited'} In-Delivery Pipeline
+                          </AppText>
+                          <AppText variant="caption">
+                            • 1 Up Next Staging Slot · Unlimited Pending
+                          </AppText>
+                          <AppText variant="caption">
+                            • {plan.queueJumpAllowed ? '⚡ Paid Queue Jumps: Included' : 'Paid Queue Jumps: Not available'}
+                          </AppText>
+                        </View>
+
+                        <View style={{ marginTop: tokens.spacing.md }}>
+                          {isCurrent ? (
+                            <Button
+                              title="Current Plan"
+                              variant="secondary"
+                              disabled
+                            />
+                          ) : !isBrandVerified ? (
+                            <Button
+                              title="Verify Brand to Upgrade"
+                              variant="secondary"
+                              onPress={() => drillDownPush('/studio/store/verification' as never)}
+                            />
+                          ) : (
+                            <Button
+                              title={isSelected ? 'Selected' : `Select ${plan.label}`}
+                              variant={isAru || isIgwe ? 'brand' : 'secondary'}
+                              disabled={busy}
+                              onPress={() =>
+                                void run(async () => {
+                                  setTier(plan.tierKey);
+                                  setPreview(null);
+                                  setConsent(false);
+                                  setPreview(
+                                    await SubscriptionApi.preview(
+                                      brandId!,
+                                      plan.tierKey,
+                                    ),
+                                  );
+                                })
+                              }
+                            />
+                          )}
+                        </View>
+                      </Card>
+                    );
+                  })}
                 </View>
-                <View style={styles.grid}>
-                  {billing.data.tiers.map((plan) => (
-                    <View
-                      style={[
-                        styles.plan,
-                        { borderTopColor: theme.colors.border },
-                      ]}
-                      key={plan.tierKey}
-                    >
-                      <AppText variant="h3">{plan.label}</AppText>
+
+                {/* Feature Comparison Accordion (ITEM 26) */}
+                <Card variant="elevated" padding="md">
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setComparisonOpen((prev) => !prev)}
+                    style={styles.accordionHeader}
+                  >
+                    <AppText variant="bodyBold">
+                      {comparisonOpen ? '▼ Hide Feature Comparison' : '▶ Compare All 4 Tiers & Limits'}
+                    </AppText>
+                  </Pressable>
+
+                  {comparisonOpen && (
+                    <View style={styles.comparisonTable}>
+                      <View style={styles.comparisonRow}>
+                        <AppText variant="caption" weight="bold" style={{ width: '32%' }}>Feature</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>Thread</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>Aso-oke</AppText>
+                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>Aru</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>Igwe</AppText>
+                      </View>
+                      <View style={styles.comparisonRow}>
+                        <AppText variant="caption" style={{ width: '32%' }}>Rate</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>₦10k</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>₦15k</AppText>
+                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>₦30k</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>₦50k</AppText>
+                      </View>
+                      <View style={styles.comparisonRow}>
+                        <AppText variant="caption" style={{ width: '32%' }}>Active</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>2</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>3</AppText>
+                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>4</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>6</AppText>
+                      </View>
+                      <View style={styles.comparisonRow}>
+                        <AppText variant="caption" style={{ width: '32%' }}>Delivery</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>2</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>4</AppText>
+                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>5</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>5</AppText>
+                      </View>
+                      <View style={styles.comparisonRow}>
+                        <AppText variant="caption" style={{ width: '32%' }}>Paid Jumps</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>—</AppText>
+                        <AppText variant="caption" style={{ width: '17%' }}>—</AppText>
+                        <AppText variant="caption" weight="bold" tone="primary" style={{ width: '17%' }}>✓ Yes</AppText>
+                        <AppText variant="caption" tone="primary" style={{ width: '17%' }}>✓ Yes</AppText>
+                      </View>
+                    </View>
+                  )}
+                </Card>
+
+                {/* Plan Review & Checkout Drawer/Card (ITEM 28) */}
+                {preview ? (
+                  <Card variant="liquidGlass" padding="lg">
+                    <AppText variant="h3">Review {tierName(tier)}</AppText>
+                    <View style={{ marginTop: tokens.spacing.sm, gap: 4 }}>
                       <AppText variant="bodyBold">
-                        {money(plan.monthlyPriceNgn)} / month
+                        {preview.kind === 'DOWNGRADE'
+                          ? 'Due at Renewal'
+                          : 'Due Now (Prorated)'}
+                        : {money(preview.amountNgn)}
                       </AppText>
-                      <AppText>
-                        {plan.maxActive ?? 'Unlimited'} Active ·{' '}
-                        {plan.maxInDelivery ?? 'Unlimited'} In Delivery
+                      <AppText variant="caption">
+                        Effective: {date(preview.effectiveAt)} · Period ends: {date(preview.periodEnd)}
                       </AppText>
-                      <AppText>1 Up Next · Unlimited Pending</AppText>
+                      <AppText variant="caption">
+                        Upgrades are prorated to the exact second and activate after payment. Downgrades take effect on your next Lagos billing anniversary without refunding the current period.
+                      </AppText>
+                    </View>
+
+                    <View style={{ marginTop: tokens.spacing.md }}>
                       <Button
                         title={
-                          subscription?.tierKey === plan.tierKey
-                            ? 'Review current plan'
-                            : 'Review plan'
+                          cardId
+                            ? 'Change Selected Card'
+                            : 'Choose Saved Card or Use New Card'
                         }
                         variant="secondary"
-                        disabled={busy}
-                        onPress={() =>
-                          void run(async () => {
-                            setTier(plan.tierKey);
-                            setPreview(null);
-                            setConsent(false);
-                            setPreview(
-                              await SubscriptionApi.preview(
-                                brandId!,
-                                plan.tierKey,
-                              ),
-                            );
-                          })
-                        }
+                        onPress={() => setTab('cards')}
                       />
                     </View>
-                  ))}
-                </View>
-                {preview ? (
-                  <View style={rowStyle}>
-                    <AppText variant="h3">Review {tierName(tier)}</AppText>
-                    <AppText>
-                      {preview.kind === 'DOWNGRADE'
-                        ? 'Due at renewal'
-                        : 'Due now'}
-                      : {money(preview.amountNgn)}
-                    </AppText>
-                    <AppText>
-                      Effective {date(preview.effectiveAt)} · period ends{' '}
-                      {date(preview.periodEnd)}
-                    </AppText>
-                    <AppText>
-                      Upgrades are prorated and start after verified payment.
-                      Downgrades start at renewal. Subscription cancellation
-                      does not refund the current period.
-                    </AppText>
-                    <Button
-                      title={
-                        cardId
-                          ? 'Change selected saved card'
-                          : 'Choose saved card or use a new card'
-                      }
-                      variant="secondary"
-                      onPress={() => setTab('cards')}
-                    />
+
                     <Pressable
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: consent }}
                       onPress={() => setConsent((value) => !value)}
                       style={styles.checkbox}
                     >
-                      <AppText>
+                      <AppText variant="caption">
                         {consent ? '☑' : '☐'} I authorize recurring monthly
                         charges and accept the Terms, Seller Terms and Payment
                         Policy ({LEGAL_PAGE_VERSION}).
                       </AppText>
                     </Pressable>
+
                     <View style={styles.actions}>
                       {['terms', 'seller-terms', 'payment-policy'].map(
                         (slug) => (
@@ -530,7 +756,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                               drillDownPush(`/legal/${slug}` as never)
                             }
                           >
-                            <AppText tone="primary">
+                            <AppText tone="primary" variant="caption">
                               {slug === 'terms'
                                 ? 'Terms'
                                 : slug === 'seller-terms'
@@ -541,98 +767,132 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                         ),
                       )}
                     </View>
-                    <Button
-                      title={
-                        busy ? 'Processing…' : 'Confirm subscription change'
-                      }
-                      disabled={!consent || busy}
-                      onPress={() =>
-                        void run(async () => {
-                          if (
-                            !(await confirmed(
-                              'Confirm plan change?',
-                              `${money(preview.amountNgn)} ${preview.kind === 'DOWNGRADE' ? 'due at renewal' : 'due now'}. Effective ${date(preview.effectiveAt)}. No refund for cancellation.`,
-                              'Confirm',
-                            ))
-                          )
-                            return;
-                          const result = await SubscriptionApi.checkout(
-                            brandId!,
-                            tier,
-                            preview.amountNgn,
-                            new URL(
-                              `/settings?tab=subscription-billing&brandId=${encodeURIComponent(brandId!)}`,
-                              env.webAppUrl,
-                            ).toString(),
-                            cardId || undefined,
-                          );
-                          if (!mounted.current) return;
-                          setPending(result);
-                          setMessage(
-                            result.action === 'SCHEDULED_DOWNGRADE'
-                              ? 'Downgrade scheduled for renewal.'
-                              : result.action === 'UNCHANGED'
-                                ? 'This plan is already current.'
-                                : 'Verify payment status before starting another payment.',
-                          );
-                          await openPayment(result);
-                        })
-                      }
-                    />
-                  </View>
+
+                    <View style={{ marginTop: tokens.spacing.md, gap: tokens.spacing.sm }}>
+                      <Button
+                        title={
+                          busy ? 'Processing…' : 'Confirm Subscription Change'
+                        }
+                        variant="brand"
+                        disabled={!consent || busy}
+                        onPress={() =>
+                          void run(async () => {
+                            if (
+                              !(await confirmed(
+                                'Confirm plan change?',
+                                `${money(preview.amountNgn)} ${preview.kind === 'DOWNGRADE' ? 'due at renewal' : 'due now'}. Effective ${date(preview.effectiveAt)}. No refund for cancellation.`,
+                                'Confirm',
+                              ))
+                            )
+                              return;
+                            const result = await SubscriptionApi.checkout(
+                              brandId!,
+                              tier,
+                              preview.amountNgn,
+                              new URL(
+                                `/settings?tab=subscription-billing&brandId=${encodeURIComponent(brandId!)}`,
+                                env.webAppUrl,
+                              ).toString(),
+                              cardId || undefined,
+                            );
+                            if (!mounted.current) return;
+                            setPending(result);
+                            setMessage(
+                              result.action === 'SCHEDULED_DOWNGRADE'
+                                ? 'Downgrade scheduled for renewal.'
+                                : result.action === 'UNCHANGED'
+                                  ? 'This plan is already current.'
+                                  : 'Verify payment status before starting another payment.',
+                            );
+                            await openPayment(result);
+                          })
+                        }
+                      />
+                      <Button
+                        title="Cancel"
+                        variant="ghost"
+                        disabled={busy}
+                        onPress={() => {
+                          setPreview(null);
+                          setTier('');
+                        }}
+                      />
+                    </View>
+                  </Card>
                 ) : null}
               </>
             ) : null}
+
+            {/* History and Payments Tabs */}
             {tab === 'payments' || tab === 'history' ? (
-              <View style={rowStyle}>
+              <View style={styles.historyContainer}>
+                <AppText variant="h3">
+                  {tab === 'payments' ? 'Billing Invoices' : 'Subscription Records'}
+                </AppText>
                 {history.isPending ? (
-                  <AppText>Loading history…</AppText>
+                  <Card variant="elevated">
+                    <AppText>Loading history…</AppText>
+                  </Card>
                 ) : history.isError ? (
-                  <Button
-                    title="Retry history"
-                    onPress={() => void history.refetch()}
-                  />
+                  <Card variant="elevated">
+                    <Button
+                      title="Retry History"
+                      onPress={() => void history.refetch()}
+                    />
+                  </Card>
                 ) : !history.data?.items.length ? (
-                  <AppText>
-                    No {tab === 'payments' ? 'payments' : 'subscriptions'} yet.
-                  </AppText>
+                  <Card variant="elevated">
+                    <AppText>
+                      No {tab === 'payments' ? 'payments' : 'subscriptions'} yet.
+                    </AppText>
+                  </Card>
                 ) : (
                   history.data.items.map((item) => (
-                    <View key={item.id} style={rowStyle}>
-                      <AppText variant="bodyBold">
-                        {tierName(item.tierKey)} · {item.status}
-                      </AppText>
-                      <AppText>
+                    <Card key={item.id} variant="elevated" padding="md">
+                      <View style={styles.headerRow}>
+                        <AppText variant="bodyBold">
+                          {tierName(item.tierKey)}
+                        </AppText>
+                        <AppBadge
+                          variant="status"
+                          tone={item.status === 'PAID' ? 'success' : 'muted'}
+                          label={item.status || 'RECORD'}
+                        />
+                      </View>
+                      <AppText variant="body" tone="primary" style={{ marginTop: 2 }}>
                         {money(
                           item.amountNgn ?? item.lockedMonthlyPriceNgn ?? 0,
                         )}
                       </AppText>
-                      <AppText>
+                      <AppText variant="caption">
                         {date(item.periodStart ?? item.currentPeriodStart)} —{' '}
                         {date(item.periodEnd ?? item.currentPeriodEnd)}
                       </AppText>
                       {item.reference ? (
-                        <AppText>Receipt reference: {item.reference}</AppText>
-                      ) : null}
-                      {item.cancelAtPeriodEnd ? (
-                        <AppText>
-                          Renewal cancelled {date(item.cancelRequestedAt)}.
-                          Current period not refunded.
+                        <AppText variant="caption" style={{ marginTop: 2 }}>
+                          Reference: {item.reference}
                         </AppText>
                       ) : null}
-                    </View>
+                      {item.cancelAtPeriodEnd ? (
+                        <AppText variant="caption">
+                          Renewal cancelled {date(item.cancelRequestedAt)}. Current period not refunded.
+                        </AppText>
+                      ) : null}
+                    </Card>
                   ))
                 )}
-                <View style={styles.actions}>
+                <View style={styles.paginationRow}>
                   <Button
                     title="Previous"
                     variant="secondary"
+                    size="sm"
                     disabled={cursors.length === 1 || history.isFetching}
                     onPress={() => setCursors((values) => values.slice(0, -1))}
                   />
                   <Button
                     title="Next"
                     variant="secondary"
+                    size="sm"
                     disabled={!history.data?.nextCursor || history.isFetching}
                     onPress={() =>
                       setCursors((values) => [
@@ -644,19 +904,20 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                 </View>
               </View>
             ) : null}
+
+            {/* Cards Tab */}
             {tab === 'cards' ? (
-              <View style={rowStyle}>
-                <AppText variant="h3">Your payment methods</AppText>
-                <AppText>
-                  Cards saved from checkout can also pay for subscriptions.
-                  Default checkout and subscription renewal selections are
-                  separate.
+              <View style={styles.cardsContainer}>
+                <AppText variant="h3">Saved Payment Methods</AppText>
+                <AppText variant="caption">
+                  Cards saved from checkout can also be used for automatic monthly renewal.
                 </AppText>
+
                 <Button
                   title={
                     !cardId
-                      ? '✓ New card at secure checkout'
-                      : 'Use a new card at secure checkout'
+                      ? '✓ New Card at Secure Checkout'
+                      : 'Use New Card at Secure Checkout'
                   }
                   variant="secondary"
                   onPress={() => {
@@ -665,141 +926,83 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     setCardConsent(false);
                   }}
                 />
+
                 {cards.isPending ? (
-                  <AppText>Loading cards…</AppText>
+                  <Card variant="elevated">
+                    <AppText>Loading cards…</AppText>
+                  </Card>
                 ) : cards.isError ? (
-                  <Button
-                    title="Retry cards"
-                    onPress={() => void cards.refetch()}
-                  />
+                  <Card variant="elevated">
+                    <Button
+                      title="Retry Cards"
+                      onPress={() => void cards.refetch()}
+                    />
+                  </Card>
                 ) : !cards.data?.length ? (
-                  <AppText>No saved cards yet.</AppText>
+                  <Card variant="elevated">
+                    <AppText>No saved payment cards yet.</AppText>
+                  </Card>
                 ) : (
-                  cards.data.map((card) => (
-                    <View key={card.id} style={rowStyle}>
-                      <AppText variant="bodyBold">
-                        {card.nickname || card.brand || 'Card'} ····{' '}
-                        {card.last4}
-                      </AppText>
-                      <AppText>
-                        Expires {card.expMonth}/{card.expYear}
-                        {card.isDefault ? ' · Checkout default' : ''}
-                        {subscription?.savedPaymentMethodId === card.id
-                          ? ' · Subscription renewal'
-                          : ''}
-                      </AppText>
-                      <Button
-                        title={
-                          cardId === card.id
-                            ? '✓ Selected for payment'
-                            : card.reusable
-                              ? 'Select for payment'
-                              : 'Reauthorize at checkout'
-                        }
-                        variant="secondary"
-                        disabled={!card.reusable || busy}
-                        onPress={() => {
-                          setCardId(card.id);
-                          setConsent(false);
-                          setCardConsent(false);
-                        }}
-                      />
-                      {editing === card.id ? (
-                        <>
-                          <Input
-                            label="Card nickname"
-                            value={nickname}
-                            maxLength={60}
-                            onChangeText={setNickname}
-                          />
+                  cards.data.map((card) => {
+                    const isSelected = cardId === card.id;
+                    const isRenewal = subscription?.savedPaymentMethodId === card.id;
+                    return (
+                      <Card
+                        key={card.id}
+                        variant={isSelected ? 'liquidGlass' : 'elevated'}
+                        padding="md"
+                      >
+                        <View style={styles.headerRow}>
+                          <AppText variant="bodyBold">
+                            {card.nickname || card.brand || 'Card'} ···· {card.last4}
+                          </AppText>
+                          {isRenewal && (
+                            <AppBadge variant="status" tone="brand" label="RENEWAL CARD" />
+                          )}
+                        </View>
+                        <AppText variant="caption">
+                          Expires {card.expMonth}/{card.expYear}
+                          {card.isDefault ? ' · Checkout default' : ''}
+                        </AppText>
+                        <View style={{ marginTop: tokens.spacing.sm }}>
                           <Button
-                            title="Save nickname"
-                            disabled={busy}
-                            onPress={() =>
-                              void run(async () => {
-                                await SubscriptionApi.renameCard(
-                                  card.id,
-                                  nickname,
-                                );
-                                setEditing(null);
-                                toast.success('Card nickname updated.');
-                              })
+                            title={
+                              isSelected
+                                ? '✓ Selected for Payment'
+                                : card.reusable
+                                  ? 'Select for Payment'
+                                  : 'Reauthorize at Checkout'
                             }
-                          />
-                          <Button
-                            title="Cancel edit"
-                            variant="secondary"
-                            onPress={() => setEditing(null)}
-                          />
-                        </>
-                      ) : (
-                        <Button
-                          title="Edit nickname"
-                          variant="secondary"
-                          disabled={busy}
-                          onPress={() => {
-                            setEditing(card.id);
-                            setNickname(card.nickname || '');
-                          }}
-                        />
-                      )}
-                      {!card.isDefault ? (
-                        <Button
-                          title="Make checkout default"
-                          variant="secondary"
-                          disabled={busy}
-                          onPress={() =>
-                            void run(async () => {
-                              await SubscriptionApi.defaultCard(card.id);
-                              toast.success('Checkout default updated.');
-                            })
-                          }
-                        />
-                      ) : null}
-                      <Button
-                        title="Delete card"
-                        variant="secondary"
-                        disabled={busy}
-                        onPress={() =>
-                          void run(async () => {
-                            if (
-                              await confirmed(
-                                'Delete this card?',
-                                'Replace its renewal selection or stop automatic renewal first. Past payment receipts remain available.',
-                                'Delete',
-                                true,
-                              )
-                            ) {
-                              await SubscriptionApi.deleteCard(card.id);
-                              if (cardId === card.id) setCardId('');
+                            variant={isSelected ? 'brand' : 'secondary'}
+                            size="sm"
+                            disabled={!card.reusable || busy}
+                            onPress={() => {
+                              setCardId(card.id);
                               setConsent(false);
-                              toast.success('Saved card deleted.');
-                            }
-                          })
-                        }
-                      />
-                    </View>
-                  ))
+                            }}
+                          />
+                        </View>
+                      </Card>
+                    );
+                  })
                 )}
-                {subscription &&
-                cardId &&
-                cardId !== subscription.savedPaymentMethodId ? (
-                  <>
+
+                {cardId && (
+                  <Card variant="tinted" padding="md">
                     <Pressable
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: cardConsent }}
-                      onPress={() => setCardConsent((value) => !value)}
+                      onPress={() => setCardConsent((v) => !v)}
                       style={styles.checkbox}
                     >
-                      <AppText>
-                        {cardConsent ? '☑' : '☐'} I authorize this card for
-                        recurring subscription payments under the Payment Policy
-                        ({LEGAL_PAGE_VERSION}). This does not restart cancelled
-                        renewal.
+                      <AppText variant="caption">
+                        {cardConsent ? '☑' : '☐'} Authorize this saved card for future monthly renewals ({LEGAL_PAGE_VERSION}).
                       </AppText>
                     </Pressable>
                     <Button
-                      title="Use selected card for renewal"
+                      title="Set As Renewal Card"
+                      variant="brand"
+                      size="sm"
                       disabled={!cardConsent || busy}
                       onPress={() =>
                         void run(async () => {
@@ -808,98 +1011,59 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                         })
                       }
                     />
-                  </>
-                ) : null}
-                <AppText>
-                  New cards are added only with an actual payment. No standalone
-                  verification fee is charged.
-                </AppText>
-                <Button
-                  title="Add a new card during checkout"
-                  variant="secondary"
-                  onPress={() => drillDownPush('/checkout' as never)}
-                />
+                  </Card>
+                )}
+
                 {preview ? (
                   <Button
-                    title="Return to plan review"
+                    title="Return to Plan Review"
+                    variant="ghost"
                     onPress={() => setTab('plans')}
                   />
                 ) : null}
               </View>
             ) : null}
+
+            {/* Pending Verification Card */}
             {pending?.reference ? (
-              <View style={rowStyle}>
-                <AppText>{message}</AppText>
-                <AppText>Payment reference: {pending.reference}</AppText>
-                <Button
-                  title="Verify payment"
-                  disabled={busy}
-                  onPress={() =>
-                    void run(async () => {
-                      const result = await SubscriptionApi.verify(
-                        brandId!,
-                        pending.reference!,
-                      );
-                      setMessage(`Payment status: ${result.status}.`);
-                    })
-                  }
-                />
-                {pending.authorizationUrl ? (
+              <Card variant="liquidGlass" padding="md">
+                <AppText variant="bodyBold">{message || 'Payment status pending verification.'}</AppText>
+                <AppText variant="caption" style={{ marginTop: 2 }}>
+                  Ref: {pending.reference}
+                </AppText>
+                <View style={{ marginTop: tokens.spacing.sm, gap: tokens.spacing.sm }}>
                   <Button
-                    title="Resume payment"
-                    variant="secondary"
-                    disabled={busy}
-                    onPress={() => void run(() => openPayment(pending))}
-                  />
-                ) : null}
-              </View>
-            ) : null}
-            {billing.data?.invoices
-              .filter(
-                (invoice) =>
-                  !['PAID', 'CANCELLED', 'EXPIRED'].includes(invoice.status),
-              )
-              .map((invoice) => (
-                <View style={rowStyle} key={invoice.id}>
-                  <AppText variant="bodyBold">
-                    Payment needing attention · {invoice.status}
-                  </AppText>
-                  <AppText>
-                    {money(invoice.amountNgn)} · {invoice.reference}
-                  </AppText>
-                  <Button
-                    title="Check payment status"
+                    title="Verify Payment Status"
+                    variant="brand"
                     disabled={busy}
                     onPress={() =>
                       void run(async () => {
                         const result = await SubscriptionApi.verify(
                           brandId!,
-                          invoice.reference,
+                          pending.reference!,
                         );
-                        toast.info(`Payment status: ${result.status}`);
+                        setMessage(`Payment status: ${result.status}.`);
                       })
                     }
                   />
-                  {invoice.authorizationUrl ? (
+                  {pending.authorizationUrl ? (
                     <Button
-                      title="Complete existing payment"
+                      title="Resume Payment"
                       variant="secondary"
                       disabled={busy}
-                      onPress={() =>
-                        void run(() =>
-                          openPayment({ ...invoice, action: 'RESUME' }),
-                        )
-                      }
+                      onPress={() => void run(() => openPayment(pending))}
                     />
                   ) : null}
                 </View>
-              ))}
+              </Card>
+            ) : null}
           </>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: {
@@ -907,30 +1071,90 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.spacing['3xl'],
     gap: tokens.spacing.lg,
   },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.spacing.md },
-  tab: {
-    minHeight: 44,
+  tabsContainer: {
+    marginHorizontal: -tokens.spacing.lg,
+  },
+  tabsScroll: {
+    paddingHorizontal: tokens.spacing.lg,
+    gap: tokens.spacing.sm,
+  },
+  tabPill: {
+    minHeight: 40,
+    paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderRadius: tokens.radius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  section: {
-    gap: tokens.spacing.md,
-    paddingVertical: tokens.spacing.lg,
-    borderBottomWidth: 2,
-  },
-  grid: {
+  headerRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  recoveryNotice: {
+    marginTop: tokens.spacing.xs,
+    padding: tokens.spacing.sm,
+    borderRadius: tokens.radius.md,
+    backgroundColor: theme.colors.surfaceAlt,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  tierCardsStack: {
+    gap: tokens.spacing.md,
+  },
+  tierDetails: {
+    marginTop: tokens.spacing.sm,
+    gap: 4,
+  },
+  accordionHeader: {
+    paddingVertical: tokens.spacing.xs,
+  },
+  comparisonTable: {
+    marginTop: tokens.spacing.sm,
+    paddingTop: tokens.spacing.sm,
+    borderTopWidth: 2,
+    borderTopColor: theme.colors.border,
+    gap: tokens.spacing.xs,
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  preferenceBody: {
+    marginTop: tokens.spacing.sm,
+    gap: tokens.spacing.sm,
+  },
+  preferenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  historyContainer: {
+    gap: tokens.spacing.md,
+  },
+  paginationRow: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
   },
-  plan: {
-    width: '47%',
-    gap: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.lg,
-    borderTopWidth: 2,
+  cardsContainer: {
+    gap: tokens.spacing.md,
   },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.spacing.md },
-  checkbox: { minHeight: 44, paddingVertical: tokens.spacing.sm },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
+  },
+  checkbox: {
+    minHeight: 44,
+    paddingVertical: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
+  },
 });

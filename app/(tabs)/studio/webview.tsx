@@ -165,6 +165,26 @@ const READY_TIMEOUT_MS = 25_000;
  * the document (bundle + React + every query) — that was the 3–5s dead-tap
  * on every Studio chip.
  */
+const buildStudioThemeBootScript = (themeScheme: string) => `
+  (function() {
+    try {
+      var root = document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add('${themeScheme}');
+      root.dataset.theme = '${themeScheme}';
+      root.dataset.themePreference = '${themeScheme}';
+      root.style.colorScheme = '${themeScheme}';
+      sessionStorage.setItem('WIEZ.studio.embeddedTheme', '${themeScheme}');
+      sessionStorage.setItem('wiez.studio.embeddedTheme', '${themeScheme}');
+      sessionStorage.setItem('WIEZ.studio.embeddedSurface', 'mobile-app');
+      sessionStorage.setItem('wiez.studio.embeddedSurface', 'mobile-app');
+      localStorage.setItem('vite-ui-theme', '${themeScheme}');
+      window.dispatchEvent(new CustomEvent('wiez:theme-changed', { detail: { theme: '${themeScheme}' } }));
+    } catch(e) {}
+    true;
+  })();
+`;
+
 const STUDIO_NAV_BOOT_SCRIPT = `
   (function() {
     if (window.__WIEZ_STUDIO_NAV_BOOT__) return true;
@@ -363,7 +383,16 @@ export default function StudioWebViewScreen() {
   // handoff code and remounting the WebView, so the entire web bundle
   // downloaded twice. That was a large part of "the creation time is slow".
   const schemeRef = useRef(scheme);
-  schemeRef.current = scheme;
+    schemeRef.current = scheme;
+
+  useEffect(() => {
+    if (!webViewRef.current) return;
+    try {
+      webViewRef.current.injectJavaScript(buildStudioThemeBootScript(scheme));
+    } catch {
+      // WebView not ready yet
+    }
+  }, [scheme]);
 
   useEffect(() => {
     // Finance is a native screen — never boot the Studio WebView for it.
@@ -677,7 +706,10 @@ export default function StudioWebViewScreen() {
     setCanGoBack(Boolean(navState.canGoBack));
     webBackPendingRef.current = false;
     lastPageSignalRef.current = Date.now();
-  }, []);
+    try {
+      webViewRef.current?.injectJavaScript(buildStudioThemeBootScript(scheme));
+    } catch {}
+  }, [scheme]);
 
   /**
    * `source: 'route-report'` is a NOTIFICATION, not a request.
@@ -801,6 +833,9 @@ export default function StudioWebViewScreen() {
           silentReloadsRef.current = 0;
           setLoadState('ready');
           sessionEstablishedRef.current = true;
+          try {
+            webViewRef.current?.injectJavaScript(buildStudioThemeBootScript(scheme));
+          } catch {}
           // Apply the latest island target if the user tapped another tab while
           // the first handoff was still confirming.
           if (pendingRouteRef.current) {
@@ -1073,10 +1108,11 @@ export default function StudioWebViewScreen() {
             onNavigationStateChange={handleNavigationStateChange}
             onShouldStartLoadWithRequest={handleShouldStartLoad}
             onMessage={handleMessage}
-            injectedJavaScriptBeforeContentLoaded={STUDIO_NAV_BOOT_SCRIPT}
+            injectedJavaScriptBeforeContentLoaded={`${STUDIO_NAV_BOOT_SCRIPT}\n${buildStudioThemeBootScript(scheme)}`}
             injectedJavaScript={`
               (function() {
                 ${STUDIO_NAV_BOOT_SCRIPT}
+                ${buildStudioThemeBootScript(scheme)}
 
                 /**
                  * Island clearance, applied inside the document.

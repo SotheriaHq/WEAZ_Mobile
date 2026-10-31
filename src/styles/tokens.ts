@@ -192,7 +192,7 @@ export const tokens = {
         bg: '#FFFFFF',
         runwayStage: '#E9EEF5',
         surface: '#ffffff',
-        surfaceAlt: '#E9EEF5',
+        surfaceAlt: '#FAF5FF',
         surfaceOverlay: '#FFFFFF',
         overlay: 'rgba(255,255,255,0.75)',
         // Deeper ink across all three tiers. The old ramp leaned on slate,

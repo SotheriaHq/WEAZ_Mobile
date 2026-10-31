@@ -149,11 +149,11 @@ export const lightSemanticTokens: SemanticColors = {
   },
   surface: {
     page: neutralPrimitives[0], // #ffffff
-    card: '#f5f5f4', // warm gray
-    subtle: '#e7e5e4',
-    recessed: '#eff0ed',
+    card: '#ffffff', // pure luminous porcelain surface
+    subtle: '#faf5ff', // airy porcelain Lumina tint
+    recessed: '#f5f3ff', // light lavender mist
     elevated: neutralPrimitives[0],
-    modal: '#eff0ed',
+    modal: '#ffffff',
     stage: '#080a0f', // deep runway matte preserved
     overlay: 'rgba(8, 15, 26, 0.35)',
   },
