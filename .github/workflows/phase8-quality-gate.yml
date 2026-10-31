@@ -38,6 +38,7 @@ jobs:
       - name: Scoped image picking and media completion
         run: |
           npm run test:scoped-media-picker
+          npm run test:image-compression
           npm run test:upload-finalize-retry
           npm run test:media-url-policy
 

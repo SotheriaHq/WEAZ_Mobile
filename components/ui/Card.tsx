@@ -92,6 +92,7 @@ export function Card({
       <>
         <LinearGradient
           colors={[...theme.colors.surfaceTintGradient]}
+          locations={theme.colors.surfaceTintLocations}
           // Top-to-bottom. A diagonal wash on a small tile reads as a mistake;
           // vertical just looks like the surface catching a little light.
           start={{ x: 0, y: 0 }}
