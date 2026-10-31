@@ -132,7 +132,8 @@ type Theme = {
      * translucent purple over a near-black ground goes muddy, so the dark pair
      * is picked by eye to lift the same amount without greying.
      */
-    surfaceTintGradient: readonly [string, string];
+    surfaceTintGradient: readonly [string, string, ...string[]];
+    surfaceTintLocations?: readonly [number, number, ...number[]];
     focusRing: string;
     onPrimary: string;
     danger: string;
@@ -219,7 +220,17 @@ export const tokens = {
         // tenth is what lets the blur through and keeps it glass.
         navActiveGlass: 'rgba(228,210,250,0.90)',
         // Roughly a 3% purple over white at the top, clearing to plain surface.
-        surfaceTintGradient: ['#F8F3FE', '#FFFFFF'] as readonly [string, string],
+        surfaceTintGradient: [
+          '#ffffff',
+          '#faf7fe',
+          '#f6f0fd',
+          '#f3e8fc',
+          '#efe3fb',
+          '#ecdefa',
+          '#f3e8fc',
+          '#ffffff',
+        ] as readonly [string, string, ...string[]],
+        surfaceTintLocations: [0, 0.14, 0.28, 0.42, 0.56, 0.70, 0.84, 1.0] as readonly [number, number, ...number[]],
         focusRing: '#C084FC',
         onPrimary: '#ffffff',
         danger: '#ef4444',
@@ -291,7 +302,17 @@ export const tokens = {
         navActiveGlass: 'rgba(167,112,247,0.34)',
         // The same lift, mirrored: a touch of violet INTO the surface rather
         // than a wash over it, so the card warms without going grey.
-        surfaceTintGradient: ['#191430', '#111620'] as readonly [string, string],
+        surfaceTintGradient: [
+          '#1b122f',
+          '#19102b',
+          '#170e28',
+          '#150c24',
+          '#130a20',
+          '#11081c',
+          '#0e0717',
+          '#0b0512',
+        ] as readonly [string, string, ...string[]],
+        surfaceTintLocations: [0, 0.14, 0.28, 0.42, 0.56, 0.70, 0.84, 1.0] as readonly [number, number, ...number[]],
         focusRing: '#C084FC',
         onPrimary: '#ffffff',
         danger: '#ef4444',
@@ -500,16 +521,145 @@ export const tokens = {
    * value-identical by design. Reconciling them is a visual decision for
    * someone looking at a device, not a side effect of tokenising.
    */
+
+  /**
+   * WIEZ Lumina Multi-Stop (7-12 stops) Gradients & Physical Lighting System
+   * Features perceptual non-linear color interpolation + specular reflection
+   */
+  lumina: {
+    brandPrimary: {
+      colors: [
+        '#4c0519',
+        '#3b0764',
+        '#581c87',
+        '#6b21a8',
+        '#7e22ce',
+        '#9333ea',
+        '#a855f7',
+        '#b86cf9',
+        '#c084fc',
+        '#d8b4fe',
+        '#e9d5ff',
+        '#faf5ff',
+      ] as const,
+      locations: [0, 0.08, 0.18, 0.28, 0.39, 0.50, 0.61, 0.72, 0.82, 0.91, 0.97, 1.0] as const,
+    },
+    activeIndicator: {
+      colors: [
+        'rgba(88, 28, 135, 0.38)',
+        'rgba(107, 33, 168, 0.32)',
+        'rgba(126, 34, 206, 0.28)',
+        'rgba(147, 51, 234, 0.24)',
+        'rgba(168, 85, 247, 0.20)',
+        'rgba(192, 132, 252, 0.17)',
+        'rgba(216, 180, 254, 0.13)',
+        'rgba(233, 213, 255, 0.09)',
+        'rgba(243, 232, 255, 0.05)',
+        'rgba(255, 255, 255, 0.02)',
+      ] as const,
+      locations: [0, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72, 0.84, 0.94, 1.0] as const,
+    },
+    cardElevatedDark: {
+      colors: [
+        '#171026',
+        '#160f24',
+        '#140d21',
+        '#130c1f',
+        '#110a1c',
+        '#10091a',
+        '#0e0817',
+        '#0c0714',
+        '#0a0512',
+      ] as const,
+      locations: [0, 0.14, 0.28, 0.42, 0.56, 0.70, 0.84, 0.94, 1.0] as const,
+    },
+    cardLiveDark: {
+      colors: [
+        '#1b122f',
+        '#19102b',
+        '#170e28',
+        '#150c24',
+        '#130a20',
+        '#11081c',
+        '#0e0717',
+        '#0b0512',
+      ] as const,
+      locations: [0, 0.16, 0.32, 0.48, 0.64, 0.78, 0.90, 1.0] as const,
+    },
+  },
+
   auth: {
     /** Full-screen backdrop on the password / verify screens. */
-    screenGradientDark: ['#0f0a14', '#1a0a2e', '#0f0a14'] as const,
-    screenGradientLight: ['#f7f6f8', '#ede8f5', '#f0ecfa'] as const,
-    /** Accent panel behind the form card. */
-    cardGradientDark: ['#2B1742', '#1E293B', '#0F172A'] as const,
-    cardGradientLight: ['#EDE9FE', '#FEF3C7', '#F8FAFC'] as const,
-    /** `AnimatedAuthBackground`'s drifting ambient wash — see note above. */
-    ambientGradientDark: ['#0f0a14', '#1a1122', '#0f0a14'] as const,
-    ambientGradientLight: ['#f7f6f8', '#ede9f5', '#f7f6f8'] as const,
+    screenGradientDark: [
+      '#090510',
+      '#0c0714',
+      '#110a1c',
+      '#150c24',
+      '#180a2b',
+      '#1a0a2e',
+      '#180a2b',
+      '#150c24',
+      '#110a1c',
+      '#0c0714',
+      '#090510',
+    ] as const,
+    screenGradientLight: [
+      '#faf9fb',
+      '#f7f6f8',
+      '#f2edf9',
+      '#ede8f5',
+      '#e8e0f2',
+      '#ede8f5',
+      '#f2edf9',
+      '#f7f6f8',
+      '#faf9fb',
+    ] as const,
+    /** 9-stop accent panel behind the form card. */
+    cardGradientDark: [
+      '#2B1742',
+      '#271a3f',
+      '#231d3b',
+      '#201e38',
+      '#1E293B',
+      '#192334',
+      '#141d2c',
+      '#101825',
+      '#0F172A',
+    ] as const,
+    cardGradientLight: [
+      '#EDE9FE',
+      '#F4ECFD',
+      '#FAF0F5',
+      '#FEF3C7',
+      '#FCF6DC',
+      '#FAF9ED',
+      '#F8FAFC',
+    ] as const,
+    /** 11-stop `AnimatedAuthBackground` ambient wash with specular center. */
+    ambientGradientDark: [
+      '#090510',
+      '#0c0714',
+      '#110a1c',
+      '#150e24',
+      '#170f28',
+      '#1a1122',
+      '#170f28',
+      '#150e24',
+      '#110a1c',
+      '#0c0714',
+      '#090510',
+    ] as const,
+    ambientGradientLight: [
+      '#faf9fb',
+      '#f7f6f8',
+      '#f3edf9',
+      '#eee9f6',
+      '#ede9f5',
+      '#eee9f6',
+      '#f3edf9',
+      '#f7f6f8',
+      '#faf9fb',
+    ] as const,
     ambientOrbPrimaryDark: 'rgba(147, 51, 234, 0.25)',
     ambientOrbPrimaryLight: 'rgba(147, 51, 234, 0.15)',
     ambientOrbSecondaryDark: 'rgba(212, 175, 55, 0.20)',
