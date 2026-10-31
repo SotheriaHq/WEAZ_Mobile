@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -10,6 +10,7 @@ import { getMediaSessionEpoch } from '@/src/utils/mediaUrlSession';
 export function useScopedMediaPicker(scope: { actorId?: string | null; flowId: string; subjectId?: string | null },
   onPermissionIssue?: (issue: PickerPermissionIssue | null) => void) {
   const mounted = useRef(false);
+  const [focused, setFocused] = useState(false);
   const deniedRequest = useRef<MediaPickerRequest | null>(null);
   const current = useRef({ identity: '', generation: 0, focused: false });
   const identity = JSON.stringify([scope.actorId, scope.flowId, scope.subjectId, getMediaSessionEpoch()]);
@@ -23,7 +24,8 @@ export function useScopedMediaPicker(scope: { actorId?: string | null; flowId: s
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useFocusEffect(useCallback(() => {
     current.current.focused = true;
-    return () => { current.current.focused = false; current.current.generation += 1; deniedRequest.current = null; };
+    setFocused(true);
+    return () => { current.current.focused = false; setFocused(false); current.current.generation += 1; deniedRequest.current = null; };
   }, []));
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
@@ -65,5 +67,5 @@ export function useScopedMediaPicker(scope: { actorId?: string | null; flowId: s
       return result;
     } finally { busy.current = false; }
   }, []);
-  return { pick };
+  return { pick, ready: focused && Boolean(scope.actorId) };
 }

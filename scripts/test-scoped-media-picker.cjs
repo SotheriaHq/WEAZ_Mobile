@@ -116,7 +116,7 @@ test('web SDK launch occurs synchronously inside explicit user action', async ()
 
 const webModules = path.resolve(root, '../fthreadly/node_modules');
 const hasDomRuntime = fs.existsSync(path.join(webModules, 'react-dom/client.js')) && fs.existsSync(path.join(webModules, 'jsdom'));
-async function withMountedPicker(run) {
+async function withMountedPicker(run, autoOpen = false) {
   const { JSDOM } = require(path.join(webModules, 'jsdom'));
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://example.test' });
   const previous = { window: global.window, document: global.document, act: global.IS_REACT_ACT_ENVIRONMENT };
@@ -139,12 +139,26 @@ async function withMountedPicker(run) {
     throw new Error(name);
   });
   const view = createRoot(dom.window.document.getElementById('root'));
-  function Probe(props) { latest = module.exports.useScopedMediaPicker(props, (value) => issue.push(value)); return null; }
+  const readiness = [];
+  let launched = false;
+  function AutoOpen({ picker }) {
+    React.useEffect(() => {
+      if (!autoOpen || !picker.ready || launched) return;
+      launched = true;
+      void picker.pick(request);
+    }, [picker.ready]);
+    return null;
+  }
+  function Probe(props) {
+    latest = module.exports.useScopedMediaPicker(props, (value) => issue.push(value));
+    readiness.push(latest.ready);
+    return React.createElement(AutoOpen, { picker: latest });
+  }
   const render = (props) => React.act(async () => { view.render(React.createElement(Probe, props)); });
   const unmount = async () => { if (!unmounted) { unmounted = true; await React.act(async () => view.unmount()); } };
   try {
     await render(scope);
-    await run({ h, React, render, unmount, get latest() { return latest; }, issue, listeners,
+    await run({ h, React, readiness, render, unmount, get latest() { return latest; }, issue, listeners,
       blur: () => focusCleanup(), changeEpoch: () => { epoch++; } });
   } finally {
     await unmount(); dom.window.close(); global.window = previous.window; global.document = previous.document; global.IS_REACT_ACT_ENVIRONMENT = previous.act;
@@ -157,7 +171,7 @@ test('mounted picker discards account, draft, blur, epoch and unmount completion
     const pending = probe.latest.pick(request); await opening;
     if (change === 'actor') await probe.render({ ...scope, actorId: 'actor-b' });
     if (change === 'draft') await probe.render({ ...scope, subjectId: 'draft-b' });
-    if (change === 'blur') probe.blur();
+    if (change === 'blur') await probe.React.act(async () => probe.blur());
     if (change === 'epoch') probe.changeEpoch();
     if (change === 'unmount') await probe.unmount();
     release(selected); assert.equal((await pending).status, 'cancelled', change);
@@ -179,4 +193,14 @@ test('Settings resume only rechecks permission and never opens another picker or
     assert.equal(probe.issue.at(-1).title, 'Media access ready'); assert.equal(probe.issue.at(-1).source, 'camera');
     assert.equal(probe.h.calls.camera, 0); assert.equal(probe.h.calls.permissionRequest, 0);
   });
+});
+
+test('automatic selection waits for parent mount and focus before opening once', { skip: !hasDomRuntime }, async () => {
+  await withMountedPicker(async (probe) => {
+    assert.equal(probe.readiness[0], false);
+    assert.equal(probe.readiness.at(-1), true);
+    assert.equal(probe.h.calls.library, 1);
+    await probe.render(scope);
+    assert.equal(probe.h.calls.library, 1);
+  }, true);
 });

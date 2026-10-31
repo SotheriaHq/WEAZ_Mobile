@@ -149,6 +149,7 @@ type ContextValue = {
   toggleMeasurementKey: (key: string) => void;
   selectCustomOrderConfiguration: (configurationId: string) => void;
   pickMedia: (source?: 'camera' | 'library') => Promise<boolean>;
+  mediaPickerReady: boolean;
   clearPermissionIssue: () => void;
   openMediaPermissionSettings: () => Promise<void>;
   removeAsset: (assetId: string) => void;
@@ -593,7 +594,7 @@ export function DesignEditorProvider({
   const lastMeasurementGenderRef = useRef<string | null>(null);
   const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
   const normalizedRecoveryTaskId = recoveryTaskId?.trim() || undefined;
-  const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'design-editor',
+  const { pick: pickScoped, ready: mediaPickerReady } = useScopedMediaPicker({ actorId: user?.id, flowId: 'design-editor',
     subjectId: activeDesignId ?? normalizedRecoveryTaskId }, setPermissionIssue);
 
   useEffect(() => {
@@ -1527,6 +1528,7 @@ export function DesignEditorProvider({
       toggleMeasurementKey,
       selectCustomOrderConfiguration,
       pickMedia,
+      mediaPickerReady,
       clearPermissionIssue,
       openMediaPermissionSettings,
       removeAsset,
@@ -1558,6 +1560,7 @@ export function DesignEditorProvider({
       openMediaPermissionSettings,
       permissionIssue,
       pickMedia,
+      mediaPickerReady,
       removeAsset,
       setCoverAssetId,
       retryBootstrap,

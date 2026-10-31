@@ -165,6 +165,7 @@ export default function CreateDesignComposerScreen() {
     activeDesignId,
     isEditMode,
     pickMedia,
+    mediaPickerReady,
     clearPermissionIssue,
     openMediaPermissionSettings,
     retryBootstrap,
@@ -591,12 +592,17 @@ export default function CreateDesignComposerScreen() {
 
   const autoOpenedRef = useRef(false);
   useEffect(() => {
-    if (autoOpenPickerSourceParam && !autoOpenedRef.current) {
+    if (!mediaPickerReady || autoOpenedRef.current) return;
+    if (autoOpenPickerSourceParam !== 'camera' && autoOpenPickerSourceParam !== 'library') return;
+    const source = autoOpenPickerSourceParam;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (autoOpenedRef.current) return;
       autoOpenedRef.current = true;
-      const source = autoOpenPickerSourceParam as 'camera' | 'library';
+      router.setParams({ autoOpenPickerSource: undefined });
       void handlePickMedia(source);
-    }
-  }, [autoOpenPickerSourceParam, handlePickMedia]);
+    });
+    return () => interaction.cancel();
+  }, [autoOpenPickerSourceParam, handlePickMedia, mediaPickerReady]);
 
   useEffect(() => {
     perfMeasure('catalog-plus-to-composer', 'catalog-plus-tap');

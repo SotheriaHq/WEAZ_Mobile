@@ -76,6 +76,7 @@ import {
   type DesignEditorBackgroundTask,
 } from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { tokens } from '@/src/styles/tokens';
+import { countCatalogTaskBucket, filterCatalogServerItems, latestCatalogTasks, resolveCatalogTaskBucket } from '@/src/utils/catalogTaskStatus';
 import { CLIP_REMOVED_TOAST } from '@/src/constants/clipping';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -1663,27 +1664,27 @@ export default function CatalogScreen() {
     toast.success('Profile link copied.');
   }, [profileShareUrl, toast]);
 
-  const currentCollections = visibilityFilter === 'Drafts' ? effectiveDrafts : effectiveCollections;
+  const currentCollections = useMemo(() => {
+    const items = visibilityFilter === 'Drafts' ? effectiveDrafts : effectiveCollections;
+    const bucket = visibilityFilter === 'Drafts' ? 'DRAFT'
+      : visibilityFilter === 'In Review' ? 'IN_REVIEW'
+        : visibilityFilter === 'Needs Attention' ? 'FAILED' : null;
+    return isOwner && bucket ? filterCatalogServerItems(items, designBackgroundTasks, bucket) : items;
+  }, [designBackgroundTasks, effectiveCollections, effectiveDrafts, isOwner, visibilityFilter]);
   const visibleDesignBackgroundTasks = useMemo(() => {
     if (!isOwner || dataActiveTab !== 'Collections') return [];
 
-    return designBackgroundTasks.filter((task) => {
-      if (visibilityFilter === 'Needs Attention') return task.status === 'failed';
-      if (visibilityFilter === 'Drafts' && task.action === 'draft') return true;
-      if (
-        visibilityFilter === 'In Review' &&
-        task.action === 'publish' &&
-        (task.status === 'running' || task.status === 'complete' || task.status === 'failed')
-      ) {
-        return true;
-      }
+    return latestCatalogTasks(designBackgroundTasks).filter((task) => {
+      const bucket = resolveCatalogTaskBucket(task);
+      if (visibilityFilter === 'Needs Attention') return bucket === 'FAILED';
+      if (visibilityFilter === 'Drafts') return bucket === 'DRAFT';
+      if (visibilityFilter === 'In Review') return bucket === 'IN_REVIEW';
       // Do not leak optimistic PROCESSING/FAILED into Public or Private.
       return false;
     });
   }, [dataActiveTab, designBackgroundTasks, isOwner, visibilityFilter]);
   // Failed publish/draft attempts must NEVER render as cards in the Public/Private
-  // grid. In Review intentionally keeps failed publish cards visible with a reason
-  // and Retry/Edit controls so failed uploads do not disappear.
+  // grid. Failed attempts stay in Needs Attention with Retry/Edit controls.
   const failedDesignTasks = useMemo(
     () =>
       visibilityFilter === 'Needs Attention'
@@ -1822,33 +1823,11 @@ export default function CatalogScreen() {
   const savedCatalogByIdRef = useRef(savedCatalogById);
   savedCatalogByIdRef.current = savedCatalogById;
 
-  const statusCounts = useMemo(() => {
-    const countWithTasks = (
-      serverItems: CollectionDto[],
-      taskPredicate: (task: DesignEditorBackgroundTask) => boolean,
-    ) => {
-      const ids = new Set(serverItems.map((item) => item.id));
-      let count = ids.size;
-      designBackgroundTasks.forEach((task) => {
-        if (!taskPredicate(task)) return;
-        if (task.designId && ids.has(task.designId)) return;
-        count += 1;
-      });
-      return count;
-    };
-
-    return {
-      drafts: countWithTasks(effectiveDrafts, (task) => task.action === 'draft'),
-      inReview: countWithTasks(
-        inReviewQuery.data ?? [],
-        (task) => task.action === 'publish',
-      ),
-      needsAttention: countWithTasks(
-        needsAttentionQuery.data ?? [],
-        (task) => task.status === 'failed',
-      ),
-    };
-  }, [designBackgroundTasks, effectiveDrafts, inReviewQuery.data, needsAttentionQuery.data]);
+  const statusCounts = useMemo(() => ({
+    drafts: countCatalogTaskBucket(effectiveDrafts, designBackgroundTasks, 'DRAFT'),
+    inReview: countCatalogTaskBucket(inReviewQuery.data ?? [], designBackgroundTasks, 'IN_REVIEW'),
+    needsAttention: countCatalogTaskBucket(needsAttentionQuery.data ?? [], designBackgroundTasks, 'FAILED'),
+  }), [designBackgroundTasks, effectiveDrafts, inReviewQuery.data, needsAttentionQuery.data]);
 
   useEffect(() => {
     // Reset via functional update returning `prev` when already empty so a

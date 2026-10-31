@@ -115,6 +115,9 @@ jobs:
       - name: Brand profile contract
         run: npm run test:brand-profile-contract
 
+      - name: Catalog upload status contract
+        run: npm run test:catalog-task-status
+
       - name: Design editor contract
         run: npm run test:design-editor-contract
 
