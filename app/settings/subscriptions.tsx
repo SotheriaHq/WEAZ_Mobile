@@ -16,7 +16,7 @@ import {
   type SubscriptionPreview,
   type SubscriptionPayment,
 } from '@/src/api/SubscriptionApi';
-import { BrandApi } from '@/src/api/BrandApi';
+import { brandApi } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { getActiveBrandId, isBrandOwner } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -136,7 +136,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
 
   const brandProfile = useQuery({
     queryKey: ['brand-profile-sub', brandId],
-    queryFn: () => BrandApi.get(brandId!),
+    queryFn: () => brandApi.getProfileById(brandId!),
     enabled: owner,
   });
 
@@ -406,7 +406,6 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     <View style={styles.preferenceRow}>
                       <AppText variant="bodyBold">Intake Status:</AppText>
                       <AppBadge
-                        variant="status"
                         tone={queue.data.intakeAllowed ? 'success' : 'muted'}
                         label={queue.data.intakeAllowed ? 'Accepting Orders' : 'Intake Paused'}
                       />
@@ -420,7 +419,6 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     <View style={styles.preferenceRow}>
                       <AppText variant="bodyBold">Paid Queue Jumps:</AppText>
                       <AppBadge
-                        variant="status"
                         tone={queue.data.queueJumpEnabled ? 'success' : 'muted'}
                         label={queue.data.queueJumpEnabled ? 'Enabled' : 'Disabled'}
                       />
@@ -473,7 +471,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                   <Card variant="liquidGlass" padding="lg">
                     <View style={styles.headerRow}>
                       <View>
-                        <AppText variant="caption" tone="primary" weight="bold">
+                        <AppText variant="captionBold" tone="primary">
                           CURRENT SUBSCRIPTION
                         </AppText>
                         <AppText variant="h2" style={{ marginTop: 2 }}>
@@ -481,7 +479,6 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                         </AppText>
                       </View>
                       <AppBadge
-                        variant="status"
                         tone={
                           subscription.status === 'ACTIVE'
                             ? 'success'
@@ -587,11 +584,11 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                             </AppText>
                           </View>
                           {isCurrent ? (
-                            <AppBadge variant="status" tone="success" label="CURRENT PLAN" />
+                            <AppBadge tone="success" label="CURRENT PLAN" />
                           ) : isAru ? (
-                            <AppBadge variant="status" tone="brand" label="⭐ POPULAR" />
+                            <AppBadge tone="primary" label="⭐ POPULAR" />
                           ) : isIgwe ? (
-                            <AppBadge variant="status" tone="muted" label="👑 COUTURE" />
+                            <AppBadge tone="muted" label="👑 COUTURE" />
                           ) : null}
                         </View>
 
@@ -664,38 +661,38 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                   {comparisonOpen && (
                     <View style={styles.comparisonTable}>
                       <View style={styles.comparisonRow}>
-                        <AppText variant="caption" weight="bold" style={{ width: '32%' }}>Feature</AppText>
+                        <AppText variant="captionBold" style={{ width: '32%' }}>Feature</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>Thread</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>Aso-oke</AppText>
-                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>Aru</AppText>
+                        <AppText variant="captionBold" style={{ width: '17%' }}>Aru</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>Igwe</AppText>
                       </View>
                       <View style={styles.comparisonRow}>
                         <AppText variant="caption" style={{ width: '32%' }}>Rate</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>₦10k</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>₦15k</AppText>
-                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>₦30k</AppText>
+                        <AppText variant="captionBold" style={{ width: '17%' }}>₦30k</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>₦50k</AppText>
                       </View>
                       <View style={styles.comparisonRow}>
                         <AppText variant="caption" style={{ width: '32%' }}>Active</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>2</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>3</AppText>
-                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>4</AppText>
+                        <AppText variant="captionBold" style={{ width: '17%' }}>4</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>6</AppText>
                       </View>
                       <View style={styles.comparisonRow}>
                         <AppText variant="caption" style={{ width: '32%' }}>Delivery</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>2</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>4</AppText>
-                        <AppText variant="caption" weight="bold" style={{ width: '17%' }}>5</AppText>
+                        <AppText variant="captionBold" style={{ width: '17%' }}>5</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>5</AppText>
                       </View>
                       <View style={styles.comparisonRow}>
                         <AppText variant="caption" style={{ width: '32%' }}>Paid Jumps</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>—</AppText>
                         <AppText variant="caption" style={{ width: '17%' }}>—</AppText>
-                        <AppText variant="caption" weight="bold" tone="primary" style={{ width: '17%' }}>✓ Yes</AppText>
+                        <AppText variant="captionBold" tone="primary" style={{ width: '17%' }}>✓ Yes</AppText>
                         <AppText variant="caption" tone="primary" style={{ width: '17%' }}>✓ Yes</AppText>
                       </View>
                     </View>
@@ -854,7 +851,6 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                           {tierName(item.tierKey)}
                         </AppText>
                         <AppBadge
-                          variant="status"
                           tone={item.status === 'PAID' ? 'success' : 'muted'}
                           label={item.status || 'RECORD'}
                         />
@@ -957,7 +953,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                             {card.nickname || card.brand || 'Card'} ···· {card.last4}
                           </AppText>
                           {isRenewal && (
-                            <AppBadge variant="status" tone="brand" label="RENEWAL CARD" />
+                            <AppBadge tone="primary" label="RENEWAL CARD" />
                           )}
                         </View>
                         <AppText variant="caption">
@@ -1095,7 +1091,7 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.xs,
     padding: tokens.spacing.sm,
     borderRadius: tokens.radius.md,
-    backgroundColor: theme.colors.surfaceAlt,
+    backgroundColor: tokens.themes.light.colors.surfaceAlt,
   },
   cardActionsRow: {
     flexDirection: 'row',
@@ -1118,7 +1114,7 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.sm,
     paddingTop: tokens.spacing.sm,
     borderTopWidth: 2,
-    borderTopColor: theme.colors.border,
+    borderTopColor: tokens.themes.light.colors.border,
     gap: tokens.spacing.xs,
   },
   comparisonRow: {
