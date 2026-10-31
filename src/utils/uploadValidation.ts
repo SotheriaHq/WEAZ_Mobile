@@ -1,5 +1,15 @@
 const MB = 1024 * 1024;
 
+/*
+ * What the API really enforces is the smaller of `upload.maxSize.*` in
+ * SystemConfig and its hard limits. These policies used to copy the hard limits
+ * (5, 8, 10MB), while the live setting is 2MB for every image type used here. A
+ * 3MB photo therefore passed every check on the phone, skipped compression and
+ * was refused by the server.
+ */
+const IMAGE_CEILING_BYTES = 2 * MB;
+const IMAGE_TARGET_BYTES = 1 * MB;
+
 export type MobileUploadAsset = {
   uri?: string | null;
   fileName?: string | null;
@@ -14,7 +24,10 @@ export type MobileUploadPolicy = {
   label: string;
   allowedMimeTypes: readonly string[];
   allowedExtensions: readonly string[];
+  // The hard ceiling. Above this the upload is refused.
   maxSizeBytes: number;
+  // What compression aims for. Anything up to the ceiling still uploads.
+  preferredSizeBytes?: number;
   videoMaxSizeBytes?: number;
   maxFiles?: number;
 };
@@ -39,21 +52,24 @@ export const MOBILE_UPLOAD_POLICIES = {
     label: 'Profile photo',
     allowedMimeTypes: IMAGE_MIME_TYPES,
     allowedExtensions: IMAGE_EXTENSIONS,
-    maxSizeBytes: 5 * MB,
+    maxSizeBytes: IMAGE_CEILING_BYTES,
+    preferredSizeBytes: IMAGE_TARGET_BYTES,
     maxFiles: 1,
   },
   bannerImage: {
     label: 'Banner image',
     allowedMimeTypes: IMAGE_MIME_TYPES,
     allowedExtensions: IMAGE_EXTENSIONS,
-    maxSizeBytes: 5 * MB,
+    maxSizeBytes: IMAGE_CEILING_BYTES,
+    preferredSizeBytes: IMAGE_TARGET_BYTES,
     maxFiles: 1,
   },
   designMedia: {
     label: 'Design media',
     allowedMimeTypes: [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES],
     allowedExtensions: [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS],
-    maxSizeBytes: 8 * MB,
+    maxSizeBytes: IMAGE_CEILING_BYTES,
+    preferredSizeBytes: IMAGE_TARGET_BYTES,
     videoMaxSizeBytes: 100 * MB,
     maxFiles: 6,
   },
@@ -61,7 +77,8 @@ export const MOBILE_UPLOAD_POLICIES = {
     label: 'Message image',
     allowedMimeTypes: IMAGE_MIME_TYPES,
     allowedExtensions: IMAGE_EXTENSIONS,
-    maxSizeBytes: 10 * MB,
+    maxSizeBytes: IMAGE_CEILING_BYTES,
+    preferredSizeBytes: IMAGE_TARGET_BYTES,
     maxFiles: 5,
   },
   messageDocument: {
