@@ -120,24 +120,6 @@ export function getContentStatusLabel(status?: string | null): string {
   }
 }
 
-export const DESIGN_SIZING_LABELS = {
-  NONE: 'No size specification',
-  RTW: 'No size specification',
-  RTW_PLUS_FITTINGS: 'Custom order',
-  CUSTOM: 'Custom order only',
-} as const;
-
-export const DESIGN_CREATION_SIZING_OPTIONS = ['CUSTOM', 'NONE'] as const;
-
-export type DesignCreationSizingMode = (typeof DESIGN_CREATION_SIZING_OPTIONS)[number];
-
-export function normalizeDesignCreationSizingMode(value?: string | null): DesignCreationSizingMode {
-  if (value === 'CUSTOM' || value === 'RTW_PLUS_FITTINGS') {
-    return 'CUSTOM';
-  }
-  return 'NONE';
-}
-
 export const DESIGN_AUDIENCE_LABELS = {
   EVERYBODY: 'Unisex / Everybody',
   FEMALE: 'Womenswear',

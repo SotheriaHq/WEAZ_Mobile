@@ -57,7 +57,6 @@ import {
   getMediaViewSlotLabel,
   getMissingRequiredImageMediaSlots,
   getMissingRequiredMediaSlots,
-  normalizeDesignCreationSizingMode,
   normalizeMediaViewSlot,
   type ContentPublicationStatus,
 } from './designCreationRules';
@@ -75,7 +74,6 @@ import {
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
-type SizingMode = 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
 type FitPreference = 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
 type TargetAgeGroup = 'ADULT' | 'CHILD';
 
@@ -90,8 +88,6 @@ type FormState = {
   subCategoryId: string;
   minPrice: string;
   maxPrice: string;
-  sizingMode: SizingMode;
-  customOrderEnabled: boolean;
   productionLeadDays: string;
   buyerInstructionText: string;
   baseProductionCharge: string;
@@ -197,8 +193,6 @@ const INITIAL_FORM: FormState = {
   subCategoryId: '',
   minPrice: '',
   maxPrice: '',
-  sizingMode: 'NONE',
-  customOrderEnabled: false,
   productionLeadDays: '',
   buyerInstructionText: '',
   baseProductionCharge: '',
@@ -257,8 +251,6 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     subCategoryId: detail.subCategoryId ?? '',
     minPrice: typeof detail.minPrice === 'number' ? String(detail.minPrice) : '',
     maxPrice: typeof detail.maxPrice === 'number' ? String(detail.maxPrice) : '',
-    sizingMode: normalizeDesignCreationSizingMode(detail.sizingMode),
-    customOrderEnabled: detail.customOrderEnabled || normalizeDesignCreationSizingMode(detail.sizingMode) === 'CUSTOM',
     productionLeadDays: '',
     buyerInstructionText: '',
     baseProductionCharge: '',
@@ -314,8 +306,6 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   if (form.minPrice.trim().length > 0 || form.maxPrice.trim().length > 0) return true;
   if (form.visibility !== 'PUBLIC') return true;
   if (form.audience !== 'EVERYBODY') return true;
-  if (form.sizingMode !== 'NONE') return true;
-  if (form.customOrderEnabled) return true;
   if (form.productionLeadDays.trim().length > 0) return true;
   if (form.buyerInstructionText.trim().length > 0) return true;
   if (form.baseProductionCharge.trim().length > 0) return true;
@@ -326,8 +316,6 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
 }
 
 function getCustomOrderProductionValidationMessage(form: FormState): string | null {
-  if (!form.customOrderEnabled) return null;
-
   const productionLeadDays = form.productionLeadDays.trim()
     ? Number(form.productionLeadDays)
     : DEFAULT_PRODUCTION_LEAD_DAYS;
@@ -345,9 +333,9 @@ function getCustomOrderProductionValidationMessage(form: FormState): string | nu
 
 // Mirrors the backend custom-order rush rules so the creator gets clear inline
 // guidance instead of a raw 400 from POST /custom-order-configurations. Returns
-// null when custom orders or rush are disabled (rush fields are then ignored).
+// null when rush is disabled (rush fields are then ignored).
 function getCustomOrderRushValidationMessage(form: FormState): string | null {
-  if (!form.customOrderEnabled || !form.rushEnabled) return null;
+  if (!form.rushEnabled) return null;
 
   const rushFee = Number(form.rushFee);
   if (!form.rushFee.trim() || !Number.isFinite(rushFee) || rushFee <= 0) {
@@ -377,8 +365,6 @@ function getCustomOrderRushValidationMessage(form: FormState): string | null {
 // Phase 2B: delivery/production range is locked to 1-7 days (web/native/backend
 // must agree). Mirrors the backend custom-order-configurations guardrails.
 function getCustomOrderDeliveryValidationMessage(form: FormState): string | null {
-  if (!form.customOrderEnabled) return null;
-
   // Blank means "use the default", not "invalid" — the fields show the default
   // as their placeholder now, so leaving one alone is a deliberate choice.
   const min = Number(
@@ -439,13 +425,10 @@ function getPublishValidationMessage({
   if (tags.length === 0) return 'Add at least one hashtag.';
   const priceRangeMessage = getPriceRangeValidationMessage(form);
   if (priceRangeMessage) return priceRangeMessage;
-  if (form.customOrderEnabled && customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
-  if (
-    form.customOrderEnabled &&
-    // `fallbackOutputYards` is intentionally absent: it has a platform default
-    // and shows it as a placeholder, so blank is a valid answer.
-    (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim())
-  ) {
+  if (customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
+  // `fallbackOutputYards` is intentionally absent: it has a platform default
+  // and shows it as a placeholder, so blank is a valid answer.
+  if (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim()) {
     return 'Add custom-order pricing before previewing.';
   }
   const productionMessage = getCustomOrderProductionValidationMessage(form);
@@ -735,9 +718,7 @@ export function DesignEditorProvider({
         if (activeDesignId) {
           const detail = await detailTask!;
           hydrateFromDetail(detail);
-          const activeCustomConfiguration = detail.customOrderEnabled
-            ? await getActiveDesignCustomConfiguration(detail.id).catch(() => null)
-            : null;
+          const activeCustomConfiguration = await getActiveDesignCustomConfiguration(detail.id).catch(() => null);
           if (activeCustomConfiguration) {
             setSelectedCustomOrderConfigurationId(activeCustomConfiguration.id);
             setCustomMeasurementKeys(activeCustomConfiguration.resolvedRequiredMeasurementKeys);
@@ -922,7 +903,6 @@ export function DesignEditorProvider({
         const nextDefaultBaseCharge = String(value ?? '').trim();
         const previousDefaultBaseCharge = lastAutoBaseChargeRef.current;
         const shouldSyncBaseCharge =
-          prev.customOrderEnabled &&
           nextDefaultBaseCharge.length > 0 &&
           (prev.baseProductionCharge.trim().length === 0 ||
             prev.baseProductionCharge.trim() === previousDefaultBaseCharge);
@@ -936,7 +916,6 @@ export function DesignEditorProvider({
           // user never manually overrode it.
           nextDefaultBaseCharge.length === 0 &&
           previousDefaultBaseCharge.length > 0 &&
-          prev.customOrderEnabled &&
           prev.baseProductionCharge.trim() === previousDefaultBaseCharge
         ) {
           next.baseProductionCharge = '';
@@ -944,11 +923,6 @@ export function DesignEditorProvider({
         } else if (nextDefaultBaseCharge.length > 0 && previousDefaultBaseCharge.length === 0) {
           lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
         }
-      }
-
-      if (key === 'customOrderEnabled' && Boolean(value) && !prev.baseProductionCharge.trim() && prev.minPrice.trim()) {
-        next.baseProductionCharge = prev.minPrice.trim();
-        lastAutoBaseChargeRef.current = prev.minPrice.trim();
       }
 
       return next;
@@ -1171,40 +1145,38 @@ export function DesignEditorProvider({
           });
         }
 
-        const customOrderConfiguration: DesignCustomOrderConfigurationInput | undefined = form.customOrderEnabled
-          ? {
-              title: form.title.trim() || 'Design custom order',
-              buyerInstructionText: form.buyerInstructionText || undefined,
-              requiredMeasurementKeys: customMeasurementKeys,
-              requiredFreeformPointIds: [],
-              baseProductionCharge: form.baseProductionCharge,
-              fabricCostPerYard: form.fabricCostPerYard,
-              rushEnabled: form.rushEnabled,
-              rushFee: form.rushFee || undefined,
-              rushProductionLeadDays: form.rushProductionLeadDays ? Number(form.rushProductionLeadDays) : undefined,
-              notes: form.notes || undefined,
-              productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : DEFAULT_PRODUCTION_LEAD_DAYS,
-              deliveryMinDays: Number(
-                form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays,
-              ),
-              deliveryMaxDays: Number(
-                form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays,
-              ),
-              deliveryScope:
-                form.deliveryScope.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope,
-              revisionPolicy:
-                form.revisionPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy,
-              returnPolicy:
-                form.returnPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy,
-              defectPolicy:
-                form.defectPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy,
-              fabricSourcingMode: form.fabricSourcingMode,
-              averageBaseYards: form.averageBaseYards.trim() ? Number(form.averageBaseYards) : undefined,
-              sizeExtraYards: loadedSizeExtraYards || undefined,
-              fabricRuleBasisId: loadedFabricRuleBasisId || undefined,
-              rules: rulesPayload,
-            }
-          : undefined;
+        const customOrderConfiguration: DesignCustomOrderConfigurationInput = {
+          title: form.title.trim() || 'Design custom order',
+          buyerInstructionText: form.buyerInstructionText || undefined,
+          requiredMeasurementKeys: customMeasurementKeys,
+          requiredFreeformPointIds: [],
+          baseProductionCharge: form.baseProductionCharge,
+          fabricCostPerYard: form.fabricCostPerYard,
+          rushEnabled: form.rushEnabled,
+          rushFee: form.rushFee || undefined,
+          rushProductionLeadDays: form.rushProductionLeadDays ? Number(form.rushProductionLeadDays) : undefined,
+          notes: form.notes || undefined,
+          productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : DEFAULT_PRODUCTION_LEAD_DAYS,
+          deliveryMinDays: Number(
+            form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays,
+          ),
+          deliveryMaxDays: Number(
+            form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays,
+          ),
+          deliveryScope:
+            form.deliveryScope.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope,
+          revisionPolicy:
+            form.revisionPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy,
+          returnPolicy:
+            form.returnPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy,
+          defectPolicy:
+            form.defectPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy,
+          fabricSourcingMode: form.fabricSourcingMode,
+          averageBaseYards: form.averageBaseYards.trim() ? Number(form.averageBaseYards) : undefined,
+          sizeExtraYards: loadedSizeExtraYards || undefined,
+          fabricRuleBasisId: loadedFabricRuleBasisId || undefined,
+          rules: rulesPayload,
+        };
         const payload = {
           title: form.title,
           description: form.description,
@@ -1216,8 +1188,6 @@ export function DesignEditorProvider({
           tags,
           minPrice: form.minPrice ? Number(form.minPrice) : undefined,
           maxPrice: form.maxPrice ? Number(form.maxPrice) : undefined,
-          sizingMode: form.sizingMode,
-          customOrderEnabled: form.customOrderEnabled,
           customMeasurementKeys,
           customOrderConfiguration,
           productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : undefined,

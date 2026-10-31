@@ -17,7 +17,6 @@ import { DesignMediaGallery } from '@/src/features/design-editor/DesignMediaGall
 import { DesignMediaStrip } from '@/src/features/design-editor/DesignMediaStrip';
 import {
   DESIGN_FIT_PREFERENCE_LABELS,
-  DESIGN_SIZING_LABELS,
   DESIGN_TARGET_AGE_LABELS,
   DESIGN_VISIBILITY_LABELS,
   getMediaViewSlotLabel,
@@ -201,10 +200,9 @@ export default function CreateDesignPreviewScreen() {
           <SummaryRow label="Style details" value={discoveryCounts.style > 0 ? `${discoveryCounts.style} selected` : 'None'} />
           <SummaryRow label="Cultural vibe" value={discoveryCounts.heritage > 0 ? `${discoveryCounts.heritage} selected` : 'None'} />
           <SummaryRow label="Where would you wear it?" value={discoveryCounts.occasion > 0 ? `${discoveryCounts.occasion} selected` : 'None'} />
-          <SummaryRow label="Sizing" value={DESIGN_SIZING_LABELS[form.sizingMode]} />
           <SummaryRow label="Fit" value={DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference]} />
           <SummaryRow label="Age group" value={DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup]} />
-          <SummaryRow label="Custom orders" value={form.customOrderEnabled ? 'Enabled' : 'Disabled'} />
+          <SummaryRow label="Custom orders" value="Made to order" />
           <SummaryRow label="Price" value={formatPriceRange(form.minPrice, form.maxPrice)} />
           <SummaryRow label="Assets" value={String(assets.length)} />
           <SummaryRow label="Metadata selected" value={discoveryCounts.total > 0 ? `${discoveryCounts.total} selected` : 'None'} />
