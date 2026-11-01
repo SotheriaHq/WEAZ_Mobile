@@ -71,6 +71,10 @@ import { tokens } from '@/src/styles/tokens';
 import { getRangeError } from '@/src/utils/rangeValidation';
 import { queryKeys } from '@/src/query/queryKeys';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import {
+  AUTO_OPEN_CONSUMED_PARAMS,
+  isBlankComposerStart,
+} from '@/src/features/design-editor/designComposerEntry';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
 import { perfMeasure } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
@@ -175,16 +179,12 @@ export default function CreateDesignComposerScreen() {
     blank?: string | string[];
     autoOpenPickerSource?: string | string[];
   }>();
-  const blankParam = Array.isArray(params.blank)
-    ? params.blank[0]
-    : params.blank;
   const autoOpenPickerSourceParam = Array.isArray(params.autoOpenPickerSource)
     ? params.autoOpenPickerSource[0]
     : params.autoOpenPickerSource;
   // The user explicitly chose "Start a design" (no media yet) — keep the empty
   // composer open instead of bouncing back to the catalogue.
-  const isBlankStart =
-    blankParam === '1' || blankParam === 'true' || !!autoOpenPickerSourceParam;
+  const isBlankStart = isBlankComposerStart(params);
   const hasEverHadAssetsRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -573,7 +573,7 @@ export default function CreateDesignComposerScreen() {
     const interaction = InteractionManager.runAfterInteractions(() => {
       if (autoOpenedRef.current) return;
       autoOpenedRef.current = true;
-      router.setParams({ autoOpenPickerSource: undefined });
+      router.setParams(AUTO_OPEN_CONSUMED_PARAMS);
       void handlePickMedia(source);
     });
     return () => interaction.cancel();

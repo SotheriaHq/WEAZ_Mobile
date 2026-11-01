@@ -149,10 +149,11 @@ async function withMountedPicker(run, autoOpen = false) {
     }, [picker.ready]);
     return null;
   }
+  const Screen = typeof autoOpen === 'function' ? autoOpen({ React, blur: () => focusCleanup() }) : AutoOpen;
   function Probe(props) {
     latest = module.exports.useScopedMediaPicker(props, (value) => issue.push(value));
     readiness.push(latest.ready);
-    return React.createElement(AutoOpen, { picker: latest });
+    return React.createElement(Screen, { picker: latest });
   }
   const render = (props) => React.act(async () => { view.render(React.createElement(Probe, props)); });
   const unmount = async () => { if (!unmounted) { unmounted = true; await React.act(async () => view.unmount()); } };
@@ -195,6 +196,39 @@ test('Settings resume only rechecks permission and never opens another picker or
   });
 });
 
+// The composer's sequence over the real hook and picker: consume the param, launch, then let the empty-create redirect run.
+async function openComposerFromPlus(consumedParams) {
+  const code = ts.transpileModule(fs.readFileSync(path.join(root, 'src/features/design-editor/designComposerEntry.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const entry = { exports: {} };
+  new Function('module', 'exports', code)(entry, entry.exports);
+  const seen = { redirected: 0, library: 0 };
+  await withMountedPicker(async (probe) => { seen.library = probe.h.calls.library; }, ({ React, blur }) => function Composer({ picker }) {
+    const [params, setParams] = React.useState({ autoOpenPickerSource: 'library' });
+    const isBlankStart = entry.exports.isBlankComposerStart(params);
+    const opened = React.useRef(false);
+    React.useEffect(() => {
+      if (!picker.ready || opened.current) return;
+      opened.current = true;
+      setParams((current) => ({ ...current, ...(consumedParams ?? entry.exports.AUTO_OPEN_CONSUMED_PARAMS) }));
+      void picker.pick(request);
+    }, [picker.ready]);
+    React.useEffect(() => {
+      if (isBlankStart) return;
+      seen.redirected++;
+      blur();
+    }, [isBlankStart]);
+    return null;
+  });
+  return seen;
+}
+test('clearing the auto-open param alone redirects away and the picker never opens', { skip: !hasDomRuntime }, async () => {
+  assert.deepEqual(await openComposerFromPlus({ autoOpenPickerSource: undefined }), { redirected: 1, library: 0 });
+});
+test('the composer stays open and the picker opens once when the param is consumed', { skip: !hasDomRuntime }, async () => {
+  assert.deepEqual(await openComposerFromPlus(), { redirected: 0, library: 1 });
+});
 test('automatic selection waits for parent mount and focus before opening once', { skip: !hasDomRuntime }, async () => {
   await withMountedPicker(async (probe) => {
     assert.equal(probe.readiness[0], false);
