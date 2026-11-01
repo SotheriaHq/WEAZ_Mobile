@@ -149,11 +149,11 @@ export const lightSemanticTokens: SemanticColors = {
   },
   surface: {
     page: neutralPrimitives[0], // #ffffff
-    card: '#f5f5f4', // warm gray
-    subtle: '#e7e5e4',
-    recessed: '#eff0ed',
-    elevated: neutralPrimitives[0],
-    modal: '#eff0ed',
+    card: '#faf5ff', // delicate porcelain Lumina lavender
+    subtle: '#f5f3ff', // airy porcelain Lumina tint
+    recessed: '#f3e8ff', // light lavender mist
+    elevated: '#f5f3ff', // soft amethyst Lumina elevation
+    modal: '#faf5ff',
     stage: '#080a0f', // deep runway matte preserved
     overlay: 'rgba(8, 15, 26, 0.35)',
   },
@@ -257,12 +257,12 @@ export const darkSemanticTokens: SemanticColors = {
     ring: brandPrimitives.violet[400],
   },
   surface: {
-    page: '#0a0a0a',
-    card: '#141414',
-    subtle: '#1c1c1c',
-    recessed: '#111620',
-    elevated: '#202938',
-    modal: '#111620',
+    page: '#000000',
+    card: '#160e28', // rich deep violet Lumina velvet
+    subtle: '#1a1030',
+    recessed: '#110a20',
+    elevated: '#1e1338', // luminous violet plate
+    modal: '#160e28',
     stage: '#080a0f',
     overlay: 'rgba(0, 0, 0, 0.75)',
   },

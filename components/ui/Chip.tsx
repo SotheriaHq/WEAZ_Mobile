@@ -223,17 +223,9 @@ function LegacyChip({
               ? selected
                 ? theme.colors.primarySoft
                 : 'transparent'
-              : isStageNav
-                ? selected
-                  ? theme.colors.controlSurfaceActive
-                  : 'transparent'
-                : isNav
-                  ? // Unselected nav chips carry NO fill in either scheme. Dark
-                    // mode used to give them a `controlSurface` plate, which is
-                    // the boxed-edge look on the Runway; the selected pill is
-                    // the only indicator these need.
-                    selected
-                    ? theme.colors.primarySoft
+              : (isStageNav || isNav)
+                  ? selected
+                    ? theme.colors.glassSurfaceStrong
                     : 'transparent'
                   : usePendingTreatment
                     ? theme.colors.surfaceAlt
@@ -252,8 +244,8 @@ function LegacyChip({
                           // "available": the ring is the affordance, the fill
                           // is the answer.
                           'transparent',
-            borderColor: isNav
-              ? 'transparent'
+            borderColor: (isStageNav || isNav)
+              ? selected ? theme.colors.glassBorder : 'transparent'
               : usePendingTreatment
                 ? theme.colors.warning
                 : selected
@@ -263,6 +255,7 @@ function LegacyChip({
                     : theme.colors.border,
             // The nav underline is gone — the pill is the indicator now.
             borderBottomColor: 'transparent',
+            borderWidth: (isStageNav || isNav) && selected ? 2 : 0,
             // Pressed tints the ring instead of fading the whole chip, so the
             // label never dims out from under the finger that is choosing it.
             // Disabled carries its own neutral pair above and needs no fade.

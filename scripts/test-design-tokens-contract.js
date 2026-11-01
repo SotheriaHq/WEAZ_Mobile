@@ -236,7 +236,7 @@ assert.strictEqual(tokensModule.tokens.radius.modal, 28, 'Mobile tokens.radius.m
 assert.ok(tokensModule.tokens.motion, 'Mobile tokens must export motion object');
 assert.strictEqual(tokensModule.tokens.motion.duration.fast, 150);
 assert.strictEqual(tokensModule.tokens.themes.light.colors.surfacePage, '#ffffff');
-assert.strictEqual(tokensModule.tokens.themes.dark.colors.surfacePage, '#0a0a0a');
+assert.strictEqual(tokensModule.tokens.themes.dark.colors.surfacePage, '#000000');
 assert.strictEqual(tokensModule.tokens.themes.light.colors.actionBrand, '#9333ea');
 assert.strictEqual(tokensModule.tokens.themes.dark.colors.actionBrand, '#9333ea');
 assert.ok(tokensModule.tokens.themes.light.colors.button, 'Mobile light theme must export button tokens');
