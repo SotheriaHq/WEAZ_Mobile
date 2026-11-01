@@ -190,8 +190,8 @@ function ProfileSelectField({
         style={({ pressed }) => [
           styles.selectField,
           {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surfaceCard,
+            ...tokens.elevation.sm,
           },
           disabled && styles.selectFieldDisabled,
           pressed && !disabled && styles.selectFieldPressed,
@@ -872,7 +872,7 @@ export default function BrandProfileEditScreen() {
             <AppText variant="captionBold" tone="muted">Tags</AppText>
             <Pressable
               onPress={() => setTagsSheetOpen(true)}
-              style={[styles.tagField, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              style={[styles.tagField, { backgroundColor: theme.colors.surfaceCard, ...tokens.elevation.sm }]}
               accessibilityRole="button"
             >
               {form.brandTags.length > 0 ? (
@@ -1096,7 +1096,6 @@ const styles = StyleSheet.create({
   },
   selectField: {
     minHeight: 52,
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     justifyContent: 'center',
@@ -1121,7 +1120,6 @@ const styles = StyleSheet.create({
   },
   tagField: {
     minHeight: 56,
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
