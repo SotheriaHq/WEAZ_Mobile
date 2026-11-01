@@ -268,8 +268,8 @@ export const tokens = {
         actionPrimary: darkSemanticTokens.action.primary,
         button: darkSemanticTokens.button,
 
-        bg: '#080A0F',
-        runwayStage: '#080A0F',
+        bg: '#000000',
+        runwayStage: '#000000',
         surface: '#111620',
         surfaceAlt: '#1A2230',
         surfaceOverlay: '#202938',

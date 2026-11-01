@@ -432,7 +432,7 @@ export default function OrdersScreen() {
             {/* Counts ARE the status filter. A number reads faster than a word,
                 and a second control saying the same thing is a second control to
                 keep in sync. Square, divided by hairlines, one band. */}
-            <View style={[styles.statBand, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.statBand, { backgroundColor: theme.colors.surfaceCard, ...tokens.elevation.sm }]}>
               {statItems.map((stat, index) => {
                 const selected = statusFilter === stat.key;
                 // The cap is a View and takes the colour; the numeral takes the
@@ -559,7 +559,7 @@ const styles = StyleSheet.create({
    */
   statBand: {
     flexDirection: 'row',
-    borderWidth: 2,
+    borderRadius: tokens.radius.lg,
     overflow: 'hidden',
   },
   statCell: {
@@ -603,7 +603,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
   emptyHint: {
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,

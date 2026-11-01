@@ -257,7 +257,7 @@ export const darkSemanticTokens: SemanticColors = {
     ring: brandPrimitives.violet[400],
   },
   surface: {
-    page: '#0a0a0a',
+    page: '#000000',
     card: '#160e28', // rich deep violet Lumina velvet
     subtle: '#1a1030',
     recessed: '#110a20',

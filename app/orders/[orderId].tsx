@@ -158,7 +158,7 @@ function DetailItemRow({ item }: { item: BuyerOrderItem }) {
   const recommendationSnapshot = readRecommendationSnapshot(item.sizeRecommendationSnapshot);
 
   return (
-    <View style={[styles.itemRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
+    <View style={[styles.itemRow, { backgroundColor: theme.colors.surfaceAlt }]}> 
       <View style={[styles.itemThumb, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
         <StableImage
           uri={item.thumbnail ?? undefined}
@@ -899,15 +899,15 @@ export default function BuyerOrderDetailScreen() {
             <AppText variant="captionRegular" tone="muted">Latest buyer-visible state</AppText>
           </View>
           <View style={styles.sectionList}>
-            <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
+            <View style={[styles.metaBlock, { backgroundColor: theme.colors.surfaceAlt }]}> 
               <AppText variant="captionRegular" tone="muted">Order ID</AppText>
               <AppText variant="bodyBold">#{order.id.toUpperCase()}</AppText>
             </View>
-            <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
+            <View style={[styles.metaBlock, { backgroundColor: theme.colors.surfaceAlt }]}> 
               <AppText variant="captionRegular" tone="muted">Payment status</AppText>
               <AppText variant="bodyBold">{order.paymentStatus}</AppText>
             </View>
-            <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
+            <View style={[styles.metaBlock, { backgroundColor: theme.colors.surfaceAlt }]}> 
               <AppText variant="captionRegular" tone="muted">Last updated</AppText>
               <AppText variant="bodyBold">{formatDate(order.updatedAt || order.createdAt)}</AppText>
             </View>
@@ -1002,8 +1002,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minWidth: 0,
     alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: tokens.radius.sm,
+        borderRadius: tokens.radius.sm,
     paddingVertical: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.xs,
     gap: 2,
@@ -1013,8 +1012,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
-    borderWidth: 2,
-    borderRadius: tokens.radius.md,
+        borderRadius: tokens.radius.md,
     padding: tokens.spacing.md,
   },
   promiseCopy: { flex: 1, minWidth: 0, gap: 2 },
@@ -1090,8 +1088,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     padding: tokens.spacing.sm,
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
-  },
+      },
   itemThumb: {
     width: 40,
     height: 40,
@@ -1114,7 +1111,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   metaBlock: {
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.sm,
     gap: 2,

@@ -168,8 +168,9 @@ function HeaderIconButton({
         styles.headerIconButton,
         bare && styles.headerIconButtonBare,
         {
-          backgroundColor: bare ? 'transparent' : tokens.scrim(0.28),
-          borderColor: bare ? 'transparent' : tokens.tintLight(0.15),
+          backgroundColor: bare ? 'transparent' : theme.colors.glassSurfaceStrong,
+          borderColor: bare ? 'transparent' : theme.colors.glassBorder,
+          borderWidth: bare ? 0 : 2,
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
@@ -260,8 +261,8 @@ function BannerHeader({
       </View>
 
       <LinearGradient
-        colors={['transparent', tokens.scrim(0.04), tokens.scrim(0.36)]}
-        locations={[0, 0.45, 1]}
+        colors={['transparent', tokens.scrim(0.08), tokens.scrim(0.42), tokens.scrim(0.68)]}
+        locations={[0, 0.40, 0.75, 1]}
         style={styles.bannerBottomGradient}
         pointerEvents="none"
       />
@@ -307,11 +308,7 @@ function BannerHeader({
           },
         ]}
       >
-        <BlurView
-          intensity={28}
-          tint="dark"
-          style={styles.bannerNameBackdrop}
-        >
+        <BlurView intensity={32} tint="dark" style={[styles.bannerNameLiquidGlass, { borderColor: theme.colors.glassBorder }]}>
           <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
             {brandName}
           </AppText>
@@ -1162,24 +1159,25 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 52,
+    height: 64,
   },
   bannerNameChip: {
     position: 'absolute',
     left: 132,
-    bottom: 6,
+    bottom: 8,
     alignSelf: 'flex-start',
     minHeight: 32,
   },
-  bannerNameBackdrop: {
+  bannerNameLiquidGlass: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: 5,
+    borderRadius: tokens.radius.full,
+    borderWidth: 2,
     overflow: 'hidden',
-    backgroundColor: tokens.scrim(0.20),
+    backgroundColor: tokens.scrim(0.25),
   },
   bannerNameText: {
     minWidth: 0,

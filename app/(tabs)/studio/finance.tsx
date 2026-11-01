@@ -263,8 +263,8 @@ export default function StudioFinanceScreen() {
             style={[
               styles.hero,
               {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surfaceCard,
+                ...tokens.elevation.sm,
               },
             ]}
           >
@@ -398,8 +398,8 @@ export default function StudioFinanceScreen() {
                 style={[
                   styles.metricCard,
                   {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surfaceCard,
+                    ...tokens.elevation.sm,
                   },
                 ]}
               >
@@ -430,7 +430,6 @@ export default function StudioFinanceScreen() {
               styles.metaSummaryBadge,
               {
                 backgroundColor: theme.colors.surfaceAlt,
-                borderColor: theme.colors.border,
               },
             ]}
           >
@@ -770,7 +769,7 @@ function AmountCell({
   theme: { colors: { border: string; surfaceAlt: string } };
 }) {
   return (
-    <View style={[styles.amountCell, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
+    <View style={[styles.amountCell, { backgroundColor: theme.colors.surfaceAlt }]}>
       <AppText variant="caption" tone="secondary" style={styles.amountCellLabel}>
         {label.toUpperCase()}
       </AppText>
@@ -802,7 +801,6 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.md,
   },
   hero: {
-    borderWidth: 2,
     borderRadius: tokens.radius.xl,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,
@@ -864,8 +862,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: '45%',
     minWidth: 140,
-    borderWidth: 2,
-    borderRadius: tokens.radius.lg,
+        borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
     gap: 4,
     position: 'relative',
@@ -888,7 +885,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   metaSummaryBadge: {
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
@@ -908,7 +904,6 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   card: {
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
     gap: tokens.spacing.xs,
@@ -949,8 +944,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: '45%',
     minWidth: 120,
-    borderWidth: 2,
-    borderRadius: tokens.radius.md,
+        borderRadius: tokens.radius.md,
     padding: tokens.spacing.sm,
     gap: 2,
   },
