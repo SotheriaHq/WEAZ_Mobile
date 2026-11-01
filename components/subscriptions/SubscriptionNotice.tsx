@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +14,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 export function SubscriptionNotice() {
   const { user, status } = useAuth();
-  const { theme } = useTheme();
+  const { theme, scheme } = useTheme();
   const pathname = usePathname();
   const brandId = getActiveBrandId(user);
   const owner = Boolean(brandId && isBrandOwner(user, brandId));
@@ -31,6 +33,7 @@ export function SubscriptionNotice() {
     /\/(?:login|signup|verify|forgot-password|reset-password|legal|accept-invite|account-reactivation)(?:\/|$)/.test(
       pathname,
     );
+
   useEffect(() => {
     if (
       !owner ||
@@ -66,13 +69,18 @@ export function SubscriptionNotice() {
       active = false;
     };
   }, [owner, brandId, status, identity, studio, pathname, blocked]);
+
   const current =
     notice?.identity === identity && owner && !blocked ? notice.value : null;
+
   function close() {
     setNotice(null);
     if (brandId)
       void SubscriptionApi.dismissNotice(brandId).catch(() => undefined);
   }
+
+  if (!current) return null;
+
   return (
     <Modal
       transparent
@@ -82,45 +90,187 @@ export function SubscriptionNotice() {
       accessibilityViewIsModal
     >
       <View style={styles.backdrop}>
-        <ScrollView
-          style={{ maxHeight: '90%', backgroundColor: theme.colors.surface }}
-          contentContainerStyle={styles.panel}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={close}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss background"
+        />
+
+        <View
+          style={[
+            styles.cardContainer,
+            {
+              backgroundColor: theme.colors.surfaceCard,
+              borderColor: theme.colors.glassBorder,
+              ...tokens.elevation.lg,
+            },
+          ]}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close subscription notice"
-            onPress={close}
-            style={styles.close}
-          >
-            <AppText variant="bodyBold">✕</AppText>
-          </Pressable>
-          <AppText variant="h2">🧵 {current?.title}</AppText>
-          <AppText variant="body">{current?.message}</AppText>
-          <Button
-            title="Upgrade"
-            onPress={() => {
-              close();
-              drillDownPush('/settings/subscriptions' as never);
-            }}
+          {/* Subtle brand glow gradient at the top */}
+          <LinearGradient
+            colors={
+              scheme === 'dark'
+                ? ['rgba(139, 92, 246, 0.22)', 'rgba(168, 85, 247, 0.06)', 'transparent']
+                : ['rgba(139, 92, 246, 0.12)', 'rgba(168, 85, 247, 0.03)', 'transparent']
+            }
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.gradientHeader}
           />
-          <Button title="Maybe later" variant="secondary" onPress={close} />
-        </ScrollView>
+
+          <View style={styles.topBar}>
+            <View
+              style={[
+                styles.badgePill,
+                {
+                  backgroundColor:
+                    scheme === 'dark' ? 'rgba(139, 92, 246, 0.24)' : 'rgba(139, 92, 246, 0.12)',
+                },
+              ]}
+            >
+              <AppText variant="captionBold" tone="primary" style={styles.badgeText}>
+                ✨ STUDIO UPGRADE
+              </AppText>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close subscription notice"
+              onPress={close}
+              style={[
+                styles.closeButton,
+                { backgroundColor: theme.colors.glassSurface },
+              ]}
+              hitSlop={8}
+            >
+              <AppText variant="captionBold" tone="muted">
+                ✕
+              </AppText>
+            </Pressable>
+          </View>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.iconCircle}>
+              <AppText style={styles.iconEmoji}>💎</AppText>
+            </View>
+
+            <AppText variant="h2" style={styles.titleText}>
+              {current.title}
+            </AppText>
+
+            <AppText variant="body" tone="muted" style={styles.messageText}>
+              {current.message}
+            </AppText>
+
+            <View style={styles.actionGroup}>
+              <Button
+                title="View Subscription Plans"
+                onPress={() => {
+                  close();
+                  drillDownPush('/settings/subscriptions' as never);
+                }}
+                fullWidth
+              />
+              <Button
+                title="Maybe later"
+                variant="outline"
+                onPress={close}
+                fullWidth
+              />
+            </View>
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
 }
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     padding: tokens.spacing.lg,
-    backgroundColor: tokens.colors.scrim,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
   },
-  panel: { padding: tokens.spacing.xl, gap: tokens.spacing.lg },
-  close: {
-    minHeight: 44,
-    minWidth: 44,
+  cardContainer: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 28,
+    borderWidth: 2,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  gradientHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: tokens.spacing.xl,
+    paddingTop: tokens.spacing.lg,
+    zIndex: 2,
+  },
+  badgePill: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+  },
+  badgeText: {
+    letterSpacing: 1,
+    fontSize: 11,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+  },
+  scroll: {
+    maxHeight: 520,
+  },
+  content: {
+    paddingHorizontal: tokens.spacing.xl,
+    paddingTop: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xl,
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: tokens.spacing.xs,
+  },
+  iconEmoji: {
+    fontSize: 32,
+  },
+  titleText: {
+    textAlign: 'center',
+    lineHeight: 28,
+  },
+  messageText: {
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: tokens.spacing.sm,
+  },
+  actionGroup: {
+    width: '100%',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.md,
   },
 });

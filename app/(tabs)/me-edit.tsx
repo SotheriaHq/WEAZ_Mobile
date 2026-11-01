@@ -519,7 +519,7 @@ export default function MeEditScreen() {
             </Pressable>
           </View>
 
-          <View style={[styles.formPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.formPanel, { backgroundColor: theme.colors.surfaceCard, ...tokens.elevation.sm }]}>
             <View style={[styles.fieldRow, styles.emailRow, { borderBottomColor: theme.colors.border }]}>
               <Input
                 label="Email"
@@ -705,7 +705,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   formPanel: {
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
   },

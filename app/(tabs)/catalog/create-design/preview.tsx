@@ -172,7 +172,7 @@ export default function CreateDesignPreviewScreen() {
             />
           </View>
         ) : (
-          <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
+          <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceCard }]}>
             <AppText variant="display">🖼️</AppText>
           </View>
         )}
@@ -186,12 +186,12 @@ export default function CreateDesignPreviewScreen() {
           onClose={() => setGalleryIndex(null)}
         />
 
-        <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
+        <Card padding="lg" style={styles.section}>
           <AppText variant="title">{form.title.trim() || 'Untitled design'}</AppText>
           <AppText variant="body" tone="muted">{form.description.trim() || 'No description yet.'}</AppText>
         </Card>
 
-        <Card padding="lg" style={[styles.section, styles.receiptSection, { borderColor: theme.colors.border }]}>
+        <Card padding="lg" style={[styles.section, styles.receiptSection]}>
           <AppText variant="bodyBold">Details</AppText>
           <SummaryRow label="Who can see this?" value={DESIGN_VISIBILITY_LABELS[form.visibility]} />
           <SummaryRow label="What is it?" value={categorySummary} />
@@ -209,7 +209,7 @@ export default function CreateDesignPreviewScreen() {
         </Card>
 
         {tags.length > 0 ? (
-          <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
+          <Card padding="lg" style={styles.section}>
             <AppText variant="bodyBold">Hashtags</AppText>
             <View style={styles.tagsWrap}>
               {tags.map((tag) => (
@@ -220,7 +220,7 @@ export default function CreateDesignPreviewScreen() {
         ) : null}
 
         {customMeasurementKeys.length > 0 ? (
-          <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
+          <Card padding="lg" style={styles.section}>
             <AppText variant="bodyBold">Custom order fields</AppText>
             <View style={styles.customFieldsWrap}>
               {customMeasurementKeys.map((key) => (
@@ -375,7 +375,6 @@ const styles = StyleSheet.create({
     width: 108,
     gap: tokens.spacing.xs,
     borderRadius: tokens.radius.xl,
-    borderWidth: 2,
     padding: tokens.spacing.xs,
   },
   assetThumb: {
@@ -411,7 +410,6 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: tokens.spacing.sm,
-    borderWidth: 2,
   },
   receiptSection: {
     gap: tokens.spacing.md,
@@ -458,7 +456,6 @@ const styles = StyleSheet.create({
   modalCard: {
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
-    borderWidth: 2,
     gap: tokens.spacing.md,
     padding: tokens.spacing.lg,
   },
