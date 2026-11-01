@@ -174,6 +174,10 @@ const buildStudioThemeBootScript = (themeScheme: string) => `
       root.dataset.theme = '${themeScheme}';
       root.dataset.themePreference = '${themeScheme}';
       root.style.colorScheme = '${themeScheme}';
+      root.dataset.embeddedSurface = 'mobile-app';
+      root.dataset.surface = 'mobile-app';
+      root.classList.add('is-embedded-mobile');
+      root.style.fontSize = '17.5px';
       sessionStorage.setItem('WIEZ.studio.embeddedTheme', '${themeScheme}');
       sessionStorage.setItem('wiez.studio.embeddedTheme', '${themeScheme}');
       sessionStorage.setItem('WIEZ.studio.embeddedSurface', 'mobile-app');
@@ -1101,6 +1105,7 @@ export default function StudioWebViewScreen() {
       <View style={[styles.webHost, { backgroundColor: studioShellBackground }]}>
         {webUrl ? (
           <WebView
+            textZoom={115}
             ref={webViewRef}
             key={String(retryKey)}
             source={{ uri: webUrl }}

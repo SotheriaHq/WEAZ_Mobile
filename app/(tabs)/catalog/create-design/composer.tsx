@@ -872,7 +872,7 @@ export default function CreateDesignComposerScreen() {
 
           <Card
             padding="lg"
-            style={[styles.formCard, { borderColor: theme.colors.border }]}
+            style={styles.formCard}
           >
             <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Basic details
@@ -910,7 +910,7 @@ export default function CreateDesignComposerScreen() {
 
           <Card
             padding="lg"
-            style={[styles.formCard, { borderColor: theme.colors.border }]}
+            style={styles.formCard}
           >
             <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Categorization
@@ -972,7 +972,7 @@ export default function CreateDesignComposerScreen() {
 
           <Card
             padding="lg"
-            style={[styles.formCard, { borderColor: theme.colors.border }]}
+            style={styles.formCard}
           >
             <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Audience & Style
@@ -1026,7 +1026,7 @@ export default function CreateDesignComposerScreen() {
 
           <Card
             padding="lg"
-            style={[styles.formCard, { borderColor: theme.colors.border }]}
+            style={styles.formCard}
           >
             <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Availability & Pricing
@@ -1227,7 +1227,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="body" tone="muted">No item families are configured yet.</AppText>
         ) : null}
         {categoryStep === 'subcategory' && draftSelectedCategory && draftSubCategories.length === 0 ? (
-          <Card padding="md" style={[styles.inlineNotice, { borderColor: theme.colors.border }]}>
+          <Card padding="md" style={styles.inlineNotice}>
             <AppText variant="bodyBold">No garment types yet</AppText>
             <AppText variant="captionRegular" tone="muted">
               You can save a draft with this item family. Going live requires a configured garment type.
@@ -1276,7 +1276,7 @@ export default function CreateDesignComposerScreen() {
           </View>
         }
       >
-        <View style={[styles.priceSummaryCard, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+        <View style={[styles.priceSummaryCard, { backgroundColor: theme.colors.surfaceCard, ...tokens.elevation.sm }]}>
           <AppText variant="captionBold" tone="muted">Displayed price</AppText>
           <AppText variant="subtitle">{formatPriceSummary(form.minPrice, form.maxPrice)}</AppText>
         </View>
@@ -1788,7 +1788,6 @@ const styles = StyleSheet.create({
 
   formCard: {
     gap: tokens.spacing.md,
-    borderWidth: 2,
   },
   copyBlock: {
     marginTop: tokens.spacing.xs,
@@ -1820,7 +1819,6 @@ const styles = StyleSheet.create({
 
   requiredCard: {
     gap: tokens.spacing.xs,
-    borderWidth: 2,
   },
   requiredList: {
     gap: tokens.spacing.xs,
@@ -1831,7 +1829,6 @@ const styles = StyleSheet.create({
   },
   priceSummaryCard: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
     gap: tokens.spacing.xs,
     padding: tokens.spacing.md,
   },
@@ -1898,7 +1895,6 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   inlineNotice: {
-    borderWidth: 2,
     gap: tokens.spacing.xs,
   },
   sheetActionRow: {
