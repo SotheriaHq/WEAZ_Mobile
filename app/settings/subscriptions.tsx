@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
+import { LinearGradient } from 'expo-linear-gradient';
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Header } from '@/components/ui/Header';
@@ -574,72 +575,147 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       <Card
                         key={plan.tierKey}
                         variant={isSelected ? 'liquidGlass' : 'elevated'}
-                        padding="lg"
+                        padding="md"
+                        style={[
+                          styles.tierCardWrapper,
+                          isSelected && {
+                            borderWidth: 2,
+                            borderColor: theme.colors.primary,
+                            ...tokens.elevation.md,
+                          },
+                          isCurrent && !isSelected && {
+                            borderWidth: 2,
+                            borderColor: theme.colors.success ?? theme.colors.primary,
+                          },
+                        ]}
                       >
-                        <View style={styles.headerRow}>
-                          <View>
-                            <AppText variant="h3">{plan.label}</AppText>
-                            <AppText variant="bodyBold" tone="primary" style={{ marginTop: 2 }}>
-                              {money(plan.monthlyPriceNgn)} / month
-                            </AppText>
+                        {/* Luminous Ambient Gradient for highlighted tiers */}
+                        {(isSelected || isAru || isIgwe) && (
+                          <LinearGradient
+                            colors={
+                              isIgwe
+                                ? ([theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as const)
+                                : ([theme.colors.surface, theme.colors.primarySoft, theme.colors.surface] as const)
+                            }
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.tierGradientBackdrop}
+                            pointerEvents="none"
+                          />
+                        )}
+
+                        {/* Side-by-Side Zero-Waste Layout: Amount Hero on Left, Features by the Side on Right */}
+                        <View style={styles.tierSideBySideRow}>
+                          {/* Left Column: Plan Name, Hero Amount Focus, and Action CTA */}
+                          <View style={styles.tierLeftColumn}>
+                            <View style={styles.tierTitleBadgeRow}>
+                              <AppText variant="h3">{plan.label}</AppText>
+                              {isCurrent ? (
+                                <AppBadge tone="success" label="ACTIVE" />
+                              ) : isSelected ? (
+                                <AppBadge tone="primary" label="SELECTED" />
+                              ) : isAru ? (
+                                <AppBadge tone="primary" label="⭐ POPULAR" />
+                              ) : isIgwe ? (
+                                <AppBadge tone="muted" label="👑 COUTURE" />
+                              ) : null}
+                            </View>
+
+                            {/* Hero Amount Callout — Primary Attention on Amounts */}
+                            <View style={styles.heroAmountBlock}>
+                              <AppText variant="title" tone="primary" style={styles.heroAmountFigure}>
+                                {money(plan.monthlyPriceNgn)}
+                              </AppText>
+                              <AppText variant="caption" tone="muted">
+                                / month (VAT incl.)
+                              </AppText>
+                            </View>
+
+                            <View style={styles.tierLeftActionContainer}>
+                              {isCurrent ? (
+                                <Button
+                                  title="Current Plan"
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled
+                                />
+                              ) : !isBrandVerified ? (
+                                <Button
+                                  title="Verify Brand"
+                                  variant="secondary"
+                                  size="sm"
+                                  onPress={() => drillDownPush('/studio/store/verification' as never)}
+                                />
+                              ) : (
+                                <Button
+                                  title={isSelected ? `Selected ✓` : `Select ${plan.label}`}
+                                  variant={isSelected || isAru || isIgwe ? 'brand' : 'secondary'}
+                                  size="sm"
+                                  disabled={busy}
+                                  onPress={() =>
+                                    void run(async () => {
+                                      setTier(plan.tierKey);
+                                      setPreview(null);
+                                      setConsent(false);
+                                      setPreview(
+                                        await SubscriptionApi.preview(
+                                          brandId!,
+                                          plan.tierKey,
+                                        ),
+                                      );
+                                    })
+                                  }
+                                />
+                              )}
+                            </View>
                           </View>
-                          {isCurrent ? (
-                            <AppBadge tone="success" label="CURRENT PLAN" />
-                          ) : isAru ? (
-                            <AppBadge tone="primary" label="⭐ POPULAR" />
-                          ) : isIgwe ? (
-                            <AppBadge tone="muted" label="👑 COUTURE" />
-                          ) : null}
-                        </View>
 
-                        <View style={styles.tierDetails}>
-                          <AppText variant="caption">
-                            • {plan.maxActive ?? 'Unlimited'} Active Custom Orders
-                          </AppText>
-                          <AppText variant="caption">
-                            • {plan.maxInDelivery ?? 'Unlimited'} In-Delivery Pipeline
-                          </AppText>
-                          <AppText variant="caption">
-                            • 1 Up Next Staging Slot · Unlimited Pending
-                          </AppText>
-                          <AppText variant="caption">
-                            • {plan.queueJumpAllowed ? '⚡ Paid Queue Jumps: Included' : 'Paid Queue Jumps: Not available'}
-                          </AppText>
-                        </View>
+                          {/* Subtle Vertical Divider */}
+                          <View style={[styles.tierVerticalDivider, { backgroundColor: theme.colors.border }]} />
 
-                        <View style={{ marginTop: tokens.spacing.md }}>
-                          {isCurrent ? (
-                            <Button
-                              title="Current Plan"
-                              variant="secondary"
-                              disabled
-                            />
-                          ) : !isBrandVerified ? (
-                            <Button
-                              title="Verify Brand to Upgrade"
-                              variant="secondary"
-                              onPress={() => drillDownPush('/studio/store/verification' as never)}
-                            />
-                          ) : (
-                            <Button
-                              title={isSelected ? 'Selected' : `Select ${plan.label}`}
-                              variant={isAru || isIgwe ? 'brand' : 'secondary'}
-                              disabled={busy}
-                              onPress={() =>
-                                void run(async () => {
-                                  setTier(plan.tierKey);
-                                  setPreview(null);
-                                  setConsent(false);
-                                  setPreview(
-                                    await SubscriptionApi.preview(
-                                      brandId!,
-                                      plan.tierKey,
-                                    ),
-                                  );
-                                })
-                              }
-                            />
-                          )}
+                          {/* Right Column: Features By The Side (Compact, High Density, Zero Waste) */}
+                          <View style={styles.tierRightColumn}>
+                            <View style={styles.tierFeatureRowCompact}>
+                              <AppText variant="captionBold" tone="primary" style={styles.checkGlyph}>✓</AppText>
+                              <AppText variant="caption" style={styles.tierFeatureTextCompact}>
+                                {plan.maxActive ? `${plan.maxActive} Active Custom Orders` : 'Unlimited Active Orders'}
+                              </AppText>
+                            </View>
+
+                            <View style={styles.tierFeatureRowCompact}>
+                              <AppText variant="captionBold" tone="primary" style={styles.checkGlyph}>✓</AppText>
+                              <AppText variant="caption" style={styles.tierFeatureTextCompact}>
+                                {plan.maxInDelivery ? `${plan.maxInDelivery} Delivery Pipeline` : 'Unlimited Delivery Pipeline'}
+                              </AppText>
+                            </View>
+
+                            <View style={styles.tierFeatureRowCompact}>
+                              <AppText variant="captionBold" tone="primary" style={styles.checkGlyph}>✓</AppText>
+                              <AppText variant="caption" style={styles.tierFeatureTextCompact}>
+                                1 Up Next Staging Slot
+                              </AppText>
+                            </View>
+
+                            <View style={styles.tierFeatureRowCompact}>
+                              <AppText variant="captionBold" tone="primary" style={styles.checkGlyph}>✓</AppText>
+                              <AppText variant="caption" style={styles.tierFeatureTextCompact}>
+                                Unlimited Intake Inquiries
+                              </AppText>
+                            </View>
+
+                            <View style={styles.tierFeatureRowCompact}>
+                              <AppText variant="captionBold" tone={plan.queueJumpAllowed ? 'primary' : 'muted'} style={styles.checkGlyph}>
+                                {plan.queueJumpAllowed ? '⚡' : '✕'}
+                              </AppText>
+                              <AppText
+                                variant="caption"
+                                tone={plan.queueJumpAllowed ? 'default' : 'muted'}
+                                style={styles.tierFeatureTextCompact}
+                              >
+                                {plan.queueJumpAllowed ? 'Paid Client Queue Jumps' : 'Queue Jumps (Aru+ only)'}
+                              </AppText>
+                            </View>
+                          </View>
                         </View>
                       </Card>
                     );
@@ -1103,9 +1179,63 @@ const styles = StyleSheet.create({
   tierCardsStack: {
     gap: tokens.spacing.md,
   },
-  tierDetails: {
-    marginTop: tokens.spacing.sm,
+  tierCardWrapper: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  tierGradientBackdrop: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.45,
+  },
+  tierSideBySideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tierLeftColumn: {
+    flex: 1.15,
+    paddingRight: tokens.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  tierTitleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    flexWrap: 'wrap',
+  },
+  heroAmountBlock: {
+    marginTop: tokens.spacing.xs,
+    marginBottom: tokens.spacing.xs,
+  },
+  heroAmountFigure: {
+    letterSpacing: -0.5,
+  },
+  tierLeftActionContainer: {
+    marginTop: tokens.spacing.xs,
+  },
+  tierVerticalDivider: {
+    width: 2,
+    alignSelf: 'stretch',
+    opacity: 0.35,
+    marginHorizontal: tokens.spacing.xs,
+  },
+  tierRightColumn: {
+    flex: 1.25,
+    paddingLeft: tokens.spacing.xs,
     gap: 4,
+    justifyContent: 'center',
+  },
+  tierFeatureRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  checkGlyph: {
+    width: 14,
+    textAlign: 'center',
+  },
+  tierFeatureTextCompact: {
+    flex: 1,
+    flexShrink: 1,
   },
   accordionHeader: {
     paddingVertical: tokens.spacing.xs,

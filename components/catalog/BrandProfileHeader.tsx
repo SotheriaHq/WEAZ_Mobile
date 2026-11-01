@@ -259,7 +259,12 @@ function BannerHeader({
         )}
       </View>
 
-      <View style={[styles.bannerShade, { backgroundColor: theme.colors.backdrop }]} />
+      <LinearGradient
+        colors={['transparent', tokens.scrim(0.04), tokens.scrim(0.36)]}
+        locations={[0, 0.45, 1]}
+        style={styles.bannerBottomGradient}
+        pointerEvents="none"
+      />
       {/* A shimmer, not a status report.
           This was a blurred overlay carrying a pill that said "Uploading" —
           chrome announcing a background task the user already knows they
@@ -302,10 +307,16 @@ function BannerHeader({
           },
         ]}
       >
-        <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
-          {brandName}
-        </AppText>
-        <StoreStatusBadge badge={storeStatusBadge} />
+        <BlurView
+          intensity={28}
+          tint="dark"
+          style={styles.bannerNameBackdrop}
+        >
+          <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
+            {brandName}
+          </AppText>
+          <StoreStatusBadge badge={storeStatusBadge} />
+        </BlurView>
       </View>
 
       {isOwner && onEditBanner ? (
@@ -1052,9 +1063,6 @@ const styles = StyleSheet.create({
   uploadPreviewDim: {
     opacity: 0.56,
   },
-  bannerShade: {
-    ...StyleSheet.absoluteFill,
-  },
   bannerLoadingOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -1149,15 +1157,29 @@ const styles = StyleSheet.create({
     the edit button. A percentage cannot express "stop before that control";
     `right` can, and it holds at every width.
   */
+  bannerBottomGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 52,
+  },
   bannerNameChip: {
     position: 'absolute',
     left: 132,
     bottom: 6,
     alignSelf: 'flex-start',
     minHeight: 32,
+  },
+  bannerNameBackdrop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 3,
+    borderRadius: tokens.radius.md,
+    overflow: 'hidden',
+    backgroundColor: tokens.scrim(0.20),
   },
   bannerNameText: {
     minWidth: 0,
