@@ -529,6 +529,20 @@ const IslandGlass = React.memo(function IslandGlass({
           style={[StyleSheet.absoluteFill, styles.navBlur]}
         />
       ) : null}
+      {/* Specular light reflection rim */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 14,
+          right: 14,
+          height: 1,
+          backgroundColor: scheme === 'dark' ? tokens.island.specularRimDark : tokens.island.specularRimLight,
+          borderRadius: 9999,
+          zIndex: 2,
+        }}
+      />
       <View
         pointerEvents="none"
         style={[
@@ -796,10 +810,10 @@ function NativeIslandBottomNavImpl({
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
-            shadowColor: scheme === 'dark' ? tokens.colors.dark : tokens.island.shadowLight,
-            shadowOpacity: scheme === 'dark' ? 0.42 : 0.24,
-            shadowRadius: 28,
-            elevation: 16,
+            shadowColor: scheme === 'dark' ? tokens.island.shadowDark : tokens.island.shadowLight,
+            shadowOpacity: scheme === 'dark' ? 0.85 : 0.22,
+            shadowRadius: 36,
+            elevation: 20,
           },
         ]}
       >
@@ -971,7 +985,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   navGlassFill: {
-    borderWidth: 2,
+    borderWidth: 0,
   },
   navBlur: {
     borderRadius: NATIVE_ISLAND_NAV.radius,

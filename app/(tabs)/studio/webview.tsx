@@ -16,6 +16,7 @@ import {
   StudioProfileMenu,
 } from '@/components/studio/StudioHeaderProfile';
 import { AppBackButton } from '@/components/ui/AppBackButton';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
@@ -120,6 +121,17 @@ type NativeMessage =
   | { type: 'OPEN_EXTERNAL'; url?: string }
   | { type: 'OPEN_NATIVE_ROUTE'; path?: string }
   | { type: 'CLOSE' }
+  | {
+      type: 'OPEN_BIO_MODAL';
+      payload?: {
+        title: string;
+        description?: string;
+        handle?: string;
+        location?: string;
+        avatarUrl?: string | null;
+        tags?: string[];
+      };
+    }
   /** Answer to the liveness ping injected by the shell; see `PAGE_HUNG_AFTER_MS`. */
   | { type: 'PONG' };
 
@@ -320,6 +332,15 @@ export default function StudioWebViewScreen() {
   const [errorMessage, setErrorMessage] = useState('Studio could not load.');
   const [retryKey, setRetryKey] = useState(0);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [bioModalData, setBioModalData] = useState<{
+    title: string;
+    description?: string;
+    handle?: string;
+    location?: string;
+    avatarUrl?: string | null;
+    tags?: string[];
+  } | null>(null);
+  const [bioModalVisible, setBioModalVisible] = useState(false);
 
   const routeKey = asString(params.routeKey);
   const productId = asString(params.productId);
@@ -920,6 +941,12 @@ export default function StudioWebViewScreen() {
             openNavigationTarget(message.url, 'message');
           }
           break;
+        case 'OPEN_BIO_MODAL':
+          if (message.payload) {
+            setBioModalData(message.payload);
+            setBioModalVisible(true);
+          }
+          break;
         case 'OPEN_NATIVE_ROUTE':
           if (message.path) {
             openNavigationTarget(message.path, 'message');
@@ -1402,6 +1429,62 @@ export default function StudioWebViewScreen() {
         onOpenHelp={openHelp}
         onSignOut={handleStudioSignOut}
       />
+    
+      <AppBottomSheet
+        visible={bioModalVisible}
+        title={bioModalData?.title || 'Brand Details'}
+        subtitle={bioModalData?.handle ? `@${bioModalData.handle}` : undefined}
+        showCloseButton={true}
+        onClose={() => setBioModalVisible(false)}
+      >
+        <View style={{ gap: tokens.spacing.md, paddingVertical: tokens.spacing.sm }}>
+          {bioModalData?.location ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs }}>
+              <AppText variant="caption">📍</AppText>
+              <AppText variant="caption" tone="muted">
+                {bioModalData.location}
+              </AppText>
+            </View>
+          ) : null}
+
+          {Array.isArray(bioModalData?.tags) && bioModalData.tags.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: tokens.spacing.xs }}>
+              {bioModalData.tags.map((tag) => (
+                <View
+                  key={tag}
+                  style={{
+                    paddingHorizontal: tokens.spacing.sm,
+                    paddingVertical: tokens.spacing.xs,
+                    borderRadius: tokens.radius.full,
+                    backgroundColor: theme.colors.surfaceAlt,
+                  }}
+                >
+                  <AppText variant="caption" tone="primary">
+                    #{tag}
+                  </AppText>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <View style={{ gap: tokens.spacing.xs }}>
+            <AppText variant="captionBold" tone="muted">
+              ABOUT
+            </AppText>
+            <AppText variant="body" tone="primary">
+              {bioModalData?.description || 'No description provided.'}
+            </AppText>
+          </View>
+
+          <Button
+            title="Done"
+            variant="brand"
+            onPress={() => setBioModalVisible(false)}
+            style={{ marginTop: tokens.spacing.sm }}
+          />
+        </View>
+      </AppBottomSheet>
+
     </SafeAreaView>
   );
 }

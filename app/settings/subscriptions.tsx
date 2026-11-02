@@ -551,11 +551,52 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     </View>
                   </Card>
                 ) : (
-                  <Card variant="elevated" padding="lg">
-                    <AppText variant="h3">No Active Subscription</AppText>
-                    <AppText variant="caption" style={{ marginTop: 4 }}>
-                      Select a tier below to open custom-order intake and expand your production bandwidth.
-                    </AppText>
+                  /* Favored Free Tier Hero Card with 4 Mini Cards */
+                  <Card variant="liquidGlass" padding="lg" style={{ borderWidth: 0 }}>
+                    <View style={styles.headerRow}>
+                      <View>
+                        <AppText variant="captionBold" tone="primary">
+                          CURRENT ATELIER MODE
+                        </AppText>
+                        <AppText variant="h2" style={{ marginTop: tokens.spacing.xs }}>
+                          WIEZ Creative Free Plan
+                        </AppText>
+                      </View>
+                      <AppBadge tone="success" label="ACTIVE FREE TIER" />
+                    </View>
+
+                    <View style={{ marginTop: tokens.spacing.sm }}>
+                      <AppText variant="h2" tone="primary">
+                        ₦0 <AppText variant="caption">/ month</AppText>
+                      </AppText>
+                      <AppText variant="caption" style={{ marginTop: tokens.spacing.xs }}>
+                        Essential bespoke pipeline for independent creators & ateliers.
+                      </AppText>
+                    </View>
+
+                    {/* 4 Mini Benefit Cards (2x2 Grid) */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: tokens.spacing.sm, marginTop: tokens.spacing.md }}>
+                      <View style={{ flexBasis: '48%', flexGrow: 1, padding: tokens.spacing.md, borderRadius: tokens.radius.md, backgroundColor: theme.colors.surfaceCard }}>
+                        <AppText variant="caption" tone="muted">✂️ Intake Slot</AppText>
+                        <AppText variant="bodyBold" style={{ marginTop: tokens.spacing.xs }}>1 Custom Order</AppText>
+                        <AppText variant="caption" tone="muted">Active bespoke slot</AppText>
+                      </View>
+                      <View style={{ flexBasis: '48%', flexGrow: 1, padding: tokens.spacing.md, borderRadius: tokens.radius.md, backgroundColor: theme.colors.surfaceCard }}>
+                        <AppText variant="caption" tone="muted">✨ Discovery</AppText>
+                        <AppText variant="bodyBold" style={{ marginTop: tokens.spacing.xs }}>Runway Feed</AppText>
+                        <AppText variant="caption" tone="muted">Global buyer visibility</AppText>
+                      </View>
+                      <View style={{ flexBasis: '48%', flexGrow: 1, padding: tokens.spacing.md, borderRadius: tokens.radius.md, backgroundColor: theme.colors.surfaceCard }}>
+                        <AppText variant="caption" tone="muted">💬 Messaging</AppText>
+                        <AppText variant="bodyBold" style={{ marginTop: tokens.spacing.xs }}>Direct Chat</AppText>
+                        <AppText variant="caption" tone="muted">Unlimited conversations</AppText>
+                      </View>
+                      <View style={{ flexBasis: '48%', flexGrow: 1, padding: tokens.spacing.md, borderRadius: tokens.radius.md, backgroundColor: theme.colors.surfaceCard }}>
+                        <AppText variant="caption" tone="muted">🏷️ Storefront</AppText>
+                        <AppText variant="bodyBold" style={{ marginTop: tokens.spacing.xs }}>Standard Fee</AppText>
+                        <AppText variant="caption" tone="muted">Pay only on sales</AppText>
+                      </View>
+                    </View>
                   </Card>
                 )}
 
@@ -579,30 +620,30 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                         style={[
                           styles.tierCardWrapper,
                           isSelected && {
-                            borderWidth: 2,
-                            borderColor: theme.colors.primary,
+                            borderWidth: 0,
                             ...tokens.elevation.md,
                           },
                           isCurrent && !isSelected && {
-                            borderWidth: 2,
-                            borderColor: theme.colors.success ?? theme.colors.primary,
+                            borderWidth: 0,
                           },
                         ]}
                       >
                         {/* Luminous Ambient Gradient for highlighted tiers */}
-                        {(isSelected || isAru || isIgwe) && (
-                          <LinearGradient
-                            colors={
-                              isIgwe
-                                ? ([theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as const)
-                                : ([theme.colors.surface, theme.colors.primarySoft, theme.colors.surface] as const)
-                            }
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.tierGradientBackdrop}
-                            pointerEvents="none"
-                          />
-                        )}
+                        <LinearGradient
+                          colors={
+                            isIgwe
+                              ? ([theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surfaceCard] as const)
+                              : isAru
+                                ? ([theme.colors.surfaceCard, theme.colors.primarySoft, theme.colors.surfaceCard] as const)
+                                : plan.tierKey === 'ASO_OKE'
+                                  ? ([theme.colors.surfaceCard, theme.colors.surfaceAlt, theme.colors.surface] as const)
+                                  : ([theme.colors.surface, theme.colors.surfaceCard, theme.colors.surface] as const)
+                          }
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.tierGradientBackdrop}
+                          pointerEvents="none"
+                        />
 
                         {/* Side-by-Side Zero-Waste Layout: Amount Hero on Left, Features by the Side on Right */}
                         <View style={styles.tierSideBySideRow}>
