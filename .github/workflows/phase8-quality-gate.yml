@@ -47,7 +47,9 @@ jobs:
         run: npm exec tsc -- --noEmit
 
       - name: Studio startup recovery
-        run: npm run test:studio-startup-recovery
+        run: |
+          npm run test:studio-startup-recovery
+          npm run test:studio-navigation-feedback
 
       - name: Custom order queue contract
         run: npm run test:custom-order-queue-contract
