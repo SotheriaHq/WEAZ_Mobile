@@ -1382,7 +1382,7 @@ export default function CreateDesignComposerScreen() {
           </View>
         }
       >
-        <View style={[styles.priceSummaryCard, { backgroundColor: theme.colors.surfaceCard, ...tokens.elevation.sm }]}>
+        <View style={[styles.priceSummaryCard, { backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface, ...tokens.elevation.sm }]}>
           <AppText variant="captionBold" tone="muted">Displayed price</AppText>
           <AppText variant="subtitle">{formatPriceSummary(form.minPrice, form.maxPrice)}</AppText>
         </View>

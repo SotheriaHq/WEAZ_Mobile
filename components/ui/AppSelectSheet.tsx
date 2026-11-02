@@ -115,12 +115,13 @@ function AnimatedOptionCard({
           {
             backgroundColor: selected
               ? theme.colors.primarySoft
-              : theme.colors.surfaceAlt,
+              : (theme.colors.surfaceCard ?? theme.colors.surface),
             borderColor: selected
               ? theme.colors.primary
               : option.pending
                 ? theme.colors.warning
-                : theme.colors.border,
+                : 'transparent',
+            borderWidth: selected || option.pending ? 2 : 0,
           },
           option.disabled && styles.optionDisabled,
         ]}
@@ -720,8 +721,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderWidth: 2,
-    borderRadius: tokens.radius.md,
+    borderWidth: 0,
+    borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
   },

@@ -65,7 +65,7 @@ export function DesignTaxonomyProposalField({value,onChange,scopeKey,disabled=fa
       style={({ pressed }) => [
         styles.insetCard,
         {
-          backgroundColor: theme.colors.surfaceAlt,
+          backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
@@ -90,16 +90,22 @@ export function DesignTaxonomyProposalField({value,onChange,scopeKey,disabled=fa
     {open?<View style={styles.stack}>
       {query.isPending?<AppText variant="body">Loading your requests…</AppText>:null}
       {query.isError?<AppText variant="body" tone="danger">Your requests could not be loaded. Use Refresh requests to retry.</AppText>:null}
-      <Button title="Refresh requests" variant="secondary" disabled={disabled||query.isFetching} onPress={()=>query.refetch()} />
-      {selectable.length?<Button title="Use a pending request" variant="secondary" disabled={disabled||busy} onPress={()=>setPickerOpen(true)} />:null}
-      {query.hasNextPage?<Button title="Load more requests" variant="secondary" disabled={disabled||query.isFetching} onPress={()=>query.fetchNextPage()} />:null}
+      <Button title="Refresh requests" variant="secondary" style={{ borderWidth: 0, backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }} disabled={disabled||query.isFetching} onPress={()=>query.refetch()} />
+      {selectable.length?<Button title="Use a pending request" variant="secondary" style={{ borderWidth: 0, backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }} disabled={disabled||busy} onPress={()=>setPickerOpen(true)} />:null}
+      {query.hasNextPage?<Button title="Load more requests" variant="secondary" style={{ borderWidth: 0, backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }} disabled={disabled||query.isFetching} onPress={()=>query.fetchNextPage()} />:null}
       <View style={styles.row}>
-        <Input label="Garment category" required maxLength={48} value={name} onChangeText={setName} editable={!busy&&!disabled} containerStyle={styles.cell} />
-        <Input label="Garment type" required maxLength={48} value={garmentTypeName} onChangeText={setGarmentTypeName} editable={!busy&&!disabled} containerStyle={styles.cell} />
+        <View style={[styles.cell, styles.inputBox, { backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }]}>
+          <Input label="Garment category" variant="bare" required maxLength={48} value={name} onChangeText={setName} editable={!busy&&!disabled} />
+        </View>
+        <View style={[styles.cell, styles.inputBox, { backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }]}>
+          <Input label="Garment type" variant="bare" required maxLength={48} value={garmentTypeName} onChangeText={setGarmentTypeName} editable={!busy&&!disabled} />
+        </View>
       </View>
-      <Input label="What garments belong in this category?" required multiline maxLength={500} value={description} onChangeText={setDescription} editable={!busy&&!disabled} />
+      <View style={[styles.inputBox, { backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }]}>
+        <Input label="What garments belong in this category?" variant="bare" required multiline maxLength={500} value={description} onChangeText={setDescription} editable={!busy&&!disabled} />
+      </View>
       <AppText variant="body" tone="secondary">Propose both together. You can send up to five requests per day. A saved draft stays unpublished.</AppText>
-      <Button title="Request category and garment type review" variant="brand" loading={busy}
+      <Button title="Request category and garment type review" variant="brand" style={{ borderWidth: 0 }} loading={busy}
         disabled={disabled||busy||name.trim().length<2||garmentTypeName.trim().length<2||!description.trim()} onPress={submit} />
       {feedback?<AppText variant="body" tone="danger" accessibilityRole="alert">{feedback}</AppText>:null}
     </View>:null}
@@ -113,6 +119,11 @@ const styles = StyleSheet.create({
   stack: { gap: tokens.spacing.md },
   row: { flexDirection: 'row', gap: tokens.spacing.sm },
   cell: { flex: 1, minWidth: 0 },
+  inputBox: {
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
   insetCard: {
     flexDirection: 'row',
     alignItems: 'center',

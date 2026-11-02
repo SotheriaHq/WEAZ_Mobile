@@ -666,8 +666,9 @@ export function AppBottomSheet({
             style={[
               styles.sheet,
               {
-                backgroundColor: theme.colors.bottomSheetSurface,
-                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surfaceCard ?? theme.colors.bottomSheetSurface,
+                borderColor: 'transparent',
+                borderWidth: 0,
                 paddingBottom: sheetPaddingBottom,
               },
               sheetStyle,
