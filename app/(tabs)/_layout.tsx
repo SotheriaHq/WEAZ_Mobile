@@ -705,6 +705,7 @@ export default function TabLayout() {
             if (injected && onStudioWebView) {
               router.setParams({
                 routeKey: webviewRouteKey === 'overview' ? '' : webviewRouteKey,
+                studioRouteReport: '',
               } as any);
               releaseNavigationLock('studio_in_place');
               navPerf.routeCallEnd(navFlow, { target: lockKey });
@@ -731,6 +732,7 @@ export default function TabLayout() {
                 router.dismissAll();
                 router.setParams({
                   routeKey: webviewRouteKey === 'overview' ? '' : webviewRouteKey,
+                  studioRouteReport: '',
                 } as any);
               } else {
                 router.navigate(nextHref as any);

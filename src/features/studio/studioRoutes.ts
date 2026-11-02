@@ -250,6 +250,33 @@ export function buildStudioPath(routeKey: StudioRouteKey, params?: StudioRoutePa
   return path;
 }
 
+export function getStudioRouteSignature(routeKey: StudioRouteKey, params?: StudioRouteParams): string {
+  return JSON.stringify([routeKey, params?.productId ?? '', params?.orderId ?? '']);
+}
+
+/** Native chrome mirrors this report; it must never turn it into a command. */
+export function getStudioRouteReport(path: string): ({
+  routeKey: StudioRouteKey;
+  productId: string;
+  orderId: string;
+  studioRouteReport: string;
+}) | null {
+  try {
+    const parsed = new URL(path, 'https://wiez.local');
+    const pathname = parsed.pathname;
+    const routeKey = deriveStudioRouteKeyFromPath(`${pathname}${parsed.search}${parsed.hash}`);
+    if (!routeKey) return null;
+    const product = pathname.match(/^\/studio\/store\/products\/([^/]+)(?:\/edit)?\/?$/);
+    const order = pathname.match(/^\/studio\/custom-orders\/([^/]+)\/?$/);
+    const productId = product && product[1] !== 'new' ? decodeURIComponent(product[1]) : '';
+    const orderId = order ? decodeURIComponent(order[1]) : '';
+    return { routeKey, productId, orderId,
+      studioRouteReport: getStudioRouteSignature(routeKey, { productId, orderId }) };
+  } catch {
+    return null;
+  }
+}
+
 export function buildStudioWebUrl(args: {
   routeKey: StudioRouteKey;
   params?: StudioRouteParams;

@@ -41,7 +41,8 @@ import {
   getStudioOriginWhitelist,
   getTrustedStudioOrigins,
   STUDIO_ROUTES,
-  deriveStudioRouteKeyFromPath,
+  getStudioRouteReport,
+  getStudioRouteSignature,
   isStudioFocusedFlow,
   isStudioRouteKey,
   type StudioRouteKey,
@@ -304,6 +305,7 @@ function getTrustedAliasPath(target: string): { type: 'profile' | 'brand'; value
 export default function StudioWebViewScreen() {
   const params = useLocalSearchParams<{
     routeKey?: string;
+    studioRouteReport?: string;
     productId?: string;
     orderId?: string;
   }>();
@@ -325,6 +327,7 @@ export default function StudioWebViewScreen() {
   const orderId = asString(params.orderId);
   const invalidRouteKey = Boolean(routeKey && !isStudioRouteKey(routeKey));
   const resolvedRouteKey = isStudioRouteKey(routeKey) ? routeKey : 'overview';
+  const reportedRouteSignature = asString(params.studioRouteReport);
   const route = STUDIO_ROUTES[resolvedRouteKey];
   const headerTitle = resolvedRouteKey === 'overview' ? 'Studio' : route.title;
   const headerSubtitle = resolvedRouteKey === 'overview' ? undefined : 'Studio';
@@ -412,7 +415,7 @@ export default function StudioWebViewScreen() {
       if (!webViewRef.current) return false;
       try {
         const path = buildStudioPath(route, params);
-        const signature = `${route}:${params?.productId ?? ''}:${params?.orderId ?? ''}`;
+        const signature = getStudioRouteSignature(route, params);
         if (lastInjectedRouteRef.current === signature) return true;
         lastInjectedRouteRef.current = signature;
         const script = `
@@ -495,6 +498,11 @@ export default function StudioWebViewScreen() {
         return;
       }
 
+      // A web notification updates native chrome only. Re-injecting it is a
+      // feedback loop when React/native deliver consecutive reports in batches.
+      if (sessionEstablishedRef.current && reportedRouteSignature ===
+          getStudioRouteSignature(resolvedRouteKey, { productId, orderId })) return;
+
       // Warm session: island tab switch → SPA navigate, zero handoff.
       if (sessionEstablishedRef.current && loadStateRef.current === 'ready' && webViewRef.current) {
         pendingRouteRef.current = null;
@@ -521,7 +529,7 @@ export default function StudioWebViewScreen() {
         const handoff = await StudioApi.createHandoff(intendedPath);
         if (!mounted) return;
         sessionEstablishedRef.current = true;
-        lastInjectedRouteRef.current = `${resolvedRouteKey}:${productId ?? ''}:${orderId ?? ''}`;
+        lastInjectedRouteRef.current = getStudioRouteSignature(resolvedRouteKey, { productId, orderId });
         setWebUrl(
           buildStudioWebUrl({
             routeKey: resolvedRouteKey,
@@ -564,6 +572,7 @@ export default function StudioWebViewScreen() {
     orderId,
     productId,
     resolvedRouteKey,
+    reportedRouteSignature,
     retryKey,
     status,
     storeSetupComplete,
@@ -927,10 +936,11 @@ export default function StudioWebViewScreen() {
           if (message.path && message.path === lastWebPathRef.current) break;
           if (message.path) {
             lastWebPathRef.current = message.path;
-            openNavigationTarget(message.path, 'route-report');
-            const nextRouteKey = deriveStudioRouteKeyFromPath(message.path);
-            if (nextRouteKey && nextRouteKey !== resolvedRouteKey) {
-              router.setParams({ routeKey: nextRouteKey } as never);
+            if (!openNavigationTarget(message.path, 'route-report')) break;
+            const report = getStudioRouteReport(message.path);
+            if (report) {
+              lastInjectedRouteRef.current = report.studioRouteReport;
+              router.setParams(report as never);
             }
           }
           break;
@@ -977,7 +987,7 @@ export default function StudioWebViewScreen() {
              * Fixing only the cache was never going to be enough: the second
              * condition had no way to clear itself.
              */
-            router.setParams({ routeKey: 'store' } as never);
+            router.setParams({ routeKey: 'store', studioRouteReport: '' } as never);
           }
           break;
         default:
