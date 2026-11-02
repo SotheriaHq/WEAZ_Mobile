@@ -90,6 +90,7 @@ const PAGE_PING_SCRIPT = `try { window.ReactNativeWebView && window.ReactNativeW
 
 type NativeMessage =
   | { type: 'READY' }
+  | { type: 'BOOT_FAILED' }
   | { type: 'ROUTE_CHANGED'; path?: string }
   | { type: 'AUTH_REQUIRED'; reason?: string }
   | {
@@ -592,13 +593,23 @@ export default function StudioWebViewScreen() {
     [resolvedRouteKey, retry],
   );
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!webUrl || loadState !== 'loading') return;
 
-    const timeout = setTimeout(() => recoverStudio('ready-timeout'), READY_TIMEOUT_MS);
-
-    return () => clearTimeout(timeout);
-  }, [loadState, recoverStudio, webUrl]);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const restart = () => {
+      clearTimeout(timeout);
+      if (AppState.currentState === 'active') {
+        timeout = setTimeout(() => recoverStudio('ready-timeout'), READY_TIMEOUT_MS);
+      }
+    };
+    restart();
+    const subscription = AppState.addEventListener('change', restart);
+    return () => {
+      clearTimeout(timeout);
+      subscription.remove();
+    };
+  }, [loadState, recoverStudio, webUrl]));
 
   // Last time the page proved its main thread runs: any message or navigation.
   const lastPageSignalRef = useRef(Date.now());
@@ -829,6 +840,12 @@ export default function StudioWebViewScreen() {
       });
 
       switch (message?.type) {
+        case 'BOOT_FAILED':
+          sessionEstablishedRef.current = false;
+          setErrorMessage('Studio could not start. Please try again shortly.');
+          trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'web-boot-failed' });
+          setLoadState('error');
+          break;
         case 'PONG':
           break;
         case 'READY':
