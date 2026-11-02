@@ -40,7 +40,7 @@ export function OptionRow({
   style,
   onPress,
 }: Props) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
 
   const renderContent = (pressed = false) => {
     const resolvedState =
@@ -51,18 +51,6 @@ export function OptionRow({
             ? 'selected'
             : 'placeholder'
         : valueState;
-    const stateBorderColor =
-      resolvedState === 'error'
-        ? theme.colors.danger
-        : resolvedState === 'pending'
-          ? theme.colors.warning
-          : resolvedState === 'selected'
-            ? theme.colors.focusRing
-            : theme.colors.border;
-    const stateBackgroundColor =
-      resolvedState === 'selected'
-        ? theme.colors.surface
-        : theme.colors.surfaceAlt;
     const resolvedValueTone =
       resolvedState === 'error'
         ? 'danger'
@@ -72,15 +60,20 @@ export function OptionRow({
             ? 'primary'
             : 'muted';
 
+    const pillBg =
+      resolvedState === 'selected'
+        ? theme.colors.primarySoft
+        : resolvedState === 'error'
+          ? theme.colors.disabledSurface
+          : theme.colors.surfaceAlt;
+
     return (
       <View
         style={[
           styles.row,
           {
-            backgroundColor: pressed
-              ? theme.colors.surface
-              : stateBackgroundColor,
-            borderColor: pressed ? theme.colors.primary : stateBorderColor,
+            backgroundColor: pressed ? theme.colors.surfaceAlt : 'transparent',
+            borderWidth: 0,
           },
           divider ? styles.rowSpacing : null,
           disabled ? styles.disabled : null,
@@ -88,7 +81,7 @@ export function OptionRow({
         ]}
       >
         {leading ? (
-          <View style={styles.leadingWrap}>
+          <View style={[styles.leadingWrap, { backgroundColor: theme.colors.primarySoft }]}>
             {typeof leading === 'string' ? (
               <AppText variant="subtitle">{leading}</AppText>
             ) : (
@@ -116,19 +109,18 @@ export function OptionRow({
                 style={[
                   styles.valuePill,
                   {
-                    backgroundColor:
-                      resolvedState === 'selected'
-                        ? theme.colors.primarySoft
-                        : theme.colors.surface,
-                    borderColor: stateBorderColor,
+                    backgroundColor: pillBg,
+                    borderWidth: 0,
                   },
                 ]}
               >
                 <AppText
                   variant={resolvedState === 'placeholder' ? 'captionRegular' : 'captionBold'}
                   tone={resolvedValueTone}
+                  numberOfLines={1}
                 >
                   {value}
+                  {resolvedState === 'selected' ? '  ⌄' : ''}
                 </AppText>
               </View>
             ) : (
@@ -150,14 +142,14 @@ export function OptionRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 64,
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.md,
-    borderWidth: 2,
-    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.sm,
+    borderWidth: 0,
+    borderRadius: tokens.radius.lg,
   },
   rowSpacing: {
     marginBottom: tokens.spacing.sm,
@@ -166,9 +158,12 @@ const styles = StyleSheet.create({
     opacity: 0.58,
   },
   leadingWrap: {
-    width: 28,
+    width: 34,
+    height: 34,
+    borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    
   },
   copy: {
     flex: 1,
@@ -184,10 +179,13 @@ const styles = StyleSheet.create({
   valuePill: {
     maxWidth: '100%',
     minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
-    borderWidth: 2,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderWidth: 0,
+    borderRadius: tokens.radius.full,
   },
 });
 

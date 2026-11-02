@@ -109,11 +109,7 @@ export function SubscriptionNotice() {
         >
           {/* Subtle brand glow gradient at the top */}
           <LinearGradient
-            colors={
-              scheme === 'dark'
-                ? ['rgba(139, 92, 246, 0.22)', 'rgba(168, 85, 247, 0.06)', 'transparent']
-                : ['rgba(139, 92, 246, 0.12)', 'rgba(168, 85, 247, 0.03)', 'transparent']
-            }
+            colors={[...theme.colors.lightRayGradient]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={styles.gradientHeader}
@@ -124,8 +120,7 @@ export function SubscriptionNotice() {
               style={[
                 styles.badgePill,
                 {
-                  backgroundColor:
-                    scheme === 'dark' ? 'rgba(139, 92, 246, 0.24)' : 'rgba(139, 92, 246, 0.12)',
+                  
                 },
               ]}
             >
@@ -155,7 +150,7 @@ export function SubscriptionNotice() {
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.iconCircle}>
+            <View style={[styles.iconCircle, { backgroundColor: theme.colors.primarySoft }]}>
               <AppText style={styles.iconEmoji}>💎</AppText>
             </View>
 
@@ -196,7 +191,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: tokens.spacing.lg,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    backgroundColor: tokens.scrim(0.72),
   },
   cardContainer: {
     width: '100%',
@@ -228,7 +223,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     letterSpacing: 1,
-    fontSize: 11,
+    
   },
   closeButton: {
     width: 32,
@@ -251,7 +246,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: tokens.spacing.xs,

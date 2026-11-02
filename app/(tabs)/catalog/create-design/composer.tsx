@@ -172,7 +172,10 @@ export default function CreateDesignComposerScreen() {
     openMediaPermissionSettings,
     retryBootstrap,
   } = useDesignEditor();
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
+  const [categorizationExpanded, setCategorizationExpanded] = useState(true);
+  const [audienceExpanded, setAudienceExpanded] = useState(false);
+  const [availabilityExpanded, setAvailabilityExpanded] = useState(false);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{
@@ -908,168 +911,271 @@ export default function CreateDesignComposerScreen() {
             </View>
           </Card>
 
+          {/* Section A: Categorization */}
           <Card
             padding="lg"
-            style={styles.formCard}
+            style={[styles.formCard, styles.accordionCard]}
           >
-            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
-              Categorization
-            </AppText>
-            <OptionRow
-              leading="🏷️"
-              title="What is it?"
-              required
-              value={categoryValue}
-              valueTone={form.categoryId||hasPendingTaxonomy ? 'muted' : 'danger'}
-              valueState={form.categoryId||hasPendingTaxonomy ? 'selected' : 'error'}
-              onPress={() => openCategorySheet('category')}
-            />
-            <OptionRow
-              leading="💸"
-              title="Garment type"
-              required
-              value={garmentTypeValue}
-              valueTone={form.subCategoryId||hasPendingTaxonomy ? 'muted' : 'danger'}
-              valueState={form.subCategoryId||hasPendingTaxonomy ? 'selected' : 'error'}
-              onPress={() => openCategorySheet('subcategory')}
-            />
-            <DesignTaxonomyProposalField value={form.pendingCategoryProposal} scopeKey={activeDesignId??'new'}
-              disabled={saveState.action!==null} onChange={proposal=>updateField('pendingCategoryProposal',proposal)} />
-            <OptionRow
-              leading="⚙️"
-              title="Hashtags"
-              required
-              value={
-                selectedTags.length > 0
-                  ? `${selectedTags.length} selected`
-                  : 'Select'
-              }
-              valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
-              valueState={selectedTags.length > 0 ? 'selected' : 'error'}
-              divider={false}
-              onPress={() => setTagsOpen(true)}
-            />
-            {selectedTags.length > 0 ? (
-              <View style={styles.selectedTagPreview}>
-                {selectedTags.map((tag) => (
-                  <Chip
-                    key={tag}
-                    label={normalizeHashtagLabel(tag)}
-                    selected
-                    onPress={() => {
-                      updateField(
-                        'tagsInput',
-                        selectedTags
-                          .filter((entry) => entry !== tag)
-                          .join(', '),
-                      );
-                    }}
-                  />
-                ))}
+            <Pressable
+              onPress={() => setCategorizationExpanded(v => !v)}
+              style={styles.accordionHeader}
+              accessibilityRole="button"
+              accessibilityLabel={`Categorization section, ${categorizationExpanded ? 'expanded' : 'collapsed'}`}
+            >
+              <View style={[styles.accordionIconBadge, { backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="subtitle">🏷️</AppText>
+              </View>
+              <View style={styles.accordionHeaderCopy}>
+                <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
+                  Categorization
+                </AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  Define what this design is and how it should be classified.
+                </AppText>
+              </View>
+              <View style={[styles.accordionBadge, { backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="captionBold" tone="primary">
+                  3 fields
+                </AppText>
+              </View>
+              <View style={styles.accordionChevron}>
+                <AppText variant="subtitle" tone="primary">
+                  {categorizationExpanded ? '⌃' : '⌄'}
+                </AppText>
+              </View>
+            </Pressable>
+
+            {categorizationExpanded ? (
+              <View style={styles.accordionBody}>
+                <OptionRow
+                  leading="⊞"
+                  title="What is it?"
+                  required
+                  value={categoryValue}
+                  valueTone={form.categoryId||hasPendingTaxonomy ? 'muted' : 'danger'}
+                  valueState={form.categoryId||hasPendingTaxonomy ? 'selected' : 'error'}
+                  onPress={() => openCategorySheet('category')}
+                />
+                <OptionRow
+                  leading="👕"
+                  title="Garment type"
+                  required
+                  value={garmentTypeValue}
+                  valueTone={form.subCategoryId||hasPendingTaxonomy ? 'muted' : 'danger'}
+                  valueState={form.subCategoryId||hasPendingTaxonomy ? 'selected' : 'error'}
+                  onPress={() => openCategorySheet('subcategory')}
+                />
+                <OptionRow
+                  leading="#"
+                  title="Hashtags"
+                  required
+                  value={
+                    selectedTags.length > 0
+                      ? `${selectedTags.length} selected`
+                      : 'Select'
+                  }
+                  valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
+                  valueState={selectedTags.length > 0 ? 'selected' : 'error'}
+                  divider={false}
+                  onPress={() => setTagsOpen(true)}
+                />
+                {selectedTags.length > 0 ? (
+                  <View style={styles.selectedTagPreview}>
+                    {selectedTags.map((tag) => (
+                      <Chip
+                        key={tag}
+                        label={`${normalizeHashtagLabel(tag)}  ×`}
+                        selected
+                        onPress={() => {
+                          updateField(
+                            'tagsInput',
+                            selectedTags
+                              .filter((entry) => entry !== tag)
+                              .join(', '),
+                          );
+                        }}
+                      />
+                    ))}
+                    <Chip
+                      label="+ Add"
+                      onPress={() => setTagsOpen(true)}
+                    />
+                  </View>
+                ) : null}
+                <DesignTaxonomyProposalField value={form.pendingCategoryProposal} scopeKey={activeDesignId??'new'}
+                  disabled={saveState.action!==null} onChange={proposal=>updateField('pendingCategoryProposal',proposal)} />
               </View>
             ) : null}
           </Card>
 
+          {/* Section B: Audience & Style */}
           <Card
             padding="lg"
-            style={styles.formCard}
+            style={[styles.formCard, styles.accordionCard]}
           >
-            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
-              Audience & Style
-            </AppText>
-            <OptionRow
-              title="Who is it for?"
-              value={audienceLabel}
-              valueState="selected"
-              onPress={() => setAudienceOpen(true)}
-            />
-            <OptionRow
-              title="Age group"
-              value={targetAgeLabel}
-              valueState="selected"
-              onPress={() => setAgeGroupOpen(true)}
-            />
-            <OptionRow
-              title="Style details"
-              required
-              value={
-                styleDetailsCount > 0
-                  ? `${styleDetailsCount} selected`
-                  : selectedDiscoveryFilterCount > 0
-                    ? 'Optional'
-                    : 'Select'
-              }
-              valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
-              valueState={
-                selectedDiscoveryFilterCount > 0 ? 'selected' : 'error'
-              }
-              onPress={() => setStyleDetailsOpen(true)}
-            />
-            <OptionRow
-              title="Cultural vibe"
-              value={
-                heritageCount > 0 ? `${heritageCount} selected` : 'Optional'
-              }
-              valueState={heritageCount > 0 ? 'selected' : 'placeholder'}
-              onPress={() => setHeritageOpen(true)}
-            />
-            <OptionRow
-              title="Where would you wear it?"
-              value={
-                occasionCount > 0 ? `${occasionCount} selected` : 'Optional'
-              }
-              valueState={occasionCount > 0 ? 'selected' : 'placeholder'}
-              divider={false}
-              onPress={() => setOccasionOpen(true)}
-            />
+            <Pressable
+              onPress={() => setAudienceExpanded(v => !v)}
+              style={styles.accordionHeader}
+              accessibilityRole="button"
+              accessibilityLabel={`Audience and Style section, ${audienceExpanded ? 'expanded' : 'collapsed'}`}
+            >
+              <View style={[styles.accordionIconBadge, { backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="subtitle">👥</AppText>
+              </View>
+              <View style={styles.accordionHeaderCopy}>
+                <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
+                  Audience & Style
+                </AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  Who it's for and the style of the design.
+                </AppText>
+              </View>
+              <View style={[styles.accordionBadge, { backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="captionBold" tone="primary">
+                  4 fields
+                </AppText>
+              </View>
+              <View style={styles.accordionChevron}>
+                <AppText variant="subtitle" tone="primary">
+                  {audienceExpanded ? '⌃' : '⌄'}
+                </AppText>
+              </View>
+            </Pressable>
+
+            {audienceExpanded ? (
+              <View style={styles.accordionBody}>
+                <OptionRow
+                  leading="👤"
+                  title="Who is it for?"
+                  value={audienceLabel}
+                  valueState="selected"
+                  onPress={() => setAudienceOpen(true)}
+                />
+                <OptionRow
+                  leading="🎯"
+                  title="Age group"
+                  value={targetAgeLabel}
+                  valueState="selected"
+                  onPress={() => setAgeGroupOpen(true)}
+                />
+                <OptionRow
+                  leading="✨"
+                  title="Style details"
+                  required
+                  value={
+                    styleDetailsCount > 0
+                      ? `${styleDetailsCount} selected`
+                      : selectedDiscoveryFilterCount > 0
+                        ? 'Optional'
+                        : 'Select'
+                  }
+                  valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
+                  valueState={
+                    selectedDiscoveryFilterCount > 0 ? 'selected' : 'error'
+                  }
+                  onPress={() => setStyleDetailsOpen(true)}
+                />
+                <OptionRow
+                  leading="🌍"
+                  title="Cultural vibe"
+                  value={
+                    heritageCount > 0 ? `${heritageCount} selected` : 'Optional'
+                  }
+                  valueState={heritageCount > 0 ? 'selected' : 'placeholder'}
+                  onPress={() => setHeritageOpen(true)}
+                />
+                <OptionRow
+                  leading="📍"
+                  title="Where would you wear it?"
+                  value={
+                    occasionCount > 0 ? `${occasionCount} selected` : 'Optional'
+                  }
+                  valueState={occasionCount > 0 ? 'selected' : 'placeholder'}
+                  divider={false}
+                  onPress={() => setOccasionOpen(true)}
+                />
+              </View>
+            ) : null}
           </Card>
 
+          {/* Section C: Availability & Pricing */}
           <Card
             padding="lg"
-            style={styles.formCard}
+            style={[styles.formCard, styles.accordionCard]}
           >
-            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
-              Availability & Pricing
-            </AppText>
-            <OptionRow
-              title="Price"
-              value={formatPriceSummary(form.minPrice, form.maxPrice)}
-              valueState={
-                form.minPrice || form.maxPrice ? 'selected' : 'placeholder'
-              }
-              onPress={() => setPriceOpen(true)}
-            />
-            <OptionRow
-              leading="📦"
-              title="Fit preference"
-              value={fitPreferenceLabel}
-              valueState="selected"
-              onPress={() => setAvailabilityOpen(true)}
-            />
-            <OptionRow
-              leading="🧵"
-              title="Custom orders"
-              subtitle={
-                customOrderNeedsAttention
-                  ? 'Complete this to submit your design'
-                  : `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
-              }
-              value="Required"
-              valueTone={customOrderNeedsAttention ? 'danger' : undefined}
-              valueState={customOrderNeedsAttention ? 'error' : 'selected'}
-              onPress={() => setCustomOrdersOpen(true)}
-            />
-            <OptionRow
-              leading="🌍"
-              title="Who can see this?"
-              value={
-                PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)
-                  ?.label ?? 'Everyone'
-              }
-              valueState="selected"
-              divider={false}
-              onPress={() => setPrivacyOpen(true)}
-            />
+            <Pressable
+              onPress={() => setAvailabilityExpanded(v => !v)}
+              style={styles.accordionHeader}
+              accessibilityRole="button"
+              accessibilityLabel={`Availability and Pricing section, ${availabilityExpanded ? 'expanded' : 'collapsed'}`}
+            >
+              <View style={[styles.accordionIconBadge, { backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="subtitle">📦</AppText>
+              </View>
+              <View style={styles.accordionHeaderCopy}>
+                <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
+                  Availability & Pricing
+                </AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  Set the price, fit, custom orders and visibility.
+                </AppText>
+              </View>
+              <View style={[styles.accordionBadge, { backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="captionBold" tone="primary">
+                  4 fields
+                </AppText>
+              </View>
+              <View style={styles.accordionChevron}>
+                <AppText variant="subtitle" tone="primary">
+                  {availabilityExpanded ? '⌃' : '⌄'}
+                </AppText>
+              </View>
+            </Pressable>
+
+            {availabilityExpanded ? (
+              <View style={styles.accordionBody}>
+                <OptionRow
+                  leading="💰"
+                  title="Price"
+                  value={formatPriceSummary(form.minPrice, form.maxPrice)}
+                  valueState={
+                    form.minPrice || form.maxPrice ? 'selected' : 'placeholder'
+                  }
+                  onPress={() => setPriceOpen(true)}
+                />
+                <OptionRow
+                  leading="📦"
+                  title="Fit preference"
+                  value={fitPreferenceLabel}
+                  valueState="selected"
+                  onPress={() => setAvailabilityOpen(true)}
+                />
+                <OptionRow
+                  leading="🧵"
+                  title="Custom orders"
+                  subtitle={
+                    customOrderNeedsAttention
+                      ? 'Complete this to submit your design'
+                      : `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
+                  }
+                  value="Required"
+                  valueTone={customOrderNeedsAttention ? 'danger' : undefined}
+                  valueState={customOrderNeedsAttention ? 'error' : 'selected'}
+                  onPress={() => setCustomOrdersOpen(true)}
+                />
+                <OptionRow
+                  leading="🌍"
+                  title="Who can see this?"
+                  value={
+                    PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)
+                      ?.label ?? 'Everyone'
+                  }
+                  valueState="selected"
+                  divider={false}
+                  onPress={() => setPrivacyOpen(true)}
+                />
+              </View>
+            ) : null}
           </Card>
 
           {loadingError ? (
@@ -1147,7 +1253,7 @@ export default function CreateDesignComposerScreen() {
             </View>
             <View style={styles.actionButton}>
               <Button
-                title="Preview"
+                title="Preview →"
                 disabled={!canPreview}
                 onPress={() =>
                   drillDownPush('/catalog/create-design/preview' as any)
@@ -1904,7 +2010,7 @@ const styles = StyleSheet.create({
   },
   footerActions: {
     gap: tokens.spacing.md,
-    borderTopWidth: 2,
+    borderTopWidth: 0,
     paddingTop: tokens.spacing.md,
   },
   actionRow: {
@@ -1917,5 +2023,42 @@ const styles = StyleSheet.create({
   },
   draftHelper: {
     textAlign: 'center',
+  },
+  accordionCard: {
+    borderWidth: 0,
+    borderRadius: tokens.radius.xl,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+  },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+  },
+  accordionIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accordionHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  accordionBadge: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.full,
+  },
+  accordionChevron: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accordionBody: {
+    marginTop: tokens.spacing.md,
+    gap: tokens.spacing.xs,
   },
 });

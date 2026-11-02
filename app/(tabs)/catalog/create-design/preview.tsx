@@ -239,7 +239,7 @@ export default function CreateDesignPreviewScreen() {
           styles.footerActions,
           {
             backgroundColor: theme.colors.bg,
-            borderTopColor: theme.colors.border,
+            borderTopWidth: 0,
             paddingHorizontal: tokens.spacing.lg,
             paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
           },
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   },
   footerActions: {
     gap: tokens.spacing.md,
-    borderTopWidth: 2,
+    borderTopWidth: 0,
     paddingTop: tokens.spacing.md,
   },
   actionRow: {

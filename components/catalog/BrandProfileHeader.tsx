@@ -154,7 +154,7 @@ function HeaderIconButton({
   bare?: boolean;
   badgeCount?: number;
 }) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
 
   if (!onPress) return null;
 
@@ -177,6 +177,13 @@ function HeaderIconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
+      {!bare ? (
+        <BlurView
+          intensity={24}
+          tint={scheme === 'dark' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {/* `tone`, not a colour override: AppText owns colour, and the glyph is
           an emoji, which renders in its own palette regardless. */}
       <AppText variant="bodyReadable" tone={bare ? 'default' : 'inverse'} style={styles.headerIconText}>
@@ -299,7 +306,7 @@ function BannerHeader({
 
       <View
         style={[
-          styles.bannerNameChip,
+          styles.bannerNameArea,
           {
             right:
               isOwner && onEditBanner
@@ -308,12 +315,12 @@ function BannerHeader({
           },
         ]}
       >
-        <BlurView intensity={32} tint="dark" style={[styles.bannerNameLiquidGlass, { borderColor: theme.colors.glassBorder }]}>
+        <View style={styles.bannerNameRow}>
           <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
             {brandName}
           </AppText>
           <StoreStatusBadge badge={storeStatusBadge} />
-        </BlurView>
+        </View>
       </View>
 
       {isOwner && onEditBanner ? (
@@ -1116,6 +1123,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   headerIconButtonBare: {
     backgroundColor: 'transparent',
@@ -1161,30 +1169,29 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 64,
   },
-  bannerNameChip: {
+  bannerNameArea: {
     position: 'absolute',
     left: 132,
     bottom: 8,
     alignSelf: 'flex-start',
     minHeight: 32,
+    justifyContent: 'center',
   },
-  bannerNameLiquidGlass: {
+  bannerNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: 5,
-    borderRadius: tokens.radius.full,
-    borderWidth: 2,
-    overflow: 'hidden',
-    backgroundColor: tokens.scrim(0.25),
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   bannerNameText: {
     minWidth: 0,
     flexShrink: 1,
-    textShadowColor: tokens.scrim(0.75),
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowColor: tokens.scrim(0.85),
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 4,
   },
   bannerEditControl: {
     position: 'absolute',

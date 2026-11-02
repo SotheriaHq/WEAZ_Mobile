@@ -156,6 +156,7 @@ type Theme = {
     glassSurfaceStrong: string;
     glassBorder: string;
     glassBlur: number;
+    lightRayGradient: readonly [string, string, string];
   };
 };
 
@@ -253,6 +254,7 @@ export const tokens = {
         glassSurfaceStrong: 'rgba(255,255,255,0.85)',
         glassBorder: 'rgba(255,255,255,0.45)',
         glassBlur: 32,
+        lightRayGradient: ['rgba(255,255,255,0.70)', 'rgba(243,232,255,0.35)', 'transparent'] as readonly [string, string, string],
       },
     } satisfies Theme,
     dark: {
@@ -304,14 +306,14 @@ export const tokens = {
         // The same lift, mirrored: a touch of violet INTO the surface rather
         // than a wash over it, so the card warms without going grey.
         surfaceTintGradient: [
-          '#1b122f',
-          '#19102b',
-          '#170e28',
-          '#150c24',
-          '#130a20',
-          '#11081c',
-          '#0e0717',
-          '#0b0512',
+          '#341d5e',
+          '#29164c',
+          '#21113e',
+          '#1a0d33',
+          '#15092a',
+          '#110622',
+          '#0d041a',
+          '#0a0214',
         ] as readonly [string, string, ...string[]],
         surfaceTintLocations: [0, 0.14, 0.28, 0.42, 0.56, 0.70, 0.84, 1.0] as readonly [number, number, ...number[]],
         focusRing: '#C084FC',
@@ -331,11 +333,12 @@ export const tokens = {
         controlSurface: 'rgba(255,255,255,0.08)',
         controlSurfaceActive: 'rgba(255,255,255,0.14)',
         /* Liquid Glass (Rule 36 - High-saturation optical refraction & specular rim) */
-        glassSurfaceSoft: 'rgba(12,10,20,0.50)',
-        glassSurface: 'rgba(12,10,20,0.70)',
-        glassSurfaceStrong: 'rgba(15,12,24,0.85)',
-        glassBorder: 'rgba(255,255,255,0.14)',
-        glassBlur: 36,
+        glassSurfaceSoft: 'rgba(255,255,255,0.08)',
+        glassSurface: 'rgba(255,255,255,0.15)',
+        glassSurfaceStrong: 'rgba(255,255,255,0.22)',
+        glassBorder: 'rgba(255,255,255,0.25)',
+        glassBlur: 24,
+        lightRayGradient: ['rgba(216,180,254,0.12)', 'rgba(168,85,247,0.04)', 'transparent'] as readonly [string, string, string],
       },
     } satisfies Theme,
   } as const,
@@ -397,7 +400,7 @@ export const tokens = {
     /** Opaque white. Chrome over media, where the backdrop is unknown. */
     light: '#FFFFFF',
     /** Liquid Glass plate for controls floating over a photograph (Rule 36: Liquid Glass Architecture). */
-    glassPlateDark: 'rgba(14, 12, 22, 0.70)',
+    glassPlateDark: 'rgba(255, 255, 255, 0.16)',
     /** Faint blue-black wash used behind light-theme header chrome. */
     inkWash: 'rgba(8,10,18,0.08)',
     /** QR modules and quiet zone. Fixed high contrast — scanners depend on it. */

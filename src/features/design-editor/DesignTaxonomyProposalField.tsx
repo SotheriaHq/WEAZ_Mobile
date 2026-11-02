@@ -8,11 +8,14 @@ import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
 import { useAuth } from '@/src/auth/AuthContext';
 import { listCategorySuggestions, submitCategorySuggestion, type CategoryProposal } from '@/src/api/CategorySuggestionsApi';
 import { tokens } from '@/src/styles/tokens';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { Pressable } from 'react-native';
 
 export function DesignTaxonomyProposalField({value,onChange,scopeKey,disabled=false}:{
   value:CategoryProposal|null;onChange:(value:CategoryProposal|null)=>void;scopeKey:string;disabled?:boolean;
 }) {
   const {user}=useAuth();
+  const { scheme, theme } = useTheme();
   const [open,setOpen]=useState(false),[pickerOpen,setPickerOpen]=useState(false);
   const [name,setName]=useState(''),[garmentTypeName,setGarmentTypeName]=useState(''),[description,setDescription]=useState('');
   const [busy,setBusy]=useState(false),[feedback,setFeedback]=useState('');
@@ -56,7 +59,34 @@ export function DesignTaxonomyProposalField({value,onChange,scopeKey,disabled=fa
       <AppText variant="body" tone="secondary">Design review is separate. This category stays out of public category search until taxonomy approval.</AppText>
       <Button title="Choose an approved category instead" variant="secondary" disabled={disabled||busy} onPress={()=>onChange(null)} />
     </View>:null}
-    <Button title={open?'Close category requests':'Missing a category or garment type?'} variant="secondary" disabled={disabled||busy} onPress={()=>setOpen(previous=>!previous)} />
+    <Pressable
+      onPress={() => setOpen(previous => !previous)}
+      disabled={disabled || busy}
+      style={({ pressed }) => [
+        styles.insetCard,
+        {
+          backgroundColor: theme.colors.surfaceAlt,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="Manage a category or garment type"
+    >
+      <View style={[styles.sparkleBadge, { backgroundColor: theme.colors.primarySoft }]}>
+        <AppText variant="subtitle">✨</AppText>
+      </View>
+      <View style={styles.insetCardCopy}>
+        <AppText variant="bodyBold" tone="primary">
+          {open ? 'Close category requests' : 'Manage a category or garment type'}
+        </AppText>
+        <AppText variant="captionRegular" tone="muted">
+          Request a new category or garment type for this design.
+        </AppText>
+      </View>
+      <AppText variant="subtitle" tone="primary">
+        {open ? '⌃' : '›'}
+      </AppText>
+    </Pressable>
     {open?<View style={styles.stack}>
       {query.isPending?<AppText variant="body">Loading your requests…</AppText>:null}
       {query.isError?<AppText variant="body" tone="danger">Your requests could not be loaded. Use Refresh requests to retry.</AppText>:null}
@@ -79,4 +109,28 @@ export function DesignTaxonomyProposalField({value,onChange,scopeKey,disabled=fa
       onClose={()=>setPickerOpen(false)} searchable searchPlaceholder="Search loaded requests" />
   </View>;
 }
-const styles=StyleSheet.create({stack:{gap:tokens.spacing.md},row:{flexDirection:'row',gap:tokens.spacing.sm},cell:{flex:1,minWidth:0}});
+const styles = StyleSheet.create({
+  stack: { gap: tokens.spacing.md },
+  row: { flexDirection: 'row', gap: tokens.spacing.sm },
+  cell: { flex: 1, minWidth: 0 },
+  insetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    padding: tokens.spacing.md,
+    borderRadius: tokens.radius.lg,
+    marginTop: tokens.spacing.xs,
+  },
+  sparkleBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    
+  },
+  insetCardCopy: {
+    flex: 1,
+    gap: 2,
+  },
+});

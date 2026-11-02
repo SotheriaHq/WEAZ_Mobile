@@ -36,7 +36,8 @@ export function Card({
   disabled,
   testID,
 }: Props) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
+  const isDark = scheme === 'dark';
   const paddingValue = tokens.spacing[padding];
 
   const baseStyle: ViewStyle = {
@@ -92,24 +93,32 @@ export function Card({
                   ...tokens.elevation.sm,
                 };
 
-  const content =
-    variant === 'tinted' ? (
-      <>
+  const hasLightRay = isDark && (variant === 'surface' || variant === 'elevated' || variant === 'tinted');
+
+  const content = (
+    <>
+      {variant === 'tinted' ? (
         <LinearGradient
           colors={[...theme.colors.surfaceTintGradient]}
           locations={theme.colors.surfaceTintLocations}
-          // Top-to-bottom. A diagonal wash on a small tile reads as a mistake;
-          // vertical just looks like the surface catching a little light.
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={[StyleSheet.absoluteFill, { borderRadius: tokens.radius.lg }]}
           pointerEvents="none"
         />
-        {children}
-      </>
-    ) : (
-      children
-    );
+      ) : null}
+      {hasLightRay ? (
+        <LinearGradient
+          colors={[...theme.colors.lightRayGradient]}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 0.8 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: tokens.radius.lg }]}
+          pointerEvents="none"
+        />
+      ) : null}
+      {children}
+    </>
+  );
 
   if (onPress || variant === 'interactive') {
     return (
@@ -121,7 +130,7 @@ export function Card({
         style={({ pressed }) => [
           baseStyle,
           variantStyle,
-          variant === 'tinted' && styles.clipped,
+          (variant === 'tinted' || hasLightRay) && styles.clipped,
           pressed && styles.pressed,
           disabled && styles.disabled,
           style,
@@ -137,7 +146,7 @@ export function Card({
       style={[
         baseStyle,
         variantStyle,
-        variant === 'tinted' && styles.clipped,
+        (variant === 'tinted' || hasLightRay) && styles.clipped,
         disabled && styles.disabled,
         style,
       ]}
