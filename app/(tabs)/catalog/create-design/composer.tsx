@@ -1325,8 +1325,9 @@ export default function CreateDesignComposerScreen() {
                 style={({ pressed }) => [
                   styles.categoryOption,
                   {
-                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: selected ? theme.colors.primarySoft : (theme.colors.surfaceCard ?? theme.colors.surfaceAlt),
+                    borderColor: selected ? theme.colors.primary : 'transparent',
+                    borderWidth: selected ? 2 : 0,
                   },
                   pressed ? styles.optionPressed : null,
                 ]}
@@ -1552,8 +1553,9 @@ export default function CreateDesignComposerScreen() {
                     style={[
                       styles.segmentButton,
                       {
-                        backgroundColor: isSelected ? theme.colors.primary : 'transparent',
-                        borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                        backgroundColor: isSelected ? theme.colors.primary : (theme.colors.surfaceCard ?? theme.colors.surfaceAlt),
+                        borderColor: isSelected ? theme.colors.primary : 'transparent',
+                        borderWidth: isSelected ? 2 : 0,
                       },
                     ]}
                     accessibilityRole="button"
@@ -1972,7 +1974,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.md,
-    borderWidth: 2,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1997,7 +1999,7 @@ const styles = StyleSheet.create({
   categoryOption: {
     minHeight: tokens.button.md.height,
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
+    borderWidth: 0,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
