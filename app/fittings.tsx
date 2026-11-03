@@ -479,7 +479,7 @@ export default function FittingsScreen() {
                   }))
                 }
                 keyboardType="decimal-pad"
-                placeholder="0"
+                placeholder="e.g. 38"
                 trailing={
                   <AppText variant="captionRegular" tone="muted">
                     {unitSuffix}
@@ -566,9 +566,7 @@ export default function FittingsScreen() {
             style={[
               styles.footer,
               {
-                backgroundColor: theme.colors.bg,
-                borderTopColor: theme.colors.border,
-                paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
+                paddingBottom: Math.max(insets.bottom + tokens.spacing.sm, tokens.spacing.lg),
               },
             ]}
           >
@@ -689,8 +687,11 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
-    borderTopWidth: 2,
+    paddingTop: tokens.spacing.sm,
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   pressed: {
     opacity: 0.82,

@@ -238,10 +238,9 @@ export default function CreateDesignPreviewScreen() {
         style={[
           styles.footerActions,
           {
-            backgroundColor: theme.colors.bg,
-            borderTopWidth: 0,
             paddingHorizontal: tokens.spacing.lg,
-            paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
+            paddingBottom: Math.max(insets.bottom + tokens.spacing.sm, tokens.spacing.lg),
+            paddingTop: tokens.spacing.sm,
           },
         ]}
       >
@@ -364,7 +363,7 @@ const styles = StyleSheet.create({
   content: {
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xl,
     paddingTop: tokens.spacing.sm,
   },
   assetStrip: {
@@ -432,9 +431,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   footerActions: {
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+    backgroundColor: 'transparent',
     borderTopWidth: 0,
-    paddingTop: tokens.spacing.md,
+    elevation: 0,
+    shadowOpacity: 0,
+    paddingTop: tokens.spacing.sm,
   },
   actionRow: {
     flexDirection: 'row',

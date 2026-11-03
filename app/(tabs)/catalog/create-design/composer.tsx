@@ -13,6 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { KeyboardStickyFooter } from '@/components/ui/KeyboardStickyFooter';
@@ -797,9 +798,18 @@ export default function CreateDesignComposerScreen() {
     return <AppLoaderScreen message="Loading composer" />;
   }
 
-  // Sticky footer + keyboard stack: scroll must clear the footer height so the
-  // last inputs are never trapped under Save draft / Preview.
-  const composerFooterClearance = 120;
+  // Dynamic action-area height measurement ensures exact clearance for keyboard
+  // avoidance and scrolling, adapting naturally as helper text expands/contracts.
+  const [footerHeight, setFooterHeight] = useState(0);
+
+  const handleFooterLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.round(event.nativeEvent.layout.height);
+    if (nextHeight > 0 && Math.abs(nextHeight - footerHeight) > 1) {
+      setFooterHeight(nextHeight);
+    }
+  }, [footerHeight]);
+
+  const activeFooterClearance = footerHeight > 0 ? footerHeight : 96;
 
   return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
@@ -816,8 +826,8 @@ export default function CreateDesignComposerScreen() {
         <KeyboardAwareFormScroll
           style={styles.flex}
           contentContainerStyle={styles.content}
-          bottomOffset={composerFooterClearance + tokens.spacing.lg}
-          extraKeyboardSpace={composerFooterClearance}
+          bottomOffset={activeFooterClearance + tokens.spacing.sm}
+          extraKeyboardSpace={0}
           automaticallyAdjustKeyboardInsets={false}
         >
           <View style={styles.mediaSection}>
@@ -1202,20 +1212,19 @@ export default function CreateDesignComposerScreen() {
           ) : null}
         </KeyboardAwareFormScroll>
         <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
-        <View
-          style={[
-            styles.footerActions,
-            {
-              backgroundColor: theme.colors.bg,
-              borderTopColor: theme.colors.border,
-              paddingBottom: Math.max(
-                insets.bottom + tokens.spacing.lg,
-                tokens.spacing['2xl'],
-              ),
-              paddingHorizontal: tokens.spacing.lg,
-            },
-          ]}
-        >
+          <View
+            onLayout={handleFooterLayout}
+            style={[
+              styles.footerActions,
+              {
+                paddingBottom: Math.max(
+                  insets.bottom + tokens.spacing.sm,
+                  tokens.spacing.lg,
+                ),
+                paddingHorizontal: tokens.spacing.lg,
+              },
+            ]}
+          >
           {!canSaveDraft ? (
             <AppText
               variant="captionRegular"
@@ -1847,7 +1856,7 @@ const styles = StyleSheet.create({
   content: {
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xl,
     paddingTop: tokens.spacing.sm,
   },
   sectionTopRow: {
@@ -2009,9 +2018,12 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   footerActions: {
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+    backgroundColor: 'transparent',
     borderTopWidth: 0,
-    paddingTop: tokens.spacing.md,
+    elevation: 0,
+    shadowOpacity: 0,
+    paddingTop: tokens.spacing.sm,
   },
   actionRow: {
     flexDirection: 'row',
