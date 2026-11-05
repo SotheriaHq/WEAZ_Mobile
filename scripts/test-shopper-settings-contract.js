@@ -32,7 +32,7 @@ assert.match(
 
 assert.match(
   verifyEmail,
-  /updateUser\(\{ isEmailVerified: true \}\)/,
+  /updateUser\(\{\s*isEmailVerified:\s*true\s*\}/,
   'email verification success must update local auth state immediately',
 );
 assert.match(

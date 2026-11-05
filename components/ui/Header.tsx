@@ -6,7 +6,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 type Props = {
-  title: string;
+  title: React.ReactNode;
   wrapText?: boolean;
   subtitle?: string;
   left?: React.ReactNode;
@@ -32,9 +32,13 @@ export function Header({ title, subtitle, left, right, actions, style, wrapText 
       <View style={styles.row}>
         <View style={styles.side}>{left}</View>
         <View style={styles.body}>
-          <AppText variant="title" numberOfLines={wrapText ? undefined : 1}>
-            {title}
-          </AppText>
+          {typeof title === 'string' ? (
+            <AppText variant="title" numberOfLines={wrapText ? undefined : 1}>
+              {title}
+            </AppText>
+          ) : (
+            title
+          )}
           {subtitle ? (
             <AppText variant="caption" tone="muted" numberOfLines={wrapText ? undefined : 1}>
               {subtitle}
