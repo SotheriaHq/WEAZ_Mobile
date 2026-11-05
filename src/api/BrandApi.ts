@@ -1094,7 +1094,7 @@ export const brandApi = {
       };
     } catch (error) {
       console.error('Error fetching collections:', error);
-      return { items: [], total: 0, hasMore: false };
+      throw error;
     }
   },
 
@@ -1133,6 +1133,11 @@ export const brandApi = {
         designDraftsRequest,
         storeDraftsRequest,
       ]);
+
+      // A failed read is not an empty catalogue. Let Query retain its last
+      // successful list and retry instead of caching a partial/empty success.
+      if (designDraftsResult.status === 'rejected') throw designDraftsResult.reason;
+      if (storeDraftsResult.status === 'rejected') throw storeDraftsResult.reason;
 
       /**
        * Pin BOTH status fields.
@@ -1178,7 +1183,7 @@ export const brandApi = {
       );
     } catch (error) {
       console.error('Error fetching drafts:', error);
-      return [];
+      throw error;
     }
   },
 

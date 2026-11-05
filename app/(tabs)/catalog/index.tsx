@@ -8,6 +8,7 @@ import { warmDesignEditorMetadata } from '@/src/query/bootstrapQueries';
 
 import React, { useCallback, useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
+  AppState,
   BackHandler,
   LayoutChangeEvent,
   NativeScrollEvent,
@@ -100,6 +101,7 @@ import {
 } from '@/src/query/catalogQueries';
 import { WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { refreshCatalogQueries } from '@/src/query/catalogFreshness';
 import { readWarmScreenUiState, writeWarmScreenUiState } from '@/src/state/screenWarmState';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
@@ -1017,6 +1019,20 @@ export default function CatalogScreen() {
     }, [userId]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      void refreshCatalogQueries(queryClient, collectionOwnerId, targetBrandId);
+      let previousState = AppState.currentState;
+      const subscription = AppState.addEventListener('change', (nextState) => {
+        if (nextState === 'active' && previousState !== 'active') {
+          void refreshCatalogQueries(queryClient, collectionOwnerId, targetBrandId);
+        }
+        previousState = nextState;
+      });
+      return () => subscription.remove();
+    }, [collectionOwnerId, queryClient, targetBrandId]),
+  );
+
   useEffect(() => {
     if (!catalogUiStateKey) return;
     if (lastCatalogUiStateKeyRef.current === catalogUiStateKey) return;
@@ -1129,20 +1145,16 @@ export default function CatalogScreen() {
   // Refresh
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    const loadedProfile = await fetchProfile({ forceRefresh: true });
-    await Promise.all([
-      fetchCollections(loadedProfile, { forceRefresh: true }),
-      refreshPatchStatus({ force: true, silent: true }),
-      // Broad prefix so EVERY collection tab refetches (Public/Private/Drafts/
-      // In Review/Changes Requested/Rejected/Needs Attention). Each per-tab query
-      // carries its own {scope,status} filter in the key, so a fully-qualified
-      // single key (the previous behaviour) silently missed In Review.
-      queryClient.invalidateQueries({ queryKey: ['brand', 'collections'] }).catch(() => undefined),
-      queryClient.invalidateQueries({ queryKey: queryKeys.store.brandProducts(targetBrandId) }).catch(() => undefined),
-      queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(targetBrandId) }).catch(() => undefined),
-      queryClient.invalidateQueries({ queryKey: queryKeys.reviews.brand(targetBrandId) }).catch(() => undefined),
-    ]);
-    setIsRefreshing(false);
+    try {
+      await Promise.all([
+        refreshCatalogQueries(queryClient, collectionOwnerId, targetBrandId),
+        refreshPatchStatus({ force: true, silent: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.store.brandProducts(targetBrandId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.reviews.brand(targetBrandId) }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const settleTransition = useCallback((nextTab: TabType) => {
@@ -2045,6 +2057,13 @@ export default function CatalogScreen() {
     has no data, the grid's skeleton now holds the space instead.
   */
   const hasListTarget = Boolean(targetBrandId);
+  const activeListError = visibilityFilter === 'Drafts'
+    ? draftsQuery.error
+    : visibilityFilter === 'Needs Attention'
+      ? needsAttentionQuery.error
+      : visibilityFilter === 'In Review'
+        ? inReviewQuery.error
+        : collectionsQuery.error;
   const listInitialLoading = hasListTarget && (visibilityFilter === 'Drafts'
     ? draftsQuery.isPending && effectiveDrafts.length === 0
     : visibilityFilter === 'Needs Attention'
@@ -2614,7 +2633,14 @@ export default function CatalogScreen() {
                 batchRenderCount={6}
                 renderKey={dataTabKey}
                 emptyComponent={
-                  <EmptyCollections
+                  activeListError ? (
+                    <View>
+                      <AppText variant="body" tone="muted">
+                        Could not load this tab. Your saved content has not been removed.
+                      </AppText>
+                      <Button title="Retry" onPress={() => void handleRefresh()} loading={isRefreshing} />
+                    </View>
+                  ) : <EmptyCollections
                     isOwner={isOwner}
                     onAdd={handleCreatePress}
                   />
