@@ -39,6 +39,7 @@ jobs:
         run: |
           npm run test:scoped-media-picker
           npm run test:design-composer-entry
+          npm run test:catalog-draft-recovery
           npm run test:image-compression
           npm run test:upload-finalize-retry
           npm run test:media-url-policy

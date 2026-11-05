@@ -31,7 +31,7 @@ export function useBrandProfileQuery(brandId?: string | null, options?: EnabledO
   const queryKey = queryKeys.brand.profile(brandId);
   return useQuery({
     queryKey,
-    queryFn: () => brandApi.getProfileById(String(brandId)),
+    queryFn: () => brandApi.getProfileById(String(brandId), { forceRefresh: true, throwOnError: true }),
     enabled: isEnabled(brandId, options?.enabled ?? true),
     /**
      * Opts out of the global `refetchOnMount: false` perf default.
@@ -68,10 +68,12 @@ export function useBrandCollectionsQuery(args: BrandCollectionsArgs, options?: E
         visibility,
         status,
         limit,
+        forceRefresh: true,
       });
       return result.items;
     },
     enabled: isEnabled(ownerId, options?.enabled ?? true),
+    refetchOnMount: true,
   });
 }
 
@@ -114,7 +116,7 @@ export function useBrandDraftsQuery(
       // Drafts use the dedicated /designs/my/drafts endpoint (merged with store
       // drafts) via brandApi.getDrafts. `getMyDrafts` never existed and crashed
       // with "undefined is not a function" on catalogue entry.
-      return brandApi.getDrafts({ ownerId: options?.ownerId });
+      return brandApi.getDrafts({ ownerId: options?.ownerId, forceRefresh: true });
     },
     enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
     // Matches the other two owner buckets. This query now runs on catalogue
@@ -162,6 +164,7 @@ export function useBrandDraftsQuery(
           scope: 'all',
           status: statusFilter,
           limit: 50,
+          forceRefresh: true,
         });
         return result.items;
       },
@@ -201,6 +204,7 @@ export function useBrandDraftsQuery(
           scope: 'all',
           status: statusFilter,
           limit: 50,
+          forceRefresh: true,
         });
         return result.items;
       },

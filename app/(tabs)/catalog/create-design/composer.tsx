@@ -794,10 +794,6 @@ export default function CreateDesignComposerScreen() {
     [filterSelection, toggleFilterValue],
   );
 
-  if (booting && isEditMode) {
-    return <AppLoaderScreen message="Loading composer" />;
-  }
-
   // Dynamic action-area height measurement ensures exact clearance for keyboard
   // avoidance and scrolling, adapting naturally as helper text expands/contracts.
   const [footerHeight, setFooterHeight] = useState(0);
@@ -810,6 +806,10 @@ export default function CreateDesignComposerScreen() {
   }, [footerHeight]);
 
   const activeFooterClearance = footerHeight > 0 ? footerHeight : 96;
+
+  if (booting && isEditMode) {
+    return <AppLoaderScreen message="Loading composer" />;
+  }
 
   return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
