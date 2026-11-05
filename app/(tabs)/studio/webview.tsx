@@ -349,7 +349,8 @@ export default function StudioWebViewScreen() {
   const resolvedRouteKey = isStudioRouteKey(routeKey) ? routeKey : 'overview';
   const reportedRouteSignature = asString(params.studioRouteReport);
   const route = STUDIO_ROUTES[resolvedRouteKey];
-  const headerTitle = resolvedRouteKey === 'overview' ? 'Studio' : route.title;
+  const brandTitle = user?.brandFullName?.trim() || (user?.username ? `@${user.username.replace(/^@/, '')}` : 'Store');
+  const headerTitle = resolvedRouteKey === 'overview' ? 'Studio' : resolvedRouteKey === 'store' ? brandTitle : route.title;
   const headerSubtitle = resolvedRouteKey === 'overview' ? undefined : 'Studio';
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
@@ -1104,7 +1105,7 @@ export default function StudioWebViewScreen() {
       <Header
         title={headerTitle}
         wrapText
-        actions={commerce.data?.canUpgrade ? <Button title="Upgrade" size="sm" onPress={() => drillDownPush('/settings/subscriptions' as never)} style={{ minHeight: tokens.button.md.height }} /> : undefined}
+        actions={undefined}
         subtitle={headerSubtitle}
         style={{
           backgroundColor: studioShellBackground,
