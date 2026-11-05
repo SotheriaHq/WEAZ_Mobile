@@ -406,7 +406,7 @@ export default function SettingsScreen() {
       edges={['top']}
     >
       <View style={styles.header}>
-        <AppBackButton fallbackHref="/(tabs)" />
+        <AppBackButton fallbackHref="/(tabs)/me" />
         <View style={styles.headerCopy}>
           <AppText variant="title">Settings</AppText>
           <AppText variant="captionRegular" tone="muted" numberOfLines={1}>

@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useNavigation } from 'expo-router';
 import type { CountryCode } from 'libphonenumber-js';
 
@@ -283,6 +283,15 @@ export default function MeEditScreen() {
     [baseline, profile, toast, updateUser, user?.firstName, user?.lastName, user?.username],
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      isNavigatingAwayRef.current = false;
+      return () => {
+        isNavigatingAwayRef.current = false;
+      };
+    }, [])
+  );
+
   const persistOnExit = useCallback(async () => {
     if (!pendingChangesRef.current || !latestFormRef.current) {
       return true;
@@ -320,7 +329,14 @@ export default function MeEditScreen() {
           return;
         }
         if (mustRedirect) {
-          topLevelNavigate(returnHref as never);
+          try {
+            (navigation as any).navigate('me');
+          } catch {}
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            topLevelNavigate(returnHref as never);
+          }
           return;
         }
         navigation.dispatch(event.data.action);
@@ -347,12 +363,19 @@ export default function MeEditScreen() {
     // from. Settings has many entries and users move between them, so the
     // caller states where back belongs and we honour it verbatim.
     if (returnHref) {
-      topLevelNavigate(returnHref as never);
+      try {
+        (navigation as any).navigate('me');
+      } catch {}
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        topLevelNavigate(returnHref as never);
+      }
       return;
     }
     // No stated origin: back out to the Me profile rather than the default tab.
     backOrNavigate('/(tabs)/me');
-  }, [persistOnExit, returnHref]);
+  }, [navigation, persistOnExit, returnHref]);
 
   const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'me-edit-avatar', subjectId: user?.id });
 

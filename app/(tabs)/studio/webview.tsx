@@ -17,6 +17,7 @@ import {
 } from '@/components/studio/StudioHeaderProfile';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
@@ -341,6 +342,7 @@ export default function StudioWebViewScreen() {
     tags?: string[];
   } | null>(null);
   const [bioModalVisible, setBioModalVisible] = useState(false);
+  const [storeQrVisible, setStoreQrVisible] = useState(false);
 
   const routeKey = asString(params.routeKey);
   const productId = asString(params.productId);
@@ -350,8 +352,26 @@ export default function StudioWebViewScreen() {
   const reportedRouteSignature = asString(params.studioRouteReport);
   const route = STUDIO_ROUTES[resolvedRouteKey];
   const brandTitle = user?.brandFullName?.trim() || (user?.username ? `@${user.username.replace(/^@/, '')}` : 'Store');
-  const headerTitle = resolvedRouteKey === 'overview' ? 'Studio' : resolvedRouteKey === 'store' ? brandTitle : route.title;
-  const headerSubtitle = resolvedRouteKey === 'overview' ? undefined : 'Studio';
+  const dashboardTitleNode = (
+    <View style={styles.dashboardTitleRow}>
+      <AppText variant="title">{brandTitle}</AppText>
+      <View style={[styles.livePill, { borderColor: theme.colors.success }]}>
+        <View style={[styles.liveDot, { backgroundColor: theme.colors.success }]} />
+        <AppText variant="badgeLabel" tone="success">
+          LIVE
+        </AppText>
+      </View>
+    </View>
+  );
+  const headerTitle =
+    resolvedRouteKey === 'overview' || resolvedRouteKey === 'store'
+      ? dashboardTitleNode
+      : resolvedRouteKey === 'orders'
+        ? `${brandTitle} Orders`
+        : resolvedRouteKey === 'finance'
+          ? `${brandTitle} Finance`
+          : route.title;
+  const headerSubtitle = undefined;
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const hasBrandWorkspace = hasActiveBrandMembership(user);
@@ -1129,14 +1149,31 @@ export default function StudioWebViewScreen() {
            * Orders, Staff and sign-out, and none of those depend on the WebView
            * having painted. There is nothing to withhold.
            */
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: tokens.spacing.sm,
-            }}
-          >
+          <View style={styles.headerRightRow}>
+            {resolvedRouteKey === 'store' && (commerce?.data?.canUpgrade ?? true) ? (
+              <IconButton
+                size={44}
+                onPress={() => drillDownPush('/settings/subscriptions' as any)}
+                variant="ghost"
+                testID="studio-header-upgrade"
+              >
+                <AppText variant="subtitle" accessibilityLabel="Upgrade store plan">
+                  ⚡
+                </AppText>
+              </IconButton>
+            ) : null}
+            {resolvedRouteKey === 'store' ? (
+              <IconButton
+                size={44}
+                onPress={() => setStoreQrVisible(true)}
+                variant="ghost"
+                testID="studio-header-qr"
+              >
+                <AppText variant="subtitle" accessibilityLabel="Storefront QR code">
+                  🪪
+                </AppText>
+              </IconButton>
+            ) : null}
             <StudioHeaderActions
               user={user}
               onSearchPress={openSearch}
@@ -1486,11 +1523,47 @@ export default function StudioWebViewScreen() {
         </View>
       </AppBottomSheet>
 
+      <AppQrSheet
+        visible={storeQrVisible}
+        onClose={() => setStoreQrVisible(false)}
+        title={`${brandTitle} Storefront QR`}
+        subtitle="Share your store with customers anywhere"
+        qrValue={`${env.webAppUrl}/brand/${user?.username || ''}`}
+        displayUrl={`${env.webAppUrl}/brand/${user?.username || ''}`}
+        username={user?.username}
+      />
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.xs,
+  },
+  dashboardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: 2,
+  },
+  liveDot: {
+    width: tokens.spacing.sm,
+    height: tokens.spacing.sm,
+    borderRadius: tokens.radius.full,
+  },
   root: {
     flex: 1,
   },
