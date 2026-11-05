@@ -47,7 +47,7 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
   },
   store: {
     key: 'store',
-    title: 'Manage Store',
+    title: 'Store',
     subtitle: 'Products, collections, stock, and settings',
     emoji: '🛍️',
     // Stay on StudioHome (`?tab=`) so an island hop does not unmount the

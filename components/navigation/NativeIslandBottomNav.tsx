@@ -529,20 +529,7 @@ const IslandGlass = React.memo(function IslandGlass({
           style={[StyleSheet.absoluteFill, styles.navBlur]}
         />
       ) : null}
-      {/* Specular light reflection rim */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 14,
-          right: 14,
-          height: 1,
-          backgroundColor: scheme === 'dark' ? tokens.island.specularRimDark : tokens.island.specularRimLight,
-          borderRadius: 9999,
-          zIndex: 2,
-        }}
-      />
+      {/* Specular rim removed to eliminate top border artifact */}
       <View
         pointerEvents="none"
         style={[
