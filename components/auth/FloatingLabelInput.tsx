@@ -107,11 +107,13 @@ export function FloatingLabelInput({
           </Pressable>
         )}
       </View>
-      {hasError && (
-        <AppText variant="caption" tone="danger" style={styles.message}>
-          {error}
-        </AppText>
-      )}
+      <View style={styles.feedbackRow}>
+        {hasError ? (
+          <AppText variant="caption" tone="danger" accessibilityRole="alert">
+            {error}
+          </AppText>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -153,6 +155,11 @@ const styles = StyleSheet.create({
   },
   message: {
     marginTop: tokens.spacing.xs,
+  },
+  feedbackRow: {
+    minHeight: 20,
+    marginTop: tokens.spacing.xs,
+    justifyContent: 'center',
   },
 });
 
