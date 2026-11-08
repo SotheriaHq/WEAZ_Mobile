@@ -354,7 +354,8 @@ export default function StudioWebViewScreen() {
   const brandTitle = user?.brandFullName?.trim() || (user?.username ? `@${user.username.replace(/^@/, '')}` : 'Store');
   const dashboardTitleNode = (
     <View style={styles.dashboardTitleRow}>
-      <AppText variant="title">{brandTitle}</AppText>
+      {/* Smaller and one line, so the header's controls stay beside it. */}
+      <AppText variant="subtitle" numberOfLines={1}>{brandTitle}</AppText>
       <View style={[styles.livePill, { borderColor: theme.colors.success }]}>
         <View style={[styles.liveDot, { backgroundColor: theme.colors.success }]} />
         <AppText variant="badgeLabel" tone="success">
@@ -1125,6 +1126,7 @@ export default function StudioWebViewScreen() {
       <Header
         title={headerTitle}
         wrapText
+        singleRow
         actions={undefined}
         subtitle={headerSubtitle}
         style={{
@@ -1151,20 +1153,19 @@ export default function StudioWebViewScreen() {
            */
           <View style={styles.headerRightRow}>
             {resolvedRouteKey === 'store' && (commerce?.data?.canUpgrade ?? true) ? (
-              <IconButton
-                size={44}
-                onPress={() => drillDownPush('/settings/subscriptions' as any)}
+              <Button
+                title="Upgrade"
+                size="xs"
                 variant="ghost"
+                onPress={() => drillDownPush('/settings/subscriptions' as any)}
+                accessibilityLabel="Upgrade store plan"
                 testID="studio-header-upgrade"
-              >
-                <AppText variant="subtitle" accessibilityLabel="Upgrade store plan">
-                  ⚡
-                </AppText>
-              </IconButton>
+                style={[styles.headerUpgrade, { backgroundColor: theme.colors.primarySoft }]}
+              />
             ) : null}
             {resolvedRouteKey === 'store' ? (
               <IconButton
-                size={44}
+                size={34}
                 onPress={() => setStoreQrVisible(true)}
                 variant="ghost"
                 testID="studio-header-qr"
@@ -1178,6 +1179,7 @@ export default function StudioWebViewScreen() {
               user={user}
               onSearchPress={openSearch}
               onProfilePress={() => setProfileMenuVisible(true)}
+              compact
             />
           </View>
         }
@@ -1541,14 +1543,19 @@ const styles = StyleSheet.create({
   headerRightRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: tokens.spacing.xs,
   },
+  headerUpgrade: {
+    alignSelf: 'center',
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+  },
   dashboardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: 2,
+    minWidth: 0,
   },
   livePill: {
     flexDirection: 'row',
