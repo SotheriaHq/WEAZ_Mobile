@@ -170,7 +170,17 @@ jobs:
           # this as 'true'; copying the value approximately rather than exactly
           # cost one build.
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
-        run: ./gradlew assembleRelease --no-daemon --console=plain
+        # Dependency downloads retry with backoff. Some artifacts (the Kotlin
+        # compiler, for one) are redirected from Maven Central to GitHub release
+        # downloads, and a single 504 there failed a whole build on 2026-11-08.
+        # Gradle's defaults are a few quick retries; these ride out a blip.
+        run: |
+          ./gradlew assembleRelease --no-daemon --console=plain \
+            -Dorg.gradle.internal.repository.max.retries=8 \
+            -Dorg.gradle.internal.repository.max.tentatives=8 \
+            -Dorg.gradle.internal.repository.initial.backoff=2000 \
+            -Dorg.gradle.internal.http.connectionTimeout=60000 \
+            -Dorg.gradle.internal.http.socketTimeout=120000
 
       # Named with the commit so a tester can tell two downloads apart — the
       # EAS builds were all versionCode 1, which made a stale install look
