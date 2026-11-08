@@ -48,10 +48,13 @@ export function StudioHeaderActions({
   user,
   onSearchPress,
   onProfilePress,
+  compact = false,
 }: {
   user: AuthUser | null;
   onSearchPress: () => void;
   onProfilePress: () => void;
+  /** Smaller controls, so they fit beside the title on one header row. */
+  compact?: boolean;
 }) {
   const { theme } = useTheme();
   const displayName = getDisplayName(user);
@@ -61,7 +64,7 @@ export function StudioHeaderActions({
 
   return (
     <View style={styles.headerActions}>
-      <IconButton size={44} onPress={onSearchPress} variant="ghost" testID="studio-header-search">
+      <IconButton size={compact ? 34 : 44} onPress={onSearchPress} variant="ghost" testID="studio-header-search">
         <AppText variant="subtitle" accessibilityLabel="Open search">
           🔎
         </AppText>
@@ -72,6 +75,7 @@ export function StudioHeaderActions({
         accessibilityLabel="Open profile menu"
         style={({ pressed }) => [
           styles.headerAvatarButton,
+          compact ? styles.headerAvatarCompact : null,
           { backgroundColor: theme.colors.primarySoft },
           pressed ? styles.pressed : null,
         ]}
@@ -393,6 +397,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  headerAvatarCompact: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
   },
 
   headerAvatarFill: {

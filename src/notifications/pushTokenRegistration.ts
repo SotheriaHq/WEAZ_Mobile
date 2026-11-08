@@ -598,9 +598,25 @@ export function useAuthenticatedPushTokenRegistration(params: {
 
     // The OS can replace the push token at any time; the server must get the
     // new one or pushes go to a token that no longer exists.
+    //
+    // Only a token that actually CHANGED forces a re-registration. Fetching a
+    // token can echo the same token through this listener, and forcing on
+    // every echo made each successful registration trigger the next one: a
+    // device logged POST /notifications/push-tokens + GET /notifications/settings
+    // about once a second on opening a tab (2026-11-08). The first sighting is
+    // not forced, so the "registered recently" check absorbs it; a genuine
+    // rotation (a different token) still forces the server to learn it.
+    let lastDeviceToken: string | null = null;
     void getNotificationsModule().then((NotificationsModule) => {
       if (cancelled || !NotificationsModule) return;
-      tokenSubscription = NotificationsModule.addPushTokenListener(() => attempt(true));
+      tokenSubscription = NotificationsModule.addPushTokenListener((event: { data?: unknown } | null) => {
+        const data = event?.data;
+        const value = typeof data === 'string' ? data : data ? JSON.stringify(data) : null;
+        if (value && value === lastDeviceToken) return;
+        const rotated = lastDeviceToken !== null;
+        lastDeviceToken = value;
+        attempt(rotated);
+      });
     });
 
     return () => {
