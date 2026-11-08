@@ -1210,69 +1210,67 @@ export default function CreateDesignComposerScreen() {
               />
             </Card>
           ) : null}
-        </KeyboardAwareFormScroll>
-        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
+          {/* Natural integrated action buttons at bottom of form */}
           <View
-            onLayout={handleFooterLayout}
             style={[
               styles.footerActions,
               {
+                paddingTop: tokens.spacing.md,
                 paddingBottom: Math.max(
-                  insets.bottom + tokens.spacing.sm,
-                  tokens.spacing.lg,
+                  insets.bottom + tokens.spacing.xl,
+                  tokens.spacing['2xl'],
                 ),
-                paddingHorizontal: tokens.spacing.lg,
               },
             ]}
           >
-          {!canSaveDraft ? (
-            <AppText
-              variant="captionRegular"
-              tone="muted"
-              style={styles.draftHelper}
-            >
-              Add a title to save this as a draft.
-            </AppText>
-          ) : !canPreview ? (
-            <AppText
-              variant="captionRegular"
-              tone="danger"
-              style={styles.draftHelper}
-            >
-              Required: {missingRequiredFields[0]}{' '}
-              {missingRequiredFields.length > 1
-                ? `(+${missingRequiredFields.length - 1} more)`
-                : ''}
-            </AppText>
-          ) : null}
-          <View style={styles.actionRow}>
-            <View style={styles.actionButton}>
-              <Button
-                title={
-                  saveState.action === 'draft'
-                    ? 'Saving draft...'
-                    : 'Save draft'
-                }
-                variant="secondary"
-                loading={saveState.action === 'draft'}
-                disabled={!canSaveDraft || Boolean(saveState.action)}
-                onPress={() => void save('draft')}
-                fullWidth
-              />
-            </View>
-            <View style={styles.actionButton}>
-              <Button
-                title="Preview →"
-                disabled={!canPreview}
-                onPress={() =>
-                  drillDownPush('/catalog/create-design/preview' as any)
-                }
-                fullWidth
-              />
+            {!canSaveDraft ? (
+              <AppText
+                variant="captionRegular"
+                tone="muted"
+                style={styles.draftHelper}
+              >
+                Add a title to save this as a draft.
+              </AppText>
+            ) : !canPreview ? (
+              <AppText
+                variant="captionRegular"
+                tone="danger"
+                style={styles.draftHelper}
+              >
+                Required: {missingRequiredFields[0]}{' '}
+                {missingRequiredFields.length > 1
+                  ? `(+${missingRequiredFields.length - 1} more)`
+                  : ''}
+              </AppText>
+            ) : null}
+            <View style={styles.actionRow}>
+              <View style={styles.actionButton}>
+                <Button
+                  title={
+                    saveState.action === 'draft'
+                      ? 'Saving draft...'
+                      : 'Save draft'
+                  }
+                  variant="secondary"
+                  loading={saveState.action === 'draft'}
+                  disabled={!canSaveDraft || Boolean(saveState.action)}
+                  onPress={() => void save('draft')}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionButton}>
+                <Button
+                  title="Preview →"
+                  disabled={!canPreview}
+                  onPress={() =>
+                    drillDownPush('/catalog/create-design/preview' as any)
+                  }
+                  fullWidth
+                />
+              </View>
             </View>
           </View>
-        </View>
-        </KeyboardStickyFooter>
+        </KeyboardAwareFormScroll>
 
       {renderSheets ? (
         <>

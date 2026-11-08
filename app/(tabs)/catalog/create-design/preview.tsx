@@ -232,74 +232,61 @@ export default function CreateDesignPreviewScreen() {
           </Card>
         ) : null}
 
-      </ScrollView>
-
-      <View
-        style={[
-          styles.footerActions,
-          {
-            paddingHorizontal: tokens.spacing.lg,
-            paddingBottom: Math.max(insets.bottom + tokens.spacing.sm, tokens.spacing.lg),
-            paddingTop: tokens.spacing.sm,
-          },
-        ]}
-      >
-        {/*
-          No progress panel here.
-
-          Pressing Save/Create hands the upload to a background task and
-          `router.replace`s to the catalog almost immediately, so this slab —
-          "Current save progress", a message line, a percentage and a bar —
-          only ever existed for the fraction of a second before the screen was
-          replaced. It flashed, competing with the spinner already running
-          inside the button that was just pressed, and then vanished. The real
-          progress lives on the catalog card the reroute lands on, which is
-          where it can be watched for as long as the upload takes.
-        */}
-        {!canSaveDraft ? (
-          <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-            Add a title to save this as a draft.
-          </AppText>
-        ) : (
-          <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-            Creating confirms these images belong to this design and match the selected views.
-          </AppText>
-        )}
-        {/* Compact footer row: ← Edit | Save Draft | Create (Issue #12). */}
-        <View style={styles.actionRow}>
-          <View style={styles.actionButton}>
-            <Button
-              title="← Edit"
-              variant="outline"
-              disabled={isSaving}
-              onPress={() => router.replace('/catalog/create-design/composer' as any)}
-              fullWidth
-            />
+        {/* Natural integrated action buttons at bottom of review */}
+        <View
+          style={[
+            styles.footerActions,
+            {
+              paddingTop: tokens.spacing.md,
+              paddingBottom: Math.max(insets.bottom + tokens.spacing.xl, tokens.spacing['2xl']),
+            },
+          ]}
+        >
+          {!canSaveDraft ? (
+            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+              Add a title to save this as a draft.
+            </AppText>
+          ) : (
+            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+              Creating confirms these images belong to this design and match the selected views.
+            </AppText>
+          )}
+          {/* Compact footer row: ← Edit | Save Draft | Create */}
+          <View style={styles.actionRow}>
+            <View style={styles.actionButton}>
+              <Button
+                title="← Edit"
+                variant="outline"
+                disabled={isSaving}
+                onPress={() => router.replace('/catalog/create-design/composer' as any)}
+                fullWidth
+              />
+            </View>
+            <View style={styles.actionButton}>
+              <Button
+                title={saveState.action === 'draft' ? 'Saving…' : 'Save Draft'}
+                variant="secondary"
+                loading={saveState.action === 'draft'}
+                disabled={!canSaveDraft || isSaving}
+                onPress={() => void save('draft')}
+                fullWidth
+              />
+            </View>
+            <View style={styles.actionButton}>
+              <Button
+                title={saveState.action === 'publish' ? 'Creating…' : 'Create'}
+                loading={saveState.action === 'publish'}
+                disabled={!canPublish || isSaving}
+                onPress={() => void save('publish')}
+                fullWidth
+              />
+            </View>
           </View>
-          <View style={styles.actionButton}>
-            <Button
-              title={saveState.action === 'draft' ? 'Saving…' : 'Save Draft'}
-              variant="secondary"
-              loading={saveState.action === 'draft'}
-              disabled={!canSaveDraft || isSaving}
-              onPress={() => void save('draft')}
-              fullWidth
-            />
-          </View>
-          <View style={styles.actionButton}>
-            <Button
-              title={saveState.action === 'publish' ? 'Creating…' : 'Create'}
-              loading={saveState.action === 'publish'}
-              disabled={!canPublish || isSaving}
-              onPress={() => void save('publish')}
-              fullWidth
-            />
-          </View>
+          {activeDesignId && isDraft ? (
+            <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
+          ) : null}
         </View>
-        {activeDesignId && isDraft ? (
-          <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
-        ) : null}
-      </View>
+      </ScrollView>
 
       <Modal
         transparent
