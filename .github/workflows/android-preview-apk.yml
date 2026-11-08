@@ -8,12 +8,13 @@
 # Manual by default (`workflow_dispatch`): a build should happen because someone
 # wants to test something, not on every push.
 #
-# SIGNING. No keystore is supplied, so Expo's generated `release` config falls
-# back to the debug key. The APK installs and runs, but its signature differs
-# from the EAS-signed one — Android refuses to update across signatures, so the
-# existing app must be uninstalled once before the first install from here.
-# To avoid that, export the EAS keystore (`eas credentials`) into the secrets
-# below and this workflow will use it instead.
+# SIGNING. Gradle still produces a debug-signed APK; it is then re-signed with
+# WIEZ's existing EAS release keystore (repository secrets) and its certificate
+# is verified against the pinned ANDROID_SIGNING_CERT_SHA256 variable before
+# anything is uploaded. Missing credentials or a certificate mismatch fail the
+# job, so a debug-signed APK is never published. The public debug key is
+# refused outright: Google sign-in checks the signing certificate, and the
+# Android OAuth client only trusts the release key.
 name: Android preview APK
 
 # TRIGGERS, and why there are two.
@@ -69,6 +70,7 @@ jobs:
         run: |
           node scripts/test-studio-startup-recovery.cjs
           node scripts/test-studio-navigation-feedback.cjs
+          node --test scripts/test-android-release-signing.cjs
           node scripts/test-image-compression.cjs
           node scripts/test-catalog-task-status.cjs
           node scripts/test-design-composer-entry.cjs
@@ -154,11 +156,20 @@ jobs:
       # Named with the commit so a tester can tell two downloads apart — the
       # EAS builds were all versionCode 1, which made a stale install look
       # current and cost one wasted round of debugging.
-      - name: Name the artifact after its commit
+      - name: Sign with the release key, verify, and name after the commit
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
         run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/release/*.apk \
-             "dist/wiez-preview-${GITHUB_SHA::7}.apk"
+          apks=(android/app/build/outputs/apk/release/*.apk)
+          test "${#apks[@]}" -eq 1
+          test -f "${apks[0]}"
+          node scripts/sign-android-apk.cjs \
+            "${apks[0]}" \
+            "dist/wiez-preview-${GITHUB_SHA::7}.apk"
           ls -lh dist/
 
       - uses: actions/upload-artifact@v4
