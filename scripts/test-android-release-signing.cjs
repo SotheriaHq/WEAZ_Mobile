@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { signingInputs, signerCertificate, signApk, PUBLIC_DEBUG_CERT } = require('./sign-android-apk.cjs');
+const { signingInputs, signerCertificate, signerSummary, signApk, PUBLIC_DEBUG_CERT } = require('./sign-android-apk.cjs');
 const certificate = '12'.repeat(32);
 const fields = { ANDROID_KEYSTORE_BASE64: Buffer.alloc(256, 1).toString('base64'), ANDROID_KEYSTORE_PASSWORD: 'private-store',
   ANDROID_KEY_ALIAS: 'test-key', ANDROID_KEY_PASSWORD: 'private-key', ANDROID_SIGNING_CERT_SHA256: certificate };
@@ -12,6 +12,21 @@ test('release signing requires complete credentials and refuses public debug tru
   assert.throws(() => signingInputs({ ...fields, ANDROID_SIGNING_CERT_SHA256: PUBLIC_DEBUG_CERT }), /private release/);
   assert.throws(() => signingInputs({ ...fields, ANDROID_KEYSTORE_BASE64: '***' }), /encoding/);
   assert.throws(() => signingInputs({ ...fields, ANDROID_KEYSTORE_BASE64: Buffer.alloc(12).toString('base64') }), /encoding/);
+});
+test('real apksigner 36 output yields its one signer; repeated identical lines are one signer', () => {
+  const real = [
+    'Verified using v2 scheme (APK Signature Scheme v2): true',
+    'Verified using v3 scheme (APK Signature Scheme v3): true',
+    'Number of signers: 1',
+    'Signer #1 certificate DN: CN=WIEZ',
+    `Signer #1 certificate SHA-256 digest: ${certificate}`,
+    `Signer #1 public key SHA-256 digest: ${'cd'.repeat(32)}`,
+  ].join('\n');
+  assert.equal(signerCertificate(real), certificate);
+  assert.equal(signerCertificate(`${real}\nSigner #1 certificate SHA-256 digest: ${certificate}`), certificate);
+  assert.equal(signerCertificate(real.replace(/\n/g, '\r\n')), certificate);
+  assert.throws(() => signerCertificate(real.replace('Number of signers: 1', 'Number of signers: 2')), /exactly one/);
+  assert.match(signerSummary(real), /Number of signers 1; Signer #1 certificate SHA-256 digest: 1212/);
 });
 test('APK verification requires one actual certificate digest, ignoring unrelated output', () => {
   assert.equal(signerCertificate(`Signer #1 certificate SHA-256 digest: ${certificate}`), certificate);
