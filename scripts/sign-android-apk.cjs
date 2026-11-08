@@ -16,10 +16,32 @@ function signingInputs(env) {
     throw Error('Invalid Android signing configuration.');
   return { bytes, certificate };
 }
+/**
+ * The single signer certificate apksigner verified, or an error.
+ *
+ * Identical lines are one signer: some apksigner builds repeat a signer's
+ * lines (once per scheme), and counting the repeat as a second signer refused
+ * a correctly signed APK. Two DIFFERENT signer entries still fail, as does a
+ * reported signer count other than one.
+ */
 function signerCertificate(output) {
-  const signers = [...output.matchAll(/^Signer #\d+ certificate SHA-256 digest:\s*([0-9a-f]{64})\s*$/gim)];
-  if (signers.length !== 1) throw Error('The APK must have exactly one verified release signer.');
-  return signers[0][1].toLowerCase();
+  const text = String(output).replace(/\r\n/g, '\n');
+  const lines = [...text.matchAll(/^Signer #\d+ certificate SHA-256 digest:\s*([0-9a-f]{64})\s*$/gim)]
+    .map((match) => match[0].trim().toLowerCase());
+  const unique = [...new Set(lines)];
+  const count = /^Number of signers:\s*(\d+)\s*$/im.exec(text);
+  if (unique.length !== 1 || (count && Number(count[1]) !== 1)) {
+    throw Error('The APK must have exactly one verified release signer.');
+  }
+  return /([0-9a-f]{64})\s*$/.exec(unique[0])[1];
+}
+
+/** Public facts about the signers, for the build log when verification fails. */
+function signerSummary(output) {
+  const text = String(output || '').replace(/\r\n/g, '\n');
+  const count = (/^Number of signers:\s*(\d+)/im.exec(text) || [])[1] ?? 'not reported';
+  const digests = [...text.matchAll(/^(Signer[^\n]*certificate SHA-256 digest:\s*[0-9a-f]{64})\s*$/gim)].map((m) => m[1]);
+  return `The APK signer check found: Number of signers ${count}; ${digests.length ? digests.join(' | ') : 'no signer certificate lines'}.`;
 }
 function signingJar(env) {
   const sdk = env.ANDROID_HOME || env.ANDROID_SDK_ROOT;
@@ -57,8 +79,19 @@ function signApk(input, output, { env = process.env, execute = spawnSync } = {})
       '--v4-signing-enabled', 'false', '--out', signed, source], options);
     if (result.status !== 0) throw Error('Android release signing failed. No APK was published.');
     const verified = execute(java, ['-jar', jar, 'verify', '--verbose', '--print-certs', signed], options);
-    if (verified.status !== 0 || signerCertificate(verified.stdout || '') !== certificate)
+    if (verified.status !== 0)
       throw Error('The APK signature does not match the configured release certificate. No APK was published.');
+    let signer;
+    try {
+      signer = signerCertificate(verified.stdout || '');
+    } catch (error) {
+      console.log(signerSummary(verified.stdout));
+      throw error;
+    }
+    if (signer !== certificate) {
+      console.log(signerSummary(verified.stdout));
+      throw Error('The APK signature does not match the configured release certificate. No APK was published.');
+    }
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.copyFileSync(signed, destination, fs.constants.COPYFILE_EXCL);
     return { output: destination, certificateSha256: certificate };
@@ -71,7 +104,7 @@ function signApk(input, output, { env = process.env, execute = spawnSync } = {})
   }
 }
 
-module.exports = { signingInputs, signerCertificate, signApk, PUBLIC_DEBUG_CERT };
+module.exports = { signingInputs, signerCertificate, signerSummary, signApk, PUBLIC_DEBUG_CERT };
 if (require.main === module) {
   try {
     if (process.argv.length !== 4) throw Error('Usage: node scripts/sign-android-apk.cjs <input.apk> <new-output.apk>');
