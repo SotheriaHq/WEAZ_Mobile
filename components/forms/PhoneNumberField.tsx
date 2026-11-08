@@ -206,19 +206,21 @@ export function PhoneNumberField({
         />
       </View>
 
-      {visibleError ? (
-        <AppText variant="caption" tone="danger" style={styles.message}>
-          {visibleError}
-        </AppText>
-      ) : completeness.isValid ? (
-        <AppText variant="caption" tone="success" style={styles.message}>
-          Saved as {completeness.e164}
-        </AppText>
-      ) : helperText ? (
-        <AppText variant="caption" tone="muted" style={styles.message}>
-          {helperText}
-        </AppText>
-      ) : null}
+      <View style={styles.feedbackRow}>
+        {visibleError ? (
+          <AppText variant="caption" tone="danger" accessibilityRole="alert">
+            {visibleError}
+          </AppText>
+        ) : completeness.isValid ? (
+          <AppText variant="caption" tone="success">
+            Saved as {completeness.e164}
+          </AppText>
+        ) : helperText ? (
+          <AppText variant="caption" tone="muted">
+            {helperText}
+          </AppText>
+        ) : null}
+      </View>
 
       {/*
         The divider under the pair, drawn once rather than by each control, so
@@ -283,6 +285,11 @@ const styles = StyleSheet.create({
   rule: {
     height: StyleSheet.hairlineWidth,
     marginTop: tokens.spacing.xs,
+  },
+  feedbackRow: {
+    minHeight: 20,
+    marginTop: tokens.spacing.xs,
+    justifyContent: 'center',
   },
 });
 

@@ -165,15 +165,29 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
         />
         {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
-      {error ? (
-        <AppText variant="caption" tone="danger" style={styles.message}>
-          {error}
-        </AppText>
-      ) : helperText ? (
-        <AppText variant="caption" tone="muted" style={styles.message}>
-          {helperText}
-        </AppText>
-      ) : null}
+      {isCompact ? (
+        error ? (
+          <AppText variant="caption" tone="danger" accessibilityRole="alert" style={styles.message}>
+            {error}
+          </AppText>
+        ) : helperText ? (
+          <AppText variant="caption" tone="muted" style={styles.message}>
+            {helperText}
+          </AppText>
+        ) : null
+      ) : (
+        <View style={styles.feedbackRow}>
+          {error ? (
+            <AppText variant="caption" tone="danger" accessibilityRole="alert">
+              {error}
+            </AppText>
+          ) : helperText ? (
+            <AppText variant="caption" tone="muted">
+              {helperText}
+            </AppText>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 });
@@ -220,6 +234,11 @@ const styles = StyleSheet.create({
   },
   message: {
     marginTop: tokens.spacing.xs,
+  },
+  feedbackRow: {
+    minHeight: 20,
+    marginTop: tokens.spacing.xs,
+    justifyContent: 'center',
   },
 });
 
