@@ -30,6 +30,12 @@ type Props = {
    * glyph carries a shadow instead, so it stays legible over any photo.
    */
   surface?: 'filled' | 'bare';
+  /**
+   * `false` renders the mark still. For a host that carries the heartbeat
+   * itself (the Bag It button), so the glyph does not beat against it. Every
+   * existing caller keeps the default and its bounded pulse.
+   */
+  animated?: boolean;
 };
 
 const resolveScale = (status: BagPulseStatus, context: BagPulseContext) => {
@@ -51,6 +57,7 @@ export function BagPulseIcon({
   size = 42,
   style,
   surface = 'filled',
+  animated = true,
 }: Props) {
   const { theme } = useTheme();
   const pulse = useRef(new Animated.Value(0)).current;
@@ -59,7 +66,7 @@ export function BagPulseIcon({
   const shapeRadius = Math.max(tokens.radius.md, size / 3);
 
   useEffect(() => {
-    if (status === 'disabled') {
+    if (status === 'disabled' || !animated) {
       pulse.setValue(0);
       return undefined;
     }
@@ -97,7 +104,7 @@ export function BagPulseIcon({
 
     loop.start();
     return () => loop.stop();
-  }, [context, pulse, status]);
+  }, [animated, context, pulse, status]);
 
   const scale = pulse.interpolate({
     inputRange: [0, 1],

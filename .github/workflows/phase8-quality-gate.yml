@@ -158,3 +158,10 @@ jobs:
 
       - name: Performance regression guard
         run: npm run check:perf-regressions
+
+      # One product card, one Bag It mark and one section system across Studio
+      # (web, in the WebView), the Shop tab and Market. The cross-repo half
+      # skips here because the web repo is not checked out in this job; the
+      # native rules (bounded heartbeat, inline strips) still run.
+      - name: Market presentation contract
+        run: npm run test:market-presentation-contract

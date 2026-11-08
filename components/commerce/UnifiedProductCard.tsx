@@ -1,24 +1,47 @@
 import React, { memo, useState } from 'react';
 import { BAG_IT_LABEL, CUSTOM_ORDER_EMOJI } from '@/src/constants/bagging';
-import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
+import type { BagPulseStatus } from '@/components/ui/BagPulseIcon';
 import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { BagItButton } from '@/components/commerce/BagItButton';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { CLIP_EMOJI, clipAccessibilityLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
+/**
+ * Height of the photo frame as a multiple of the card width (100:148).
+ *
+ * The same ratio as the web product tile (`PRODUCT_TILE_MEDIA_RATIO` in
+ * fthreadly), which Studio's store grid renders inside the app's WebView — so a
+ * product is the same shape in Studio, on the Shop tab and on Market. A
+ * contract test keeps the two numbers equal.
+ */
+export const PRODUCT_TILE_MEDIA_RATIO = 1.48;
+
+/**
+ * Height of the copy area under the photo: padding, two reserved title lines,
+ * the brand line, the price line and the action button. Placeholders use it so
+ * a loading card is the same size as the card that replaces it.
+ */
+export const PRODUCT_CARD_BODY_HEIGHT =
+  tokens.spacing.sm * 2 +
+  tokens.typography.smallBold.lineHeight * 2 +
+  tokens.typography.caption.lineHeight +
+  tokens.typography.moneySmall.lineHeight +
+  tokens.spacing.xs * 4 +
+  tokens.button.md.height;
+
 type UnifiedProductCardProps = {
   width: number;
-  height?: number;
   title: string;
   brandName?: string | null;
   priceLabel?: string | null;
@@ -37,9 +60,17 @@ type UnifiedProductCardProps = {
   favorite?: boolean;
   favoriteBusy?: boolean;
   favoriteAccessibilityLabel?: string;
+  /**
+   * `BAG_IT_LABEL` renders the shared Bag It button; any other label renders a
+   * plain button with that word. With no label the card offers "View", so every
+   * card in a row has the same action row and the same height.
+   */
   actionLabel?: string;
   actionBusy?: boolean;
   actionDisabled?: boolean;
+  /** Bag state shown on the Bag It mark (bagged before, in the bag now…). */
+  bagStatus?: BagPulseStatus;
+  bagMode?: 'standard' | 'custom';
   topRightSlot?: React.ReactNode;
   metaLabel?: string | null;
   newDropItemId?: string;
@@ -74,10 +105,21 @@ const IMAGE_FALLBACK_ICON = String.fromCodePoint(0x1f5bc, 0xfe0f);
 */
 const FAVORITE_ICON = CLIP_EMOJI;
 
+/**
+ * The one product card in the app.
+ *
+ * Laid out like a video feed card and like Studio's store grid: the photograph
+ * owns the top of the card edge to edge, and everything you read sits under
+ * it on the card surface. The image used to carry the title, price and bag on
+ * a blurred, darkened panel across its lower fifth, with a scrim above it —
+ * every product was shown through a grey wash. Moving the copy off the photo
+ * is what lets the picture stay at full colour; only a light band at the very
+ * top remains, to keep the corner controls legible.
+ */
 export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
-  height,
   title,
+  brandName,
   priceLabel,
   customOrder = false,
   mediaSrc,
@@ -89,7 +131,10 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   actionLabel,
   actionBusy = false,
   actionDisabled = false,
+  bagStatus,
+  bagMode = 'standard',
   topRightSlot,
+  metaLabel,
   newDropItemId,
   newDropCreatedAt,
   analyticsSourceScreen = 'market',
@@ -101,7 +146,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   onFavoritePress,
   onActionPress,
 }: UnifiedProductCardProps) {
-  const { theme, scheme } = useTheme();
+  const { theme } = useTheme();
   const resolvedUri = useResolvedImageUri({
     src: mediaSrc,
     fileId: mediaFileId,
@@ -110,18 +155,19 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   });
   // Same rule as CollectionCard: a source that is still resolving or decoding
   // shows a skeleton; "Image unavailable" is only for no source or a real error.
-  // It used to show whenever `resolvedUri` was null — which includes the whole
-  // time a file-ID image is being resolved.
+  // Paint/failure are keyed by URI, so a recycled cell that receives a new
+  // product never shows the previous product's loaded or failed state.
   const hasMediaSource = Boolean(mediaSrc || mediaFileId);
   const [paintedUri, setPaintedUri] = useState<string | null>(null);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const mediaFailed = Boolean(resolvedUri) && failedUri === resolvedUri;
   const mediaPainted = Boolean(resolvedUri) && paintedUri === resolvedUri;
   const showMediaSkeleton = hasMediaSource && !mediaFailed && !mediaPainted;
-  const cardHeight = height ?? Math.round(width * 1.58);
+  const mediaHeight = Math.round(width * PRODUCT_TILE_MEDIA_RATIO);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;
   const displayPrice = priceLabel?.trim() || 'Price on request';
   const isBagAction = actionLabel === BAG_IT_LABEL;
+  const meta = (metaLabel ?? brandName)?.trim() || null;
 
   return (
     <Pressable
@@ -129,224 +175,136 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
       onPressIn={onPressIn}
       style={({ pressed }) => [
         styles.card,
-        {
-          width,
-          height: cardHeight,
-          borderColor: theme.colors.glassBorder,
-          backgroundColor: theme.colors.surfaceAlt,
-        },
+        { width, backgroundColor: theme.colors.surfaceAlt },
         pressed && styles.cardPressed,
         style,
       ]}
       accessibilityRole="button"
       accessibilityLabel={`Open ${title}`}
     >
-      {showMediaSkeleton ? (
-        <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
-      ) : null}
-      {resolvedUri && !mediaFailed ? (
-        <StableImage
-          uri={resolvedUri}
-          resizeMode="cover"
-          containerStyle={styles.media}
-          imageStyle={styles.media}
-          fadeDuration={0}
-          onLoad={() => setPaintedUri(resolvedUri)}
-          onError={() => setFailedUri(resolvedUri)}
-        />
-      ) : showMediaSkeleton ? null : (
-        <LinearGradient
-          colors={[theme.colors.surfaceAlt, theme.colors.surface, theme.colors.surfaceAlt]}
-          style={styles.fallback}
-        >
-          <AppText variant="title" tone="muted">
-            {IMAGE_FALLBACK_ICON}
-          </AppText>
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            Image unavailable
-          </AppText>
-        </LinearGradient>
-      )}
-
-      {/*
-        The TOP band only, and lightly.
-
-        This was one gradient across the whole card — `backdrop` to
-        `backdropStrong`, i.e. 58% to 80% black over the entire photograph on the
-        dark theme (22% to 40% on light). Every product in the grid was being
-        shown through a grey wash, which is exactly the "cards look dull, nothing
-        pops" report, and it was doing that to protect two things that both sit
-        in the top ~20pt: the New Drop badge and the favourite button.
-
-        Both already carry their own treatment — the badge has a text shadow, the
-        button has a plate — so this is `light` and reaches a quarter of the way
-        down. Below that the artwork is untouched all the way to the copy panel,
-        which brings its own ramp.
-      */}
-      <MediaScrim edges={['top']} reach={0.26} strength="light" />
-
-      {newDropItemId ? (
-        <NewDropBadge
-          itemId={newDropItemId}
-          createdAt={newDropCreatedAt}
-          sourceScreen={analyticsSourceScreen}
-          feedPosition={feedPosition}
-          style={styles.newDropBadge}
-        />
-      ) : null}
-
-      {/*
-        The price used to be a floating chip pinned over the artwork here, and
-        the custom-order state was folded into it as the words "Custom quote" —
-        which, in a chip that narrow, rendered as "Custo...". Both are card COPY
-        and belong in the copy panel with the title, where there is room for
-        them and only one text surface on the card. See `metaRow` below.
-      */}
-      {topRightSlot ? (
-        <View style={styles.topRightSlot}>{topRightSlot}</View>
-      ) : onFavoritePress ? (
-        <Pressable
-          onPress={(event) => {
-            event.stopPropagation();
-            onFavoritePress();
-          }}
-          disabled={favoriteBusy}
-          hitSlop={tokens.spacing.sm}
-          style={({ pressed }) => [
-            styles.favoriteButton,
-            favorite
-              ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
-              : { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
-            pressed && styles.inlinePressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={favoriteAccessibilityLabel ?? clipAccessibilityLabel(favorite)}
-        >
-          {favoriteBusy ? (
-            <MuseLoader size={20} />
-          ) : (
-            <AppText variant="captionBold" tone="inverse">
-              {FAVORITE_ICON}
+      <View style={[styles.media, { height: mediaHeight, backgroundColor: theme.colors.surface }]}>
+        {showMediaSkeleton ? (
+          <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
+        ) : null}
+        {resolvedUri && !mediaFailed ? (
+          <StableImage
+            uri={resolvedUri}
+            resizeMode="cover"
+            containerStyle={StyleSheet.absoluteFill}
+            imageStyle={StyleSheet.absoluteFill}
+            fadeDuration={0}
+            onLoad={() => setPaintedUri(resolvedUri)}
+            onError={() => setFailedUri(resolvedUri)}
+          />
+        ) : showMediaSkeleton ? null : (
+          <LinearGradient
+            colors={[theme.colors.surfaceAlt, theme.colors.surface, theme.colors.surfaceAlt]}
+            style={styles.fallback}
+          >
+            <AppText variant="title" tone="muted">
+              {IMAGE_FALLBACK_ICON}
             </AppText>
-          )}
-        </Pressable>
-      ) : null}
-
-      <BlurView
-        tint={scheme === 'dark' ? 'dark' : 'light'}
-        intensity={theme.colors.glassBlur as number}
-        style={[styles.copyOverlay, { maxHeight: Math.round(cardHeight * 0.2) }]}
-      >
-        {/*
-          A gradient, so the panel has no top edge to see.
-
-          This was a flat `backdropStrong` fill inside an inset, rounded box —
-          a visible dark rectangle pasted onto the photograph, with its own
-          corners and its own hard boundary. Ramping from transparent into the
-          same strong scrim means the panel emerges out of the image instead of
-          sitting on it, and the text still lands on the opaque end where it is
-          legible over anything.
-        */}
-        <LinearGradient
-          pointerEvents="none"
-          colors={[tokens.scrim(0), tokens.scrim(0.45), theme.colors.backdropStrong]}
-          locations={[0, 0.4, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.copyStack}>
-          <View style={styles.titleBlock}>
-            <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-              {title}
+            <AppText variant="caption" tone="muted" numberOfLines={1}>
+              Image unavailable
             </AppText>
-          </View>
+          </LinearGradient>
+        )}
 
-          <View style={styles.actionRow}>
-            <View style={styles.metaBlock}>
-              {customOrder ? (
-                <AppText
-                  variant="captionBold"
-                  tone="inverse"
-                  style={styles.customMark}
-                  accessibilityLabel="Custom order available"
-                >
-                  {CUSTOM_ORDER_EMOJI}
-                </AppText>
-              ) : null}
-              <AppText
-                variant="captionBold"
-                tone="inverse"
-                numberOfLines={1}
-                style={styles.priceText}
-              >
-                {displayPrice}
+        {/* The top band only, and lightly: it protects the New Drop badge and
+            the clip control. The rest of the photograph is untouched. */}
+        {newDropItemId || topRightSlot || onFavoritePress ? (
+          <MediaScrim edges={['top']} reach={0.22} strength="light" />
+        ) : null}
+
+        {newDropItemId ? (
+          <NewDropBadge
+            itemId={newDropItemId}
+            createdAt={newDropCreatedAt}
+            sourceScreen={analyticsSourceScreen}
+            feedPosition={feedPosition}
+            style={styles.newDropBadge}
+          />
+        ) : null}
+
+        {topRightSlot ? (
+          <View style={styles.topRightSlot}>{topRightSlot}</View>
+        ) : onFavoritePress ? (
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+              onFavoritePress();
+            }}
+            disabled={favoriteBusy}
+            hitSlop={tokens.spacing.sm}
+            style={({ pressed }) => [
+              styles.favoriteButton,
+              favorite
+                ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+                : { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
+              pressed && styles.inlinePressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={favoriteAccessibilityLabel ?? clipAccessibilityLabel(favorite)}
+          >
+            {favoriteBusy ? (
+              <MuseLoader size={20} />
+            ) : (
+              <AppText variant="captionBold" tone="inverse">
+                {FAVORITE_ICON}
               </AppText>
-            </View>
-            {actionLabel ? (
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation();
-                  onActionPress?.();
-                }}
-                disabled={!canPressAction}
-                hitSlop={tokens.spacing.sm}
-                style={({ pressed }) => [
-                  isBagAction ? styles.bagAction : styles.actionButton,
-                  isBagAction
-                    ? null
-                    : {
-                        backgroundColor: canPressAction
-                          ? theme.colors.primary
-                          : theme.colors.controlSurfaceActive,
-                        borderColor: canPressAction ? theme.colors.primary : theme.colors.glassBorder,
-                        opacity: canPressAction ? 1 : 0.72,
-                      },
-                  pressed && canPressAction && styles.inlinePressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={actionLabel}
-              >
-                {/*
-                  The bag MARK, not the words "Bag It".
+            )}
+          </Pressable>
+        ) : null}
+      </View>
 
-                  A card is mostly photograph; the two words competed with the
-                  title and the price for the little text room there is, and
-                  they say nothing the shopping-bag glyph does not. Any other
-                  action ("Out", "View") keeps its word, because those have no
-                  established mark. The full label stays on
-                  `accessibilityLabel`, so nothing is lost to a screen reader.
-                */}
-                {actionBusy && !isBagAction ? (
-                  <MuseLoader size={20} />
-                ) : isBagAction ? (
-                  /*
-                    The mark and its heartbeat, with nothing behind it.
-
-                    This was the bag glyph on a solid purple pill — a filled
-                    button dropped onto the photograph, which is the loudest
-                    element on a card whose subject is the garment. `bare` keeps
-                    the pulse (that is what says the control is live) and drops
-                    the plate. Busy state rides the same icon rather than
-                    swapping in a spinner, so the glyph never disappears
-                    mid-tap.
-                  */
-                  <BagPulseIcon
-                    status={
-                      actionBusy ? 'bagging' : canPressAction ? 'not_bagged' : 'disabled'
-                    }
-                    context="multi_card"
-                    surface="bare"
-                    size={30}
-                  />
-                ) : (
-                  <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-                    {actionLabel}
-                  </AppText>
-                )}
-              </Pressable>
-            ) : null}
-          </View>
+      <View style={styles.body}>
+        {/* Two lines are always reserved, so a short name and a long name make
+            cards of the same height and a row's prices line up. */}
+        <View style={styles.titleBlock}>
+          <AppText variant="smallBold" numberOfLines={2}>
+            {title}
+          </AppText>
         </View>
-      </BlurView>
+        <AppText variant="caption" tone="muted" numberOfLines={1}>
+          {meta ?? ' '}
+        </AppText>
+        <View style={styles.priceRow}>
+          <View style={styles.priceText}>
+            <AppText variant="moneySmall" tone="primary" numberOfLines={1}>
+              {displayPrice}
+            </AppText>
+          </View>
+          {customOrder ? (
+            <AppText variant="captionBold" accessibilityLabel="Custom order available">
+              {CUSTOM_ORDER_EMOJI}
+            </AppText>
+          ) : null}
+        </View>
+
+        <View style={styles.actionRow}>
+          {isBagAction ? (
+            <BagItButton
+              onPress={canPressAction ? onActionPress : undefined}
+              busy={actionBusy}
+              disabled={!canPressAction && !actionBusy}
+              status={bagStatus}
+              mode={bagMode}
+              accessibilityLabel={actionLabel}
+            />
+          ) : (
+            <Button
+              title={actionLabel ?? 'View'}
+              size="md"
+              variant="secondary"
+              fullWidth
+              disabled={actionLabel ? !canPressAction : false}
+              loading={actionLabel ? actionBusy : false}
+              onPress={actionLabel ? onActionPress : onPress}
+              accessibilityLabel={actionLabel ?? `View ${title}`}
+            />
+          )}
+        </View>
+      </View>
     </Pressable>
   );
 });
@@ -354,20 +312,21 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
 const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    elevation: 4,
   },
   cardPressed: {
-    opacity: 0.9,
+    opacity: 0.92,
     transform: [{ scale: 0.985 }],
   },
   media: {
-    ...StyleSheet.absoluteFill,
+    width: '100%',
+    borderRadius: tokens.radius.lg,
+    overflow: 'hidden',
   },
   fallback: {
     ...StyleSheet.absoluteFill,
@@ -379,9 +338,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: tokens.spacing.sm,
     top: tokens.spacing.sm,
-    // No width cap and no dimming. The cap was ~30pt on a two-up grid and
-    // clipped the label to nothing; the badge is now bare text, so it takes
-    // only the room the word needs and cannot collide with anything.
   },
   topRightSlot: {
     position: 'absolute',
@@ -399,67 +355,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  /**
-   * Full-bleed. The card's own rounding clips it, so the panel needs none.
-   *
-   * It used to be inset on three sides with its own radius, which read as a
-   * floating chip laid over the artwork — two sets of rounded corners, one
-   * inside the other, and a strip of untouched photo between them. Taking it to
-   * the edges lets the media fill the card and leaves the gradient above as the
-   * only thing separating text from image.
-   */
-  copyOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-  },
-  copyStack: {
+  body: {
     paddingHorizontal: tokens.spacing.sm,
+    paddingTop: tokens.spacing.sm,
     paddingBottom: tokens.spacing.sm,
-    paddingTop: tokens.spacing.xs,
     gap: tokens.spacing.xs,
   },
   titleBlock: {
+    // Two lines of `smallBold` (lineHeight 19).
+    minHeight: tokens.typography.smallBold.lineHeight * 2,
     minWidth: 0,
   },
-  actionRow: {
-    minHeight: 26,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  metaBlock: {
-    flex: 1,
-    minWidth: 0,
+  priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
   },
-  customMark: {
-    textShadowColor: tokens.scrim(0.9),
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
   priceText: {
-    flexShrink: 1,
+    flex: 1,
     minWidth: 0,
   },
-  bagAction: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionButton: {
-    minWidth: 50,
-    height: 26,
-    borderRadius: tokens.radius.md,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.xs,
+  actionRow: {
+    paddingTop: tokens.spacing.xs,
   },
   inlinePressed: {
     opacity: 0.82,

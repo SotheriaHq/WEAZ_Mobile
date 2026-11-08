@@ -155,6 +155,12 @@ function ProductCard({
     : discountLabel ?? (product.customOrderEnabled ? 'Custom' : 'Product');
   const metaLabel = product.categoryName ?? (product.customOrderEnabled ? 'Custom-ready' : 'Ready to wear');
 
+  /*
+    The bag lives in the card's Bag It button now — the same mark, bag state
+    and heartbeat it had as a plate in the corner, on the same button every
+    other card uses. Pressing it opens the product, where size and fittings are
+    chosen before anything is bagged (as the old "View" action did).
+  */
   return (
     <UnifiedProductCard
       width={width}
@@ -162,24 +168,18 @@ function ProductCard({
       title={product.name}
       brandName={metaLabel}
       priceLabel={formatPrice(product.price, product.currency)}
+      customOrder={Boolean(product.customOrderEnabled)}
       mediaSrc={product.coverImage}
       mediaFileId={product.coverImageId}
       allowSignedFallback={false}
       typeLabel={typeLabel}
       metaLabel={wishlisted ? 'Wishlist' : metaLabel}
-      actionLabel="View"
+      actionLabel={BAG_IT_LABEL}
       actionBusy={busy}
+      actionDisabled={pulseStatus === 'disabled'}
+      bagStatus={pulseStatus}
+      bagMode={customBagged && !standardBagged ? 'custom' : 'standard'}
       onActionPress={onPress}
-      topRightSlot={
-        <View style={[styles.cardBagAffordance, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-          <BagPulseIcon
-            status={pulseStatus}
-            context="multi"
-            mode={customBagged && !standardBagged ? 'custom' : 'standard'}
-            size={34}
-          />
-        </View>
-      }
     />
   );
 }
@@ -1449,14 +1449,6 @@ const styles = StyleSheet.create({
   },
   imageFallback: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardBagAffordance: {
-    width: 38,
-    height: 38,
-    borderRadius: tokens.radius.md,
-    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
