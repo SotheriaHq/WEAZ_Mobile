@@ -1,6 +1,53 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+
+/** APK Signature Scheme block IDs: v2, v3 and v3.1. */
+const SIGNATURE_SCHEME_IDS = new Set([0x7109871a, 0xf05368c0, 0x1b93ad61]);
+
+/**
+ * SHA-256 of every signer's certificate in an APK's signing block (v2/v3/v3.1),
+ * read from the binary format itself rather than from a tool's printed text —
+ * apksigner builds word their output differently, and a check that parsed the
+ * text refused a correctly signed APK because one build laid it out another way.
+ * apksigner still proves the signatures are valid; this only says WHOSE they are.
+ */
+function apkSignerCertificates(apk) {
+  const magic = Buffer.from('APK Sig Block 42');
+  const magicAt = apk.lastIndexOf(magic);
+  if (magicAt < 8) throw Error('The APK has no signing block.');
+  const blockSize = Number(apk.readBigUInt64LE(magicAt - 8));
+  const blockStart = magicAt + 16 - blockSize - 8;
+  if (blockStart < 0) throw Error('The APK signing block is malformed.');
+  const digests = [];
+  let pair = blockStart + 8;
+  const pairsEnd = magicAt - 8;
+  while (pair + 12 <= pairsEnd) {
+    const pairLength = Number(apk.readBigUInt64LE(pair));
+    const id = apk.readUInt32LE(pair + 8);
+    const value = apk.subarray(pair + 12, pair + 8 + pairLength);
+    if (SIGNATURE_SCHEME_IDS.has(id)) {
+      // value: u32 signers length, then length-prefixed signers.
+      let cursor = 4;
+      const signersEnd = 4 + value.readUInt32LE(0);
+      while (cursor + 4 <= signersEnd) {
+        const signerLength = value.readUInt32LE(cursor);
+        const signer = value.subarray(cursor + 4, cursor + 4 + signerLength);
+        // signer: u32 signed-data length, signed data = digests seq, certificates seq.
+        const signedData = signer.subarray(4, 4 + signer.readUInt32LE(0));
+        const digestsLength = signedData.readUInt32LE(0);
+        const certificates = 4 + digestsLength + 4;
+        const certificateLength = signedData.readUInt32LE(certificates);
+        const certificate = signedData.subarray(certificates + 4, certificates + 4 + certificateLength);
+        digests.push(crypto.createHash('sha256').update(certificate).digest('hex'));
+        cursor += 4 + signerLength;
+      }
+    }
+    pair += 8 + pairLength;
+  }
+  return digests;
+}
 
 const PUBLIC_DEBUG_CERT = 'fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c';
 function signingInputs(env) {
@@ -55,7 +102,11 @@ function signingJar(env) {
 }
 
 /** Sign into private temporary storage, verify the pinned certificate, then publish a copy. */
-function signApk(input, output, { env = process.env, execute = spawnSync } = {}) {
+function signApk(input, output, {
+  env = process.env,
+  execute = spawnSync,
+  readCertificates = (file) => apkSignerCertificates(fs.readFileSync(file)),
+} = {}) {
   const { bytes, certificate } = signingInputs(env);
   const source = path.resolve(input), destination = path.resolve(output);
   if (source === destination || !/\.apk$/i.test(source) || !/\.apk$/i.test(destination) ||
@@ -81,15 +132,14 @@ function signApk(input, output, { env = process.env, execute = spawnSync } = {})
     const verified = execute(java, ['-jar', jar, 'verify', '--verbose', '--print-certs', signed], options);
     if (verified.status !== 0)
       throw Error('The APK signature does not match the configured release certificate. No APK was published.');
-    let signer;
-    try {
-      signer = signerCertificate(verified.stdout || '');
-    } catch (error) {
-      console.log(signerSummary(verified.stdout));
-      throw error;
+    // apksigner proved the signatures valid; the signing block says whose they are.
+    const signers = [...new Set(readCertificates(signed))];
+    if (signers.length !== 1) {
+      console.log(`The APK signer check found ${signers.length} distinct signer certificates: ${signers.join(' | ') || 'none'}.`);
+      throw Error('The APK must have exactly one verified release signer.');
     }
-    if (signer !== certificate) {
-      console.log(signerSummary(verified.stdout));
+    if (signers[0] !== certificate) {
+      console.log(`The APK signer check found certificate ${signers[0]}.`);
       throw Error('The APK signature does not match the configured release certificate. No APK was published.');
     }
     fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -104,7 +154,7 @@ function signApk(input, output, { env = process.env, execute = spawnSync } = {})
   }
 }
 
-module.exports = { signingInputs, signerCertificate, signerSummary, signApk, PUBLIC_DEBUG_CERT };
+module.exports = { signingInputs, signerCertificate, signerSummary, apkSignerCertificates, signApk, PUBLIC_DEBUG_CERT };
 if (require.main === module) {
   try {
     if (process.argv.length !== 4) throw Error('Usage: node scripts/sign-android-apk.cjs <input.apk> <new-output.apk>');

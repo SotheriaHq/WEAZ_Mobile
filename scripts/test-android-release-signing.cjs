@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { signingInputs, signerCertificate, signerSummary, signApk, PUBLIC_DEBUG_CERT } = require('./sign-android-apk.cjs');
+const { signingInputs, signerCertificate, signerSummary, apkSignerCertificates, signApk, PUBLIC_DEBUG_CERT } = require('./sign-android-apk.cjs');
 const certificate = '12'.repeat(32);
 const fields = { ANDROID_KEYSTORE_BASE64: Buffer.alloc(256, 1).toString('base64'), ANDROID_KEYSTORE_PASSWORD: 'private-store',
   ANDROID_KEY_ALIAS: 'test-key', ANDROID_KEY_PASSWORD: 'private-key', ANDROID_SIGNING_CERT_SHA256: certificate };
@@ -51,7 +51,7 @@ test('publishes only after successful signing and certificate verification; pass
     if (args[2] === 'sign') { fs.writeFileSync(args[args.indexOf('--out') + 1], 'signed'); assert(!fs.existsSync(f.output)); return { status: 0 }; }
     return { status: 0, stdout: `Signer #1 certificate SHA-256 digest: ${certificate}` };
   };
-  assert.equal(signApk(f.input, f.output, { env: f.env, execute }).certificateSha256, certificate);
+  assert.equal(signApk(f.input, f.output, { env: f.env, execute, readCertificates: () => [certificate, certificate] }).certificateSha256, certificate);
   assert.equal(calls, 2); assert.equal(fs.readFileSync(f.output, 'utf8'), 'signed'); assert.equal(fs.readFileSync(f.input, 'utf8'), 'original');
   assert(!fs.readdirSync(f.root).some(name => name.startsWith('wiez-sign-')));
 });
@@ -62,9 +62,34 @@ test('a wrong signer or failed cryptographic verification produces no publishabl
       if (args[2] === 'sign') { fs.writeFileSync(args[args.indexOf('--out') + 1], 'untrusted'); return { status: 0 }; }
       return { status, stdout: `Signer #1 certificate SHA-256 digest: ${'ab'.repeat(32)}` };
     };
-    assert.throws(() => signApk(f.input, f.output, { env: f.env, execute }), /signature does not match/);
+    assert.throws(() => signApk(f.input, f.output, { env: f.env, execute, readCertificates: () => ['ab'.repeat(32)] }), /signature does not match/);
     assert(!fs.existsSync(f.output)); assert(!fs.readdirSync(f.root).some(name => name.startsWith('wiez-sign-')));
   }
+});
+test('two different signer certificates are refused, and nothing is published', context => {
+  const f = fixture(context);
+  const execute = (_java, args) => {
+    if (args[2] === 'sign') { fs.writeFileSync(args[args.indexOf('--out') + 1], 'signed'); return { status: 0 }; }
+    return { status: 0, stdout: '' };
+  };
+  assert.throws(() => signApk(f.input, f.output, { env: f.env, execute, readCertificates: () => [certificate, 'ab'.repeat(32)] }), /exactly one/);
+  assert(!fs.existsSync(f.output)); assert(!fs.readdirSync(f.root).some(name => name.startsWith('wiez-sign-')));
+});
+test('the signing block reader finds every signer certificate in a v2/v3 block', () => {
+  const cert = Buffer.from('a release certificate');
+  const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
+  const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
+  const lp = (buf) => Buffer.concat([u32(buf.length), buf]);
+  const signedData = Buffer.concat([lp(Buffer.alloc(0)), lp(lp(cert))]);
+  const signer = lp(Buffer.concat([lp(signedData), lp(Buffer.alloc(0)), lp(Buffer.alloc(0))]));
+  const value = Buffer.concat([lp(Buffer.concat([signer, signer]))]);
+  const pair = Buffer.concat([u64(4 + value.length), u32(0x7109871a), value]);
+  const size = pair.length + 8 + 16;
+  const block = Buffer.concat([u64(size), pair, u64(size), Buffer.from('APK Sig Block 42')]);
+  const apk = Buffer.concat([Buffer.from('zip entries'), block, Buffer.from('central directory')]);
+  const expected = require('node:crypto').createHash('sha256').update(cert).digest('hex');
+  assert.deepEqual(apkSignerCertificates(apk), [expected, expected]);
+  assert.throws(() => apkSignerCertificates(Buffer.from('not an apk')), /no signing block/);
 });
 test('a failed signing command cannot publish or leave a keystore in the temporary directory', context => {
   const f = fixture(context);
