@@ -14,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useIsFocused } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
-import { BlurView } from 'expo-blur';
 
 import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
@@ -54,6 +53,17 @@ import {
 import { MarketEmptyState, MarketErrorState } from '@/src/features/market/components/MarketStates';
 import { MarketSkeleton } from '@/src/features/market/components/MarketSkeleton';
 import {
+  BrandTile,
+  CategoryTile,
+  CollectionShelfCard,
+  type CoverSource,
+} from '@/src/features/market/components/MarketEntityCards';
+import {
+  MARKET_RHYTHM,
+  getMarketSectionEmoji,
+  resolveMarketSectionFormat,
+} from '@/src/constants/marketSections';
+import {
   DEFAULT_MARKET_FILTERS,
   normalizeOption,
   parsePriceFilter,
@@ -82,8 +92,16 @@ import { formatMoney } from '@/src/utils/money';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const SIDE_PADDING = tokens.spacing.lg;
-const SECTION_GAP = tokens.spacing.xl;
+/**
+ * Section rhythm: 40pt between sections against 12pt between a section's title
+ * and its cards. Above 3:1, each title unmistakably belongs to the cards under
+ * it, so sections read as separate groups without a rule or box around each.
+ * Shared with the web through `src/constants/marketSections.ts`.
+ */
+const SECTION_GAP = MARKET_RHYTHM.betweenSections;
 const CARD_GAP = tokens.spacing.md;
+/** Brand marks are small and many: a narrow, fixed column. */
+const BRAND_TILE_WIDTH = 96;
 const HERO_INTERVAL_MS = 3000;
 /** Level sliders — the filter/adjust glyph, not the settings cog. */
 const MARKET_FILTER_EMOJI = String.fromCodePoint(0x1f39a, 0xfe0f);
@@ -99,7 +117,9 @@ type MarketRow =
       id: string;
       type: 'HORIZONTAL_CARD_ROW';
       title: string;
-      subtitle?: string;
+      /** Shopper-facing line above the title: why this section is here. */
+      label?: string;
+      emojiKey: string;
       items: MarketContentItem[];
       source?: 'moodboard';
       onSeeAll?: () => void;
@@ -114,7 +134,7 @@ type MarketRow =
       id: 'adire';
       type: 'ADIRE_ROW';
       title: string;
-      subtitle: string;
+      label: string;
       items: MarketContentItem[];
       onSeeAll: () => void;
     }
@@ -122,7 +142,7 @@ type MarketRow =
       id: 'latest-collections';
       type: 'COLLECTION_ROW';
       title: string;
-      subtitle: string;
+      label: string;
       items: StoreCollectionSummary[];
       error: string | null;
     }
@@ -502,7 +522,7 @@ function buildRows(args: {
       id: 'adire',
       type: 'ADIRE_ROW',
       title: 'Adire Casual',
-      subtitle: 'Indigo-dyed pieces, everyday cuts',
+      label: 'Indigo-dyed, everyday cuts',
       items: adireItems,
       onSeeAll: openAdireAll,
     });
@@ -525,7 +545,8 @@ function buildRows(args: {
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
       title: 'Fresh on WIEZ',
-      subtitle: 'New arrivals and emerging designer drops',
+      label: 'Just landed',
+      emojiKey: 'fresh-drops',
       items: freshItems,
       onSeeAll: setNewestView,
     });
@@ -539,8 +560,11 @@ function buildRows(args: {
     rows.push({
       id: 'bestsellers-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Highest Sales & Most Coveted',
-      subtitle: 'Verified top pieces and collector favorites',
+      // In-stock products and well-liked designs. It used to say "Highest
+      // Sales" — this filter knows nothing about sales, so it no longer claims it.
+      title: 'Ready to shop',
+      label: 'In stock and well loved',
+      emojiKey: 'hot-right-now',
       items: bestsellers,
       onSeeAll: () => openApiSection('hot-right-now'),
     });
@@ -551,8 +575,9 @@ function buildRows(args: {
     rows.push({
       id: 'custom-ready-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Artisanal Custom Fit Runway',
-      subtitle: 'Start a tailored request from the feed',
+      title: 'Made to your measurements',
+      label: 'Custom order ready',
+      emojiKey: 'custom-fit',
       items: customReady,
       onSeeAll: setCustomReadyView,
     });
@@ -563,7 +588,8 @@ function buildRows(args: {
       id: 'for-moodboard',
       type: 'HORIZONTAL_CARD_ROW',
       title: 'For your moodboard',
-      subtitle: 'Looks to save for inspiration',
+      label: 'Looks to save for inspiration',
+      emojiKey: 'for-moodboard',
       items: moodboardItems,
       source: 'moodboard',
     });
@@ -572,8 +598,8 @@ function buildRows(args: {
   rows.push({
     id: 'latest-collections',
     type: 'COLLECTION_ROW',
-    title: 'Latest Collections',
-    subtitle: 'Shop complete edits from WIEZ brands',
+    title: 'Latest collections',
+    label: 'Complete edits from WIEZ brands',
     items: collections,
     error: collectionError,
   });
@@ -585,7 +611,6 @@ function buildRows(args: {
 type MarketCardProps = {
   item: MarketContentItem;
   width: number;
-  height?: number;
   favorite: boolean;
   bagBusy: boolean;
   favoriteBusy: boolean;
@@ -597,7 +622,6 @@ type MarketCardProps = {
 function MarketProductCard({
   item,
   width,
-  height,
   favorite,
   bagBusy,
   favoriteBusy,
@@ -611,7 +635,6 @@ function MarketProductCard({
   return (
     <UnifiedProductCard
       width={width}
-      height={height}
       title={getItemTitle(item)}
       brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
@@ -639,7 +662,6 @@ function MarketProductCard({
 function MarketDesignCard({
   item,
   width,
-  height,
   favorite,
   bagBusy,
   favoriteBusy,
@@ -653,7 +675,6 @@ function MarketDesignCard({
   return (
     <UnifiedProductCard
       width={width}
-      height={height}
       title={getItemTitle(item)}
       brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
@@ -821,106 +842,95 @@ function MarketHeroCarousel({
 }
 
 
-function CollectionCard({
-  collection,
-  width,
-  onOpen,
+/**
+ * A section's heading: the shopper-facing label, the emoji landmark and the
+ * title, and the way out. Every section uses it, so every section starts the
+ * same way and the eye learns where to look.
+ */
+function SectionHeader({
+  emoji,
+  title,
+  label,
+  onSeeAll,
 }: {
-  collection: StoreCollectionSummary;
-  width: number;
-  onOpen: (collection: StoreCollectionSummary) => void;
+  emoji: string;
+  title: string;
+  label?: string | null;
+  onSeeAll?: () => void;
 }) {
-  const { theme } = useTheme();
-  const imageUri = useResolvedImageUri({
-    src: collection.coverImage,
-    fileId: collection.coverImageId,
-    enabled: Boolean(collection.coverImage || collection.coverImageId),
-  });
-
   return (
-    <Pressable
-      onPress={() => onOpen(collection)}
-      style={({ pressed }) => [
-        styles.collectionCard,
-        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`View ${collection.title} collection`}
-    >
-      {imageUri ? (
-        <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.collectionImage} imageStyle={styles.collectionImage} />
-      ) : (
-        <View style={[styles.collectionImage, { backgroundColor: theme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
-          <AppText variant="title" tone="muted">{String.fromCodePoint(0x1f5bc, 0xfe0f)}</AppText>
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleBlock}>
+        {label ? (
+          <AppText variant="statLabel" tone="primary" numberOfLines={1}>
+            {label.toUpperCase()}
+          </AppText>
+        ) : null}
+        <View style={styles.sectionTitleRow}>
+          <AppText variant="subtitle" importantForAccessibility="no" accessibilityElementsHidden>
+            {emoji}
+          </AppText>
+          <View style={styles.sectionTitleText}>
+            <AppText variant="subtitle" numberOfLines={1} accessibilityRole="header">{title}</AppText>
+          </View>
         </View>
-      )}
-      {/*
-        A linear ramp across the FULL height was already 40% black by the
-        midpoint, which is where the cover art's subject sits. The copy is a
-        frosted panel pinned to the bottom edge and the count pill has its own
-        plate, so the ramp only has to carry the seam between them.
-      */}
-      <MediaScrim edges={['bottom']} reach={0.5} strength="standard" />
-      <View style={[styles.collectionCountPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-        <AppText variant="captionBold" tone="inverse">
-          {collection.productCount} {collection.productCount === 1 ? 'piece' : 'pieces'}
-        </AppText>
       </View>
-      <BlurView tint="dark" intensity={24} style={styles.collectionCopy}>
-        {/*
-          `backdrop` here is 58% black on the dark theme, and it sat on top of a
-          24-intensity blur AND the full-height ramp above — three suppressions
-          stacked on one strip. The ramp is a band now, so one wash is enough.
-        */}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.scrim(0.34) }]} />
-        <AppText variant="bodyBold" tone="inverse" numberOfLines={2}>
-          {collection.title}
-        </AppText>
-        <AppText variant="caption" tone="inverse" numberOfLines={1}>
-          {collection.brandName ?? 'WIEZ brand'}
-        </AppText>
-        <View style={styles.collectionMetaRow}>
-          <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-            {getCollectionPriceLabel(collection)}
-          </AppText>
-          <AppText variant="captionBold" tone="inverse">
-            View
-          </AppText>
-        </View>
-      </BlurView>
-    </Pressable>
+      {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={title} /> : null}
+    </View>
   );
+}
+
+/**
+ * Every strip on Market scrolls inline, so a section is the same height
+ * whether it holds four pieces or four hundred — more content makes it longer
+ * sideways, never taller. Snapping lands a card at the edge after every flick,
+ * and nothing is drawn for the scroll itself: no indicator, no overscroll glow.
+ */
+const railScrollProps = (interval: number) => ({
+  horizontal: true as const,
+  showsHorizontalScrollIndicator: false,
+  overScrollMode: 'never' as const,
+  decelerationRate: 'fast' as const,
+  snapToInterval: interval,
+  snapToAlignment: 'start' as const,
+});
+
+const piecesLabel = (count?: number | null) =>
+  typeof count === 'number' && count > 0 ? `${count} ${count === 1 ? 'piece' : 'pieces'}` : null;
+
+function collectionShelfWidth(screenWidth: number) {
+  return Math.min(340, Math.round(screenWidth * 0.8));
 }
 
 function CollectionRow({
   title,
-  subtitle,
+  label,
   items,
   error,
-  cardWidth,
+  screenWidth,
   onOpen,
   onRetry,
 }: {
   title: string;
-  subtitle: string;
+  label: string;
   items: StoreCollectionSummary[];
   error: string | null;
-  cardWidth: number;
+  screenWidth: number;
   onOpen: (collection: StoreCollectionSummary) => void;
   onRetry: () => void;
 }) {
   const { theme } = useTheme();
+  const shelfWidth = collectionShelfWidth(screenWidth);
 
   return (
-    <View style={styles.section}>
-      {/* Same rule as the rows above: the title names the section, the cards
-          say the rest. The subtitle is gone. */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle" numberOfLines={1}>{title}</AppText>
-        </View>
-      </View>
+    /*
+      Collections sit on their own tinted band — a common region — because
+      they are a different kind of thing from the product rails around them (a
+      group of pieces, not one piece). The band marks the change before a card
+      is read, and breaks the page into chunks the eye can count.
+    */
+    <View style={[styles.section, styles.band, { backgroundColor: theme.colors.primarySoft }]}>
+      <SectionHeader emoji={getMarketSectionEmoji('latest-collections', 'collection-rail')} title={title} label={label} />
 
       {error ? (
         <Pressable
@@ -945,14 +955,28 @@ function CollectionRow({
       ) : (
         <FlatList
           data={items}
-          horizontal
           keyExtractor={(item) => item.id}
-          showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.horizontalCardsContent}
+          {...railScrollProps(shelfWidth + CARD_GAP)}
           {...ROW_STRIP_WINDOW}
-          renderItem={({ item }) => (
-            <CollectionCard collection={item} width={cardWidth} onOpen={onOpen} />
-          )}
+          renderItem={({ item }) => {
+            const covers: CoverSource[] =
+              item.previewImages && item.previewImages.length > 0
+                ? item.previewImages
+                : [{ src: item.coverImage, fileId: item.coverImageId }];
+            const pieces = piecesLabel(item.productCount);
+            return (
+              <CollectionShelfCard
+                width={shelfWidth}
+                title={item.title}
+                facts={[item.brandName, pieces].filter(Boolean).join(' · ')}
+                priceLabel={getCollectionPriceLabel(item)}
+                piecesLabel={pieces}
+                covers={covers}
+                onPress={() => onOpen(item)}
+              />
+            );
+          }}
         />
       )}
     </View>
@@ -1028,7 +1052,8 @@ function ExploreEndCard({
 
 function HorizontalCardRow({
   title,
-  subtitle,
+  label,
+  emojiKey,
   items,
   cardWidth,
   favoriteByKey,
@@ -1041,7 +1066,8 @@ function HorizontalCardRow({
   source,
 }: {
   title: string;
-  subtitle?: string;
+  label?: string;
+  emojiKey: string;
   items: MarketContentItem[];
   cardWidth: number;
   favoriteByKey: Record<string, boolean>;
@@ -1086,33 +1112,26 @@ function HorizontalCardRow({
   return (
     <View style={styles.section}>
       {/*
-        The title, and the way out. Nothing else.
-
-        A row used to carry four pieces of chrome: a title, a subtitle
-        underneath it, a descriptive chip, and a filled "See all" control — for
-        ONE horizontal strip of cards. The subtitles are written for whoever
-        tuned the ranking ("Deterministic V1 heat from product views and thread
-        activity"), not for a shopper, and they push the first card further down
-        on every row. The title says what the row is; the cards say the rest.
+        The label, the title, and the way out. The label is written for a
+        shopper ("Just landed", "Custom order ready"), never for whoever tuned
+        the ranking — those lines stay out.
       */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle" numberOfLines={1}>{title}</AppText>
-        </View>
-        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={title} /> : null}
-      </View>
+      <SectionHeader
+        emoji={getMarketSectionEmoji(emojiKey, 'product-rail')}
+        title={title}
+        label={label}
+        onSeeAll={onSeeAll}
+      />
       <FlatList
         data={items}
-        horizontal
         keyExtractor={(item) => item.key}
-        showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.horizontalCardsContent}
+        {...railScrollProps(cardWidth + CARD_GAP)}
         {...ROW_STRIP_WINDOW}
         renderItem={({ item }) => (
           <MarketCard
             item={item}
             width={cardWidth}
-            height={Math.round(cardWidth * 1.5)}
             favorite={Boolean(favoriteByKey[item.key])}
             bagBusy={Boolean(busyByKey[item.key])}
             favoriteBusy={Boolean(favoriteBusyByKey[item.key])}
@@ -1181,7 +1200,6 @@ function ApiSectionCard({
   return (
     <UnifiedProductCard
       width={width}
-      height={Math.round(width * 1.5)}
       title={item.title}
       brandName={item.brand?.name ?? 'WIEZ brand'}
       priceLabel={formatSectionItemPrice(item)}
@@ -1194,40 +1212,159 @@ function ApiSectionCard({
   );
 }
 
+const sectionItemCover = (item: MarketSectionItem): CoverSource => ({
+  src: item.media?.thumbnailUrl ?? item.media?.url ?? null,
+  fileId: item.media?.fileId ?? null,
+});
+
+/** A price for a collection card, or nothing — never the placeholder "View". */
+const sectionItemPriceOrNull = (item: MarketSectionItem) => {
+  const label = formatSectionItemPrice(item);
+  return label === 'View' || label === 'Explore' ? null : label;
+};
+
+/**
+ * An API-driven section, drawn in the format its content calls for.
+ *
+ * The API names a layout per section (rail, grid, collection rail, brand
+ * rail, category grid) and `resolveMarketSectionFormat` corrects it by what
+ * the section actually holds. Products are always the shared product card;
+ * collections, brands and styles each get their own shape. Every format
+ * scrolls inline at a fixed height.
+ */
 function ApiSectionRow({
   section,
   cardWidth,
+  screenWidth,
   onOpen,
   onSeeAll,
 }: {
   section: MarketSection;
   cardWidth: number;
+  screenWidth: number;
   onOpen: (item: MarketSectionItem, sectionKey: string) => void;
   onSeeAll?: () => void;
 }) {
+  const { theme } = useTheme();
+  const format = useMemo(
+    () => resolveMarketSectionFormat(section.layout, section.items.map((item) => item.entityType)),
+    [section.items, section.layout],
+  );
+  const columns = useMemo(() => chunkItems(section.items, 2), [section.items]);
+  const open = useCallback((item: MarketSectionItem) => onOpen(item, section.key), [onOpen, section.key]);
+  const keyOf = (item: MarketSectionItem) => `${item.entityType}:${item.sourceId}`;
+
+  const header = (
+    <SectionHeader
+      emoji={getMarketSectionEmoji(section.key, format)}
+      title={section.title}
+      label={section.emotionalLabel}
+      onSeeAll={onSeeAll}
+    />
+  );
+
+  if (format === 'collection-rail') {
+    const shelfWidth = collectionShelfWidth(screenWidth);
+    return (
+      <View style={[styles.section, styles.band, { backgroundColor: theme.colors.primarySoft }]}>
+        {header}
+        <FlatList
+          data={section.items}
+          keyExtractor={keyOf}
+          contentContainerStyle={styles.horizontalCardsContent}
+          {...railScrollProps(shelfWidth + CARD_GAP)}
+          {...ROW_STRIP_WINDOW}
+          renderItem={({ item }) => {
+            const pieces = piecesLabel(item.stats?.products);
+            return (
+              <CollectionShelfCard
+                width={shelfWidth}
+                title={item.title}
+                facts={[item.brand?.name ?? item.subtitle, pieces].filter(Boolean).join(' · ')}
+                priceLabel={sectionItemPriceOrNull(item)}
+                piecesLabel={pieces}
+                covers={[sectionItemCover(item)]}
+                onPress={() => open(item)}
+              />
+            );
+          }}
+        />
+      </View>
+    );
+  }
+
+  if (format === 'brand-rail') {
+    return (
+      <View style={styles.section}>
+        {header}
+        <FlatList
+          data={section.items}
+          keyExtractor={keyOf}
+          contentContainerStyle={styles.brandRailContent}
+          {...railScrollProps(BRAND_TILE_WIDTH + tokens.spacing.sm)}
+          {...ROW_STRIP_WINDOW}
+          renderItem={({ item }) => (
+            <BrandTile
+              width={BRAND_TILE_WIDTH}
+              name={item.title}
+              logo={{ src: item.brand?.logoUrl ?? sectionItemCover(item).src, fileId: item.media?.fileId ?? null }}
+              piecesLabel={piecesLabel(item.stats?.products)}
+              onPress={() => open(item)}
+            />
+          )}
+        />
+      </View>
+    );
+  }
+
+  if (format === 'category-grid' || format === 'product-grid') {
+    // Two rows that scroll sideways: a different rhythm from the one-row rails
+    // around it, at a fixed height however many items the section holds.
+    const columnWidth =
+      format === 'category-grid'
+        ? Math.min(200, Math.max(150, Math.round((screenWidth - SIDE_PADDING - CARD_GAP) / 2.15)))
+        : cardWidth;
+    return (
+      <View style={styles.section}>
+        {header}
+        <FlatList
+          data={columns}
+          keyExtractor={(column) => column.map(keyOf).join('|')}
+          contentContainerStyle={styles.horizontalCardsContent}
+          {...railScrollProps(columnWidth + CARD_GAP)}
+          {...ROW_STRIP_WINDOW}
+          renderItem={({ item: column }) => (
+            <View style={[styles.gridColumn, { width: columnWidth }]}>
+              {column.map((item) =>
+                format === 'category-grid' ? (
+                  <CategoryTile
+                    key={keyOf(item)}
+                    width={columnWidth}
+                    title={item.title}
+                    cover={sectionItemCover(item)}
+                    onPress={() => open(item)}
+                  />
+                ) : (
+                  <ApiSectionCard key={keyOf(item)} item={item} width={columnWidth} onOpen={open} />
+                ),
+              )}
+            </View>
+          )}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.section}>
-      {/* See the note on the curated row: title + the way out, nothing else. */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle" numberOfLines={1}>{section.title}</AppText>
-        </View>
-        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={section.title} /> : null}
-      </View>
+      {header}
       <FlatList
         data={section.items}
-        horizontal
-        keyExtractor={(item) => `${item.entityType}:${item.sourceId}`}
-        showsHorizontalScrollIndicator={false}
+        keyExtractor={keyOf}
         contentContainerStyle={styles.horizontalCardsContent}
+        {...railScrollProps(cardWidth + CARD_GAP)}
         {...ROW_STRIP_WINDOW}
-        renderItem={({ item }) => (
-          <ApiSectionCard
-            item={item}
-            width={cardWidth}
-            onOpen={(entry) => onOpen(entry, section.key)}
-          />
-        )}
+        renderItem={({ item }) => <ApiSectionCard item={item} width={cardWidth} onOpen={open} />}
       />
     </View>
   );
@@ -1271,7 +1408,6 @@ function ProductGridSection({
                 key={item.key}
                 item={item}
                 width={cardWidth}
-                height={Math.round(cardWidth * 1.58)}
                 favorite={Boolean(favoriteByKey[item.key])}
                 bagBusy={Boolean(busyByKey[item.key])}
                 favoriteBusy={Boolean(favoriteBusyByKey[item.key])}
@@ -2451,7 +2587,8 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
           return (
             <HorizontalCardRow
               title={item.title}
-              subtitle={item.subtitle}
+              label={item.label}
+              emojiKey={item.emojiKey}
               items={item.items}
               cardWidth={horizontalCardWidth}
               favoriteByKey={favoriteByKey}
@@ -2470,7 +2607,8 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
           return (
             <HorizontalCardRow
               title={item.title}
-              subtitle={item.subtitle}
+              label={item.label}
+              emojiKey="adire"
               items={item.items}
               cardWidth={horizontalCardWidth}
               favoriteByKey={favoriteByKey}
@@ -2487,6 +2625,7 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
             <ApiSectionRow
               section={item.section}
               cardWidth={horizontalCardWidth}
+              screenWidth={width}
               onOpen={openApiSectionItem}
               onSeeAll={item.onSeeAll}
             />
@@ -2495,10 +2634,10 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
           return (
             <CollectionRow
               title={item.title}
-              subtitle={item.subtitle}
+              label={item.label}
               items={item.items}
               error={item.error}
-              cardWidth={horizontalCardWidth}
+              screenWidth={width}
               onOpen={openCollection}
               onRetry={() => void loadMarket('reset', { forceRefresh: true })}
             />
@@ -2819,18 +2958,39 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
   section: {
-    gap: tokens.spacing.md,
+    gap: MARKET_RHYTHM.headerToContent,
+  },
+  /** The tinted common region behind collection sections. */
+  band: {
+    paddingVertical: tokens.spacing.xl,
   },
   sectionHeader: {
     paddingHorizontal: SIDE_PADDING,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
   },
   sectionTitleBlock: {
     flex: 1,
     minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  sectionTitleText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  brandRailContent: {
+    paddingHorizontal: SIDE_PADDING,
+    gap: tokens.spacing.sm,
+  },
+  gridColumn: {
+    gap: CARD_GAP,
   },
   heroSection: {
     paddingHorizontal: SIDE_PADDING,
@@ -2921,44 +3081,6 @@ const styles = StyleSheet.create({
   exploreEndCardSubtext: {
     textAlign: 'center',
     marginTop: tokens.spacing.xs,
-  },
-  collectionCard: {
-    height: 262,
-    borderRadius: tokens.radius.xl,
-    borderWidth: 2,
-    overflow: 'hidden',
-  },
-  collectionImage: {
-    ...StyleSheet.absoluteFill,
-  },
-  collectionCountPill: {
-    position: 'absolute',
-    right: tokens.spacing.sm,
-    top: tokens.spacing.sm,
-    minHeight: 28,
-    borderRadius: tokens.radius.full,
-    borderWidth: 2,
-    paddingHorizontal: tokens.spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collectionCopy: {
-    position: 'absolute',
-    left: tokens.spacing.sm,
-    right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
-    maxHeight: 52,
-    gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-  },
-  collectionMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.sm,
   },
   collectionStateCard: {
     marginHorizontal: SIDE_PADDING,

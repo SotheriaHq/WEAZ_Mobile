@@ -93,7 +93,6 @@ const PROFILE_ORDERS_PREVIEW_LIMIT = 6;
 const PROFILE_ORDERS_SEARCH_THRESHOLD = 5;
 /** The saved grid, laid out like Market's: two up, same gap, same proportions. */
 const SAVED_CARD_GAP = tokens.spacing.md;
-const SAVED_CARD_RATIO = 1.58;
 /*
   The measurement vocabulary now lives in `src/features/sizing/measurementCatalog.ts`.
 
@@ -371,7 +370,6 @@ function SavedDesignCard({ item, width }: { item: SavedItem; width: number }) {
   return (
     <UnifiedProductCard
       width={width}
-      height={Math.round(width * SAVED_CARD_RATIO)}
       title={item.title}
       priceLabel={typeof item.price === 'number' ? formatMoney(item.price) : null}
       mediaSrc={item.thumbnail ?? null}

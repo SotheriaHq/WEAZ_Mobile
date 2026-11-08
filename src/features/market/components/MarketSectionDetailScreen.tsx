@@ -193,7 +193,6 @@ function SectionItemCard({
   return (
     <UnifiedProductCard
       width={width}
-      height={Math.round(width * 1.58)}
       title={item.title}
       brandName={item.brand?.name ?? null}
       priceLabel={formatPrice(item)}

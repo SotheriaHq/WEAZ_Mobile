@@ -271,6 +271,12 @@ export interface StoreCollectionSummary {
   coverImageId: string | null;
   productCount: number;
   priceRange: { min: number | null; max: number | null; currency: string };
+  /**
+   * Cover photos of the first few products in the collection, lead piece
+   * first. Read from the `products` the list endpoint already returns, so the
+   * Market collage costs no extra request.
+   */
+  previewImages?: Array<{ src: string | null; fileId: string | null }>;
 }
 
 export interface StoreCollectionsResponse {
@@ -951,7 +957,38 @@ const normalizeCollectionSummary = (raw: unknown): StoreCollectionSummary | null
       max: item.maxPrice !== undefined ? asNumber(item.maxPrice) : priceRange.max !== undefined ? asNumber(priceRange.max) : null,
       currency: asString(priceRange.currency) ?? asString(item.currency) ?? 'NGN',
     },
+    previewImages: collectionPreviewImages(item.products),
   };
+};
+
+const COLLECTION_PREVIEW_LIMIT = 3;
+
+/**
+ * Up to three product cover photos from a collection payload.
+ *
+ * The public list returns each membership link as `{ product: {...} }`; older
+ * shapes return the product directly. Either way the cover is the product's
+ * thumbnail, falling back to its first image.
+ */
+const collectionPreviewImages = (rawProducts: unknown): Array<{ src: string | null; fileId: string | null }> => {
+  if (!Array.isArray(rawProducts)) return [];
+  const seen = new Set<string>();
+  const covers: Array<{ src: string | null; fileId: string | null }> = [];
+  for (const entry of rawProducts) {
+    if (covers.length >= COLLECTION_PREVIEW_LIMIT) break;
+    const link = asRecord(entry);
+    const product = asRecord(link.product ?? link);
+    const images = Array.isArray(product.images) ? product.images : [];
+    const src =
+      asString(product.thumbnail) ??
+      (images.map((image) => asString(image)).find((image): image is string => Boolean(image)) ?? null);
+    const fileId = asString(product.coverImageId) ?? asString(product.thumbnailFileId);
+    const key = fileId ?? src;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    covers.push({ src, fileId });
+  }
+  return covers;
 };
 
 const normalizeCollectionBagStatus = (payload: unknown, collectionId: string): CollectionBagStatus => {
