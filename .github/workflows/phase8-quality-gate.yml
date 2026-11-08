@@ -35,6 +35,12 @@ jobs:
       - name: Selector footer and button layout
         run: npm run test:button-layout
 
+      # A button that sizes to its label keeps it on one line. Without that the
+      # sign-in "Forgot password?" grew taller than the screen on Android and
+      # hid SIGN IN, Google and Create account behind an invisible tap target.
+      - name: Sign-in actions stay visible
+        run: npm run test:auth-actions-visible
+
       - name: Scoped image picking and media completion
         run: |
           npm run test:scoped-media-picker
