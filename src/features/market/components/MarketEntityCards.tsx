@@ -161,7 +161,7 @@ export const BrandTile = memo(function BrandTile({
       accessibilityLabel={`Open ${name}`}
     >
       <CoverImage source={logo} style={[styles.brandMark, { width: markSize, height: markSize }]} />
-      <AppText variant="smallBold" numberOfLines={2} style={styles.centered}>{name}</AppText>
+      <AppText variant="smallBold" numberOfLines={3} style={styles.centered}>{name}</AppText>
       <AppText variant="caption" tone="muted" numberOfLines={1}>{piecesLabel || ' '}</AppText>
     </Pressable>
   );
@@ -179,6 +179,7 @@ export const CategoryTile = memo(function CategoryTile({
   cover: CoverSource;
   onPress: () => void;
 }) {
+  const { theme } = useTheme();
   const height = Math.round((width * 10) / 16);
 
   return (
@@ -188,12 +189,22 @@ export const CategoryTile = memo(function CategoryTile({
       accessibilityRole="button"
       accessibilityLabel={`Shop ${title}`}
     >
-      <CoverImage source={cover} style={StyleSheet.absoluteFill} />
-      {/* A band under the label only — the rest of the photo stays clear. */}
-      <MediaScrim edges={['bottom']} reach={0.55} strength="standard" />
-      <View style={styles.categoryLabel}>
-        <AppText variant="smallBold" tone="inverse" numberOfLines={1}>{title}</AppText>
-      </View>
+      {hasCover(cover) ? (
+        <>
+          <CoverImage source={cover} style={StyleSheet.absoluteFill} />
+          {/* A band under the label only — the rest of the photo stays clear. */}
+          <MediaScrim edges={['bottom']} reach={0.55} strength="standard" />
+          <View style={styles.categoryLabel}>
+            <AppText variant="smallBold" tone="inverse" numberOfLines={2}>{title}</AppText>
+          </View>
+        </>
+      ) : (
+        /* No photo for this style yet: a tinted label tile, never an empty box. */
+        <View style={[styles.categoryFallback, { backgroundColor: theme.colors.primarySoft }]}>
+          <AppText variant="title">{String.fromCodePoint(0x1f3a8)}</AppText>
+          <AppText variant="smallBold" numberOfLines={2}>{title}</AppText>
+        </View>
+      )}
     </Pressable>
   );
 });
@@ -255,6 +266,11 @@ const styles = StyleSheet.create({
   categoryTile: {
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
+  },
+  categoryFallback: {
+    flex: 1,
+    justifyContent: 'space-between',
+    padding: tokens.spacing.md,
   },
   categoryLabel: {
     position: 'absolute',

@@ -132,6 +132,7 @@ function ProductCard({
   busy,
   pulseStatus,
   onPress,
+  onWishlistPress,
 }: {
   product: StoreProduct;
   width: number;
@@ -141,6 +142,8 @@ function ProductCard({
   busy: boolean;
   pulseStatus: BagPulseStatus;
   onPress: () => void;
+  /** Save to wishlist from the card. Absent on the brand's own products. */
+  onWishlistPress?: () => void;
 }) {
   const { theme } = useTheme();
   const stock = getTotalStock(product);
@@ -180,6 +183,10 @@ function ProductCard({
       bagStatus={pulseStatus}
       bagMode={customBagged && !standardBagged ? 'custom' : 'standard'}
       onActionPress={onPress}
+      favorite={wishlisted}
+      favoriteBusy={busy}
+      favoriteAccessibilityLabel={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+      onFavoritePress={onWishlistPress}
     />
   );
 }
@@ -715,15 +722,13 @@ export function BrandShopTab({
     [requireAuth],
   );
 
-  const toggleWishlist = useCallback(() => {
-    if (!activeProduct) return;
+  const toggleProductWishlist = useCallback((productId: string) => {
     if (isOwner) {
       toast.info('Owner view does not support wishlist actions on your own products.');
       return;
     }
 
     ensureAuth(async () => {
-      const productId = activeProduct.id;
       const alreadySaved = Boolean(wishlistByProductId[productId]);
       setBusy(productId, true);
       try {
@@ -741,7 +746,11 @@ export function BrandShopTab({
         setBusy(productId, false);
       }
     }, 'Sign in to use wishlist.');
-  }, [activeProduct, ensureAuth, isOwner, refreshCommerceState, setBusy, toast, wishlistByProductId]);
+  }, [ensureAuth, isOwner, refreshCommerceState, setBusy, toast, wishlistByProductId]);
+
+  const toggleWishlist = useCallback(() => {
+    if (activeProduct) toggleProductWishlist(activeProduct.id);
+  }, [activeProduct, toggleProductWishlist]);
 
   const toggleStandardBag = useCallback(() => {
     if (!activeProduct) return;
@@ -995,6 +1004,7 @@ export function BrandShopTab({
               product={item}
               width={cardWidth}
               wishlisted={Boolean(wishlistByProductId[item.id])}
+              onWishlistPress={isOwner ? undefined : () => toggleProductWishlist(item.id)}
               standardBagged={Boolean(cartByProductId[item.id])}
               customBagged={Boolean(customBagByProductId[item.id])}
               busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
@@ -1027,6 +1037,7 @@ export function BrandShopTab({
                 product={item}
                 width={cardWidth}
                 wishlisted={Boolean(wishlistByProductId[item.id])}
+                onWishlistPress={isOwner ? undefined : () => toggleProductWishlist(item.id)}
                 standardBagged={Boolean(cartByProductId[item.id])}
                 customBagged={Boolean(customBagByProductId[item.id])}
                 busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
