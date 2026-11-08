@@ -12,6 +12,7 @@ import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
+import { InlineNavLink } from '@/components/ui/InlineNavLink';
 import WiezMark from '@/src/brand/WiezMark';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
@@ -784,10 +785,18 @@ export default function LoginScreen() {
             ) : null}
 
             {loginStep === 'password' ? (
-              <Button
-                title="Forgot password?"
-                variant="ghost"
-                size="xs"
+              /*
+                A link, drawn as one: the shared single-line link primitive.
+
+                This was a ghost Button aligned to the right with no width of
+                its own. On Android its wrapping label measured against nothing
+                and the button grew taller than the screen — invisible, because
+                its label was centred far below the fold — pushing SIGN IN, the
+                Google button and "Create an account" out of reach, and turning
+                every tap on the apparently empty card into "Forgot password".
+              */
+              <InlineNavLink
+                label="Forgot password?"
                 onPress={authFlow.guard(() =>
                   drillDownPush({
                     pathname: '/forgot-password',

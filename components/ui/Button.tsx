@@ -121,6 +121,29 @@ export function Button({
   const { theme } = useTheme();
   const sz = sizeStyles(size);
   const { layout, appearance } = splitButtonStyle(style);
+  /*
+    A button that sizes itself to its label must keep that label on one line.
+
+    Labels are allowed to wrap so a button given a width (a `flex: 1` pair, a
+    full-width action) can fit a long title. But a button aligned to one side of
+    a column with no width of its own — "Forgot password?", "Back to sign in" —
+    has no width to wrap INTO: on Android the shrinkable, wrapping label was
+    measured against almost nothing, the button grew to well over a screen tall
+    with its label centred off-screen, and every control below it was pushed out
+    of reach while the invisible button swallowed taps on the "empty" space.
+    Here the label neither shrinks nor wraps, so the button is exactly as wide
+    as its text and one line tall.
+  */
+  const sizesToLabel =
+    !fullWidth &&
+    layout.width === undefined &&
+    layout.flex === undefined &&
+    layout.flexGrow === undefined &&
+    layout.flexBasis === undefined &&
+    (layout.alignSelf === 'flex-start' ||
+      layout.alignSelf === 'flex-end' ||
+      layout.alignSelf === 'center' ||
+      layout.alignSelf === 'baseline');
   const pendingPressRef = React.useRef(false);
   const lastPressAtRef = React.useRef(0);
   const [pendingPress, setPendingPress] = React.useState(false);
@@ -348,12 +371,13 @@ export function Button({
             pointerEvents="none"
           />
         )}
-        <View style={styles.content}>
+        <View style={[styles.content, sizesToLabel && styles.noShrink]}>
           {left}
-          <View style={styles.labelSlot}>
+          <View style={[styles.labelSlot, sizesToLabel && styles.noShrink]}>
             <AppText
               variant={sz.textVariant}
               tone={variantTone}
+              numberOfLines={sizesToLabel ? 1 : undefined}
               style={[
                 styles.text,
                 {
@@ -410,6 +434,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 1,
     minWidth: 20,
+  },
+  /** For buttons that size to their label: measure the label at its full width. */
+  noShrink: {
+    flexShrink: 0,
   },
   loaderOverlay: {
     ...StyleSheet.absoluteFill,
