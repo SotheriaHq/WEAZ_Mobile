@@ -101,7 +101,7 @@ const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = MARKET_RHYTHM.betweenSections;
 const CARD_GAP = tokens.spacing.md;
 /** Brand marks are small and many: a narrow, fixed column. */
-const BRAND_TILE_WIDTH = 96;
+const BRAND_TILE_WIDTH = 112;
 const HERO_INTERVAL_MS = 3000;
 /** Level sliders — the filter/adjust glyph, not the settings cog. */
 const MARKET_FILTER_EMOJI = String.fromCodePoint(0x1f39a, 0xfe0f);
@@ -611,6 +611,8 @@ function buildRows(args: {
 type MarketCardProps = {
   item: MarketContentItem;
   width: number;
+  /** Photo height (the card's original frame); defaults to width × 1.58. */
+  height?: number;
   favorite: boolean;
   bagBusy: boolean;
   favoriteBusy: boolean;
@@ -622,6 +624,7 @@ type MarketCardProps = {
 function MarketProductCard({
   item,
   width,
+  height,
   favorite,
   bagBusy,
   favoriteBusy,
@@ -635,6 +638,7 @@ function MarketProductCard({
   return (
     <UnifiedProductCard
       width={width}
+      height={height}
       title={getItemTitle(item)}
       brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
@@ -662,6 +666,7 @@ function MarketProductCard({
 function MarketDesignCard({
   item,
   width,
+  height,
   favorite,
   bagBusy,
   favoriteBusy,
@@ -675,6 +680,7 @@ function MarketDesignCard({
   return (
     <UnifiedProductCard
       width={width}
+      height={height}
       title={getItemTitle(item)}
       brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
@@ -860,22 +866,20 @@ function SectionHeader({
 }) {
   return (
     <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleBlock}>
-        {label ? (
-          <AppText variant="statLabel" tone="primary" numberOfLines={1}>
-            {label.toUpperCase()}
-          </AppText>
-        ) : null}
-        <View style={styles.sectionTitleRow}>
-          <AppText variant="subtitle" importantForAccessibility="no" accessibilityElementsHidden>
-            {emoji}
-          </AppText>
-          <View style={styles.sectionTitleText}>
-            <AppText variant="subtitle" numberOfLines={1} accessibilityRole="header">{title}</AppText>
-          </View>
+      <View style={styles.sectionTitleRow}>
+        <AppText variant="subtitle" importantForAccessibility="no" accessibilityElementsHidden>
+          {emoji}
+        </AppText>
+        <View style={styles.sectionTitleText}>
+          <AppText variant="subtitle" numberOfLines={2} accessibilityRole="header">{title}</AppText>
         </View>
+        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={title} label="See all" /> : null}
       </View>
-      {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={title} /> : null}
+      {label ? (
+        <AppText variant="caption" tone="muted">
+          {label}
+        </AppText>
+      ) : null}
     </View>
   );
 }
@@ -1132,6 +1136,7 @@ function HorizontalCardRow({
           <MarketCard
             item={item}
             width={cardWidth}
+            height={Math.round(cardWidth * 1.5)}
             favorite={Boolean(favoriteByKey[item.key])}
             bagBusy={Boolean(busyByKey[item.key])}
             favoriteBusy={Boolean(favoriteBusyByKey[item.key])}
@@ -1189,17 +1194,24 @@ function formatSectionItemPrice(item: MarketSectionItem) {
 function ApiSectionCard({
   item,
   width,
+  height,
   onOpen,
 }: {
   item: MarketSectionItem;
   width: number;
+  height?: number;
   onOpen: (item: MarketSectionItem) => void;
 }) {
+  // Every sellable piece carries Bag It — a product, or anything that takes a
+  // custom order. Pressing it opens the piece, where size and fittings are
+  // chosen before it is bagged.
+  const sellable = item.entityType === 'PRODUCT' || Boolean(item.availability?.customOrderEnabled);
   const mediaSrc = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
 
   return (
     <UnifiedProductCard
       width={width}
+      height={height ?? Math.round(width * 1.5)}
       title={item.title}
       brandName={item.brand?.name ?? 'WIEZ brand'}
       priceLabel={formatSectionItemPrice(item)}
@@ -1207,6 +1219,8 @@ function ApiSectionCard({
       mediaSrc={mediaSrc}
       mediaFileId={item.media?.fileId ?? null}
       analyticsSourceScreen="market"
+      actionLabel={sellable ? BAG_IT_LABEL : undefined}
+      onActionPress={sellable ? () => onOpen(item) : undefined}
       onPress={() => onOpen(item)}
     />
   );
@@ -1238,13 +1252,25 @@ function ApiSectionRow({
   screenWidth,
   onOpen,
   onSeeAll,
+  renderProduct,
+  categoryCover,
 }: {
   section: MarketSection;
   cardWidth: number;
   screenWidth: number;
   onOpen: (item: MarketSectionItem, sectionKey: string) => void;
   onSeeAll?: () => void;
+  /** The full Market card (Bag It + save) for an item the market already holds. */
+  renderProduct?: (item: MarketSectionItem, width: number, height: number) => React.ReactNode | null;
+  /** A cover for a style tile, from the market's own products in that style. */
+  categoryCover?: (title: string) => CoverSource | null;
 }) {
+  const productCard = (item: MarketSectionItem, width: number) => {
+    const height = Math.round(width * 1.5);
+    return renderProduct?.(item, width, height) ?? (
+      <ApiSectionCard item={item} width={width} height={height} onOpen={open} />
+    );
+  };
   const { theme } = useTheme();
   const format = useMemo(
     () => resolveMarketSectionFormat(section.layout, section.items.map((item) => item.entityType)),
@@ -1341,11 +1367,15 @@ function ApiSectionRow({
                     key={keyOf(item)}
                     width={columnWidth}
                     title={item.title}
-                    cover={sectionItemCover(item)}
+                    cover={
+                      sectionItemCover(item).src || sectionItemCover(item).fileId
+                        ? sectionItemCover(item)
+                        : categoryCover?.(item.title) ?? sectionItemCover(item)
+                    }
                     onPress={() => open(item)}
                   />
                 ) : (
-                  <ApiSectionCard key={keyOf(item)} item={item} width={columnWidth} onOpen={open} />
+                  <React.Fragment key={keyOf(item)}>{productCard(item, columnWidth)}</React.Fragment>
                 ),
               )}
             </View>
@@ -1364,7 +1394,7 @@ function ApiSectionRow({
         contentContainerStyle={styles.horizontalCardsContent}
         {...railScrollProps(cardWidth + CARD_GAP)}
         {...ROW_STRIP_WINDOW}
-        renderItem={({ item }) => <ApiSectionCard item={item} width={cardWidth} onOpen={open} />}
+        renderItem={({ item }) => <>{productCard(item, cardWidth)}</>}
       />
     </View>
   );
@@ -2578,6 +2608,29 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
   }, [filters.category]);
 
 
+  /** Products and designs the market already holds, by the id a section item refers to. */
+  const contentBySourceId = useMemo(() => {
+    const byId = new Map<string, MarketContentItem>();
+    for (const entry of allItems) {
+      byId.set(entry.kind === 'product' ? entry.product.id : entry.design.collectionId, entry);
+    }
+    return byId;
+  }, [allItems]);
+
+  /** A style tile's cover: the first market piece in that style that has a photo. */
+  const categoryCover = useCallback(
+    (title: string): CoverSource | null => {
+      const wanted = title.trim().toLowerCase();
+      const hit = allItems.find(
+        (entry) => hasDisplayMedia(entry) && getItemCategories(entry).some((name) => name.toLowerCase() === wanted),
+      );
+      if (!hit) return null;
+      const media = getItemMedia(hit);
+      return { src: media.mediaSrc, fileId: media.mediaFileId };
+    },
+    [allItems],
+  );
+
   const renderRow = useCallback(
     ({ item }: { item: MarketRow }) => {
       switch (item.type) {
@@ -2628,6 +2681,23 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
               screenWidth={width}
               onOpen={openApiSectionItem}
               onSeeAll={item.onSeeAll}
+              renderProduct={(sectionItem, cardW, cardH) => {
+                const content = contentBySourceId.get(sectionItem.sourceId);
+                return content ? (
+                  <MarketCard
+                    item={content}
+                    width={cardW}
+                    height={cardH}
+                    favorite={Boolean(favoriteByKey[content.key])}
+                    bagBusy={Boolean(busyByKey[content.key])}
+                    favoriteBusy={Boolean(favoriteBusyByKey[content.key])}
+                    onOpen={openItem}
+                    onBag={handleBag}
+                    onFavorite={handleFavorite}
+                  />
+                ) : null;
+              }}
+              categoryCover={categoryCover}
             />
           );
         case 'COLLECTION_ROW':
@@ -2673,7 +2743,9 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
     },
     [
       busyByKey,
+      categoryCover,
       clearFilters,
+      contentBySourceId,
       favoriteBusyByKey,
       favoriteByKey,
       handleBag,
@@ -2966,10 +3038,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingHorizontal: SIDE_PADDING,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.xs,
   },
   sectionTitleBlock: {
     flex: 1,
@@ -2978,7 +3047,7 @@ const styles = StyleSheet.create({
   },
   sectionTitleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.sm,
   },
   sectionTitleText: {

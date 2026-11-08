@@ -17,7 +17,8 @@ export function MarketSkeleton({ bottomPadding = tokens.spacing.md }: { bottomPa
   const { width, height } = useWindowDimensions();
   // Same width rule as the live rails in MarketScreen.
   const railCardWidth = Math.min(184, Math.max(150, Math.round(width * 0.42)));
-  const railCardHeight = Math.round(railCardWidth * PRODUCT_TILE_MEDIA_RATIO) + PRODUCT_CARD_BODY_HEIGHT;
+  // Market rails pass width × 1.5 as the photo height.
+  const railCardHeight = Math.round(railCardWidth * 1.5) + PRODUCT_CARD_BODY_HEIGHT;
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
 
   return (

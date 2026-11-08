@@ -805,8 +805,6 @@ export default function CreateDesignComposerScreen() {
     }
   }, [footerHeight]);
 
-  const activeFooterClearance = footerHeight > 0 ? footerHeight : 96;
-
   if (booting && isEditMode) {
     return <AppLoaderScreen message="Loading composer" />;
   }
@@ -826,7 +824,9 @@ export default function CreateDesignComposerScreen() {
         <KeyboardAwareFormScroll
           style={styles.flex}
           contentContainerStyle={styles.content}
-          bottomOffset={activeFooterClearance + tokens.spacing.sm}
+          // The footer collapses while the keyboard is open, so the focused
+          // field only needs breathing room above the keyboard, not footer room.
+          bottomOffset={tokens.spacing.xl}
           extraKeyboardSpace={0}
           automaticallyAdjustKeyboardInsets={false}
         >
@@ -1211,7 +1211,7 @@ export default function CreateDesignComposerScreen() {
             </Card>
           ) : null}
         </KeyboardAwareFormScroll>
-        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
+        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }} hideWhileKeyboardOpen>
           <View
             onLayout={handleFooterLayout}
             style={[
