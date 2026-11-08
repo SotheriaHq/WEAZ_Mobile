@@ -190,6 +190,7 @@ export function AdireScreen() {
             <UnifiedProductCard
               key={`${item.key}:${entry.key}:${index}`}
               width={cardWidth}
+              height={Math.round(cardWidth * 1.5)}
               title={getItemTitle(entry)}
               brandName={getItemBrand(entry) ?? 'WIEZ brand'}
               priceLabel={getItemPriceLabel(entry)}

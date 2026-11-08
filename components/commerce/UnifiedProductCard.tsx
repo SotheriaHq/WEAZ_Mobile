@@ -18,30 +18,29 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 /**
- * Height of the photo frame as a multiple of the card width (100:148).
+ * The card's photo frame: width × 1.58 unless a caller passes its own height.
  *
- * The same ratio as the web product tile (`PRODUCT_TILE_MEDIA_RATIO` in
- * fthreadly), which Studio's store grid renders inside the app's WebView — so a
- * product is the same shape in Studio, on the Shop tab and on Market. A
- * contract test keeps the two numbers equal.
+ * This is the frame the card has always had. The copy strip is ATTACHED
+ * beneath it — the photograph is never shrunk to make room for text.
  */
-export const PRODUCT_TILE_MEDIA_RATIO = 1.48;
+export const PRODUCT_TILE_MEDIA_RATIO = 1.58;
 
 /**
- * Height of the copy area under the photo: padding, two reserved title lines,
- * the brand line, the price line and the action button. Placeholders use it so
- * a loading card is the same size as the card that replaces it.
+ * Height of the compact copy strip under the photo: one title line, then the
+ * price row with the compact Bag It. Placeholders use it so a loading card is
+ * the same size as the card that replaces it.
  */
 export const PRODUCT_CARD_BODY_HEIGHT =
-  tokens.spacing.sm * 2 +
-  tokens.typography.smallBold.lineHeight * 2 +
-  tokens.typography.caption.lineHeight +
-  tokens.typography.moneySmall.lineHeight +
-  tokens.spacing.xs * 4 +
-  tokens.button.md.height;
+  tokens.spacing.xs +
+  tokens.typography.smallBold.lineHeight +
+  tokens.spacing.xs +
+  tokens.button.xs.height +
+  tokens.spacing.sm;
 
 type UnifiedProductCardProps = {
   width: number;
+  /** Photo height — the card's original frame. Defaults to width × 1.58. */
+  height?: number;
   title: string;
   brandName?: string | null;
   priceLabel?: string | null;
@@ -118,8 +117,8 @@ const FAVORITE_ICON = CLIP_EMOJI;
  */
 export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
+  height,
   title,
-  brandName,
   priceLabel,
   customOrder = false,
   mediaSrc,
@@ -134,7 +133,6 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   bagStatus,
   bagMode = 'standard',
   topRightSlot,
-  metaLabel,
   newDropItemId,
   newDropCreatedAt,
   analyticsSourceScreen = 'market',
@@ -163,11 +161,10 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   const mediaFailed = Boolean(resolvedUri) && failedUri === resolvedUri;
   const mediaPainted = Boolean(resolvedUri) && paintedUri === resolvedUri;
   const showMediaSkeleton = hasMediaSource && !mediaFailed && !mediaPainted;
-  const mediaHeight = Math.round(width * PRODUCT_TILE_MEDIA_RATIO);
+  const mediaHeight = height ?? Math.round(width * PRODUCT_TILE_MEDIA_RATIO);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;
   const displayPrice = priceLabel?.trim() || 'Price on request';
   const isBagAction = actionLabel === BAG_IT_LABEL;
-  const meta = (metaLabel ?? brandName)?.trim() || null;
 
   return (
     <Pressable
@@ -257,16 +254,11 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         ) : null}
       </View>
 
+      {/* The copy strip, attached under the photograph: the title, then the
+          price with the compact Bag It at the end of the same row. */}
       <View style={styles.body}>
-        {/* Two lines are always reserved, so a short name and a long name make
-            cards of the same height and a row's prices line up. */}
-        <View style={styles.titleBlock}>
-          <AppText variant="smallBold" numberOfLines={2}>
-            {title}
-          </AppText>
-        </View>
-        <AppText variant="caption" tone="muted" numberOfLines={1}>
-          {meta ?? ' '}
+        <AppText variant="smallBold" numberOfLines={1}>
+          {title}
         </AppText>
         <View style={styles.priceRow}>
           <View style={styles.priceText}>
@@ -279,9 +271,6 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
               {CUSTOM_ORDER_EMOJI}
             </AppText>
           ) : null}
-        </View>
-
-        <View style={styles.actionRow}>
           {isBagAction ? (
             <BagItButton
               onPress={canPressAction ? onActionPress : undefined}
@@ -291,18 +280,18 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
               mode={bagMode}
               accessibilityLabel={actionLabel}
             />
-          ) : (
+          ) : actionLabel ? (
             <Button
-              title={actionLabel ?? 'View'}
-              size="md"
-              variant="secondary"
-              fullWidth
-              disabled={actionLabel ? !canPressAction : false}
-              loading={actionLabel ? actionBusy : false}
-              onPress={actionLabel ? onActionPress : onPress}
-              accessibilityLabel={actionLabel ?? `View ${title}`}
+              title={actionLabel}
+              size="xs"
+              variant="ghost"
+              disabled={!canPressAction}
+              loading={actionBusy}
+              onPress={onActionPress}
+              accessibilityLabel={actionLabel}
+              style={[styles.compactAction, { backgroundColor: theme.colors.primarySoft }]}
             />
-          )}
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -357,9 +346,16 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingHorizontal: tokens.spacing.sm,
-    paddingTop: tokens.spacing.sm,
+    paddingTop: tokens.spacing.xs,
     paddingBottom: tokens.spacing.sm,
     gap: tokens.spacing.xs,
+  },
+  compactAction: {
+    alignSelf: 'flex-end',
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
   },
   titleBlock: {
     // Two lines of `smallBold` (lineHeight 19).
@@ -367,6 +363,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   priceRow: {
+    minHeight: tokens.button.xs.height,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,

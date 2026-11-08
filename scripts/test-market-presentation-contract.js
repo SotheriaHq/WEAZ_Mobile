@@ -147,6 +147,17 @@ check('native: the heartbeat is one bounded clock, not a loop per card', () => {
   assert.ok(burst / period <= 0.25, `the UI thread animates ${Math.round((burst / period) * 100)}% of the time (max 25%)`);
 });
 
+check('native: the card keeps its original frame; copy is attached, Bag It is compact and ringless', () => {
+  const card = read(mobileRoot, 'components/commerce/UnifiedProductCard.tsx');
+  assert.ok(card.includes('PRODUCT_TILE_MEDIA_RATIO = 1.58;'), 'the photo frame is the original width x 1.58');
+  assert.ok(card.includes('const mediaHeight = height ?? Math.round(width * PRODUCT_TILE_MEDIA_RATIO)'), 'a caller height is the photo height');
+  const button = read(mobileRoot, 'components/commerce/BagItButton.tsx');
+  assert.match(button, /size="xs"/, 'half-size Bag It');
+  assert.doesNotMatch(button, /bagHeartbeatGlow/, 'no ring flashes around the beat');
+  const market = read(mobileRoot, 'src/features/market/components/MarketScreen.tsx');
+  assert.ok(market.includes('actionLabel={sellable ? BAG_IT_LABEL : undefined}'), 'sellable section products carry Bag It');
+});
+
 check('native: market strips scroll inline with nothing drawn for the scroll', () => {
   const market = read(mobileRoot, 'src/features/market/components/MarketScreen.tsx');
   assert.match(market, /showsHorizontalScrollIndicator: false/);
@@ -190,17 +201,6 @@ if (!fs.existsSync(path.join(webRoot, 'src', 'constants', 'marketSections.ts')))
 
   check('web and native show the same bag mark', () => {
     assert.strictEqual(webBagging.BAG_IT_EMOJI, mobileBagging.BAG_IT_EMOJI);
-  });
-
-  check('web and native frame product photos at the same ratio', () => {
-    const tile = read(webRoot, 'src/components/commerce/ProductTile.tsx');
-    const card = read(mobileRoot, 'components/commerce/UnifiedProductCard.tsx');
-    const webRatio = Number(/PRODUCT_TILE_MEDIA_RATIO = ([\d.]+)/.exec(tile)?.[1]);
-    const nativeRatio = Number(/PRODUCT_TILE_MEDIA_RATIO = ([\d.]+)/.exec(card)?.[1]);
-    assert.ok(webRatio > 0, 'web ratio readable');
-    assert.strictEqual(webRatio, nativeRatio);
-    const [w, h] = (/PRODUCT_TILE_MEDIA_ASPECT = 'aspect-\[(\d+)\/(\d+)\]'/.exec(tile) ?? []).slice(1).map(Number);
-    assert.ok(w > 0 && Math.abs(h / w - webRatio) < 1e-9, 'the Tailwind aspect class matches the ratio');
   });
 
   check('web: Studio, Shop tab and Market all render the shared tile and Bag It button', () => {

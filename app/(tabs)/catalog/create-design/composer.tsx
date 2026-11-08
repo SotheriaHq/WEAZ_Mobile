@@ -805,8 +805,6 @@ export default function CreateDesignComposerScreen() {
     }
   }, [footerHeight]);
 
-  const activeFooterClearance = footerHeight > 0 ? footerHeight : 96;
-
   if (booting && isEditMode) {
     return <AppLoaderScreen message="Loading composer" />;
   }
@@ -826,7 +824,9 @@ export default function CreateDesignComposerScreen() {
         <KeyboardAwareFormScroll
           style={styles.flex}
           contentContainerStyle={styles.content}
-          bottomOffset={activeFooterClearance + tokens.spacing.sm}
+          // The footer collapses while the keyboard is open, so the focused
+          // field only needs breathing room above the keyboard, not footer room.
+          bottomOffset={tokens.spacing.xl}
           extraKeyboardSpace={0}
           automaticallyAdjustKeyboardInsets={false}
         >
@@ -1210,7 +1210,71 @@ export default function CreateDesignComposerScreen() {
               />
             </Card>
           ) : null}
-          {/* Natural integrated action buttons at bottom of form */}
+        </KeyboardAwareFormScroll>
+        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }} hideWhileKeyboardOpen>
+          <View
+            onLayout={handleFooterLayout}
+            style={[
+              styles.footerActions,
+              {
+                paddingBottom: Math.max(
+                  insets.bottom + tokens.spacing.sm,
+                  tokens.spacing.lg,
+                ),
+                paddingHorizontal: tokens.spacing.lg,
+              },
+            ]}
+          >
+            {!canSaveDraft ? (
+              <AppText
+                variant="captionRegular"
+                tone="muted"
+                style={styles.draftHelper}
+              >
+                Add a title to save this as a draft.
+              </AppText>
+            ) : !canPreview ? (
+              <AppText
+                variant="captionRegular"
+                tone="danger"
+                style={styles.draftHelper}
+              >
+                Required: {missingRequiredFields[0]}{' '}
+                {missingRequiredFields.length > 1
+                  ? `(+${missingRequiredFields.length - 1} more)`
+                  : ''}
+              </AppText>
+            ) : null}
+            <View style={styles.actionRow}>
+              <View style={styles.actionButton}>
+                <Button
+                  title={
+                    saveState.action === 'draft'
+                      ? 'Saving draft...'
+                      : 'Save draft'
+                  }
+                  variant="secondary"
+                  loading={saveState.action === 'draft'}
+                  disabled={!canSaveDraft || Boolean(saveState.action)}
+                  onPress={() => void save('draft')}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionButton}>
+                <Button
+                  title="Preview →"
+                  disabled={!canPreview}
+                  onPress={() =>
+                    drillDownPush('/catalog/create-design/preview' as any)
+                  }
+                  fullWidth
+                />
+              </View>
+            </View>
+          </View>
+        </KeyboardStickyFooter>
+        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }} hideWhileKeyboardOpen>
+>>>>>>> origin/SIT
           <View
             style={[
               styles.footerActions,
