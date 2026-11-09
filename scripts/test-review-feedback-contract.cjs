@@ -6,8 +6,8 @@
  *  - The editor and the preview show what the reviewer asked for, mark the
  *    part of the form it points at, and the submit button says "Resubmit for
  *    review" instead of "Create".
- *  - Notification rows are lighter: 15px/400 with italic titles (true italic
- *    faces loaded), names at 600.
+ *  - Notification rows are lighter: 15px/400, the whole sentence in true italic (the
+ *    italic faces are loaded), names at 600.
  */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -105,8 +105,16 @@ assert.match(appText, /\[tokens\.fontFamily\.regular\]: tokens\.fontFamily\.regu
 const layout = read('app/_layout.tsx');
 assert.match(layout, /Roboto_400Regular_Italic,/, 'the italic face is loaded, not faked');
 const notifications = read('app/notifications.tsx');
-assert.match(notifications, /<AppText variant="notification" accessibilityLabel=/);
+// The whole sentence slants, not just titles (owner, Nov 2026).
+assert.match(notifications, /<AppText variant="notification" italic accessibilityLabel=/, 'the sentence is italic');
+assert.match(notifications, /variant="notificationStrong" italic/, 'the actor is italic too');
 assert.match(notifications, /variant="notification" tone="primary" italic/, 'titles are italic');
+// The count lives on the header action, not as a floating badge.
+assert.match(notifications, /title=\{`Mark all as read · /, 'count on the Mark all action');
+assert.doesNotMatch(notifications, /unreadPill|headerActions/, 'no separate badge or action row');
+// Unread rows are tinted edge to edge; no inset list padding.
+assert.match(notifications, /backgroundColor: unread \? theme\.colors\.surface : 'transparent'/, 'the tint marks unread');
+assert.doesNotMatch(notifications, /\n {2}content: \{[^}]*paddingHorizontal/, 'the list has no side inset');
 assert.doesNotMatch(notifications, /<AppText key=\{key\} variant="bodyBold"/, 'no bold runs in the sentence');
 
 console.log('review feedback contract: all checks passed');

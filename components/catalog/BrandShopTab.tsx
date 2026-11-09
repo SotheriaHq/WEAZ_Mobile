@@ -1026,9 +1026,9 @@ export function BrandShopTab({
         <View>
           {listHeader}
           {/*
-            Up to four products: the grid. More: a fixed two-row strip that
-            scrolls sideways, so a big shop never makes an endless profile
-            (InlineCardGrid). Either way the height is bounded by the cards.
+            Up to four products: the grid. More: the same two-per-row grid in
+            a fixed-height area that scrolls up and down inside itself, so a
+            big shop never makes an endless profile (InlineCardGrid).
           */}
           <View style={[styles.gridContainer, { paddingBottom: gridBottomPadding }]}>
             <InlineCardGrid
@@ -1038,7 +1038,7 @@ export function BrandShopTab({
               sidePadding={SIDE_PADDING}
               columnGap={CARD_GAP}
               rowGap={CARD_GAP}
-              accessibilityLabel={`${filteredProducts.length} products, scroll sideways for more`}
+              accessibilityLabel={`${filteredProducts.length} products, scroll for more`}
               renderCard={(item, width) => (
                 <ProductCard
                   product={item}

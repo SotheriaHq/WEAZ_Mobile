@@ -12,7 +12,7 @@ import {
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { CollectionCardSkeleton } from './CollectionCard';
-import { InlineCardGrid, shouldUseInlineStrip } from './InlineCardGrid';
+import { InlineCardGrid, shouldCapGridHeight } from './InlineCardGrid';
 import { CatalogEntityCard } from './CatalogEntityCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
@@ -185,12 +185,13 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   }
 
   /*
-    Up to four cards: the grid. More: a fixed two-row strip that scrolls
-    sideways (InlineCardGrid), so 50 designs do not make a 25-row profile.
-    The strip is virtualized, so it takes every card; the grid keeps the
-    frame-batched slice.
+    Up to four cards: the grid. More: the same two-per-row grid in a fixed
+    area about two and a half rows tall that scrolls up and down inside
+    itself (InlineCardGrid), so 50 designs never make a 25-row profile. The
+    capped list is virtualized, so it takes every card; the plain grid keeps
+    the frame-batched slice.
   */
-  const inline = shouldUseInlineStrip(uniqueCollections.length);
+  const inline = shouldCapGridHeight(uniqueCollections.length);
   return (
     <InlineCardGrid
       items={inline ? uniqueCollections : visibleCollections}
@@ -201,7 +202,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
       columnGap={columnGap}
       rowGap={rowGap}
       paddingVertical={GRID_LAYOUT.verticalPadding}
-      accessibilityLabel={`${uniqueCollections.length} designs, scroll sideways for more`}
+      accessibilityLabel={`${uniqueCollections.length} designs, scroll for more`}
     />
   );
 });
