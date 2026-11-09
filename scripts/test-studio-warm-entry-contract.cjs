@@ -95,6 +95,23 @@ async function main() {
   );
   assert.match(studio, /markStudioOpened\(userIdForWarm\)/, 'only a Studio on screen counts as opened');
 
+  // A booted Studio belongs to one account and one brand (Item 3, Nov 2026).
+  assert.match(
+    studio,
+    /const sessionOwner =\s*status === 'authenticated' && user\?\.id \? `\$\{user\.id\}:\$\{user\.activeBrandId \?\? ''\}` : null;/,
+    'the session owner is the account AND its active brand',
+  );
+  assert.match(
+    studio,
+    /sessionEstablishedRef\.current = true;\s*sessionBootedForRef\.current = sessionOwnerNowRef\.current;/,
+    'the owner is recorded when the handoff succeeds',
+  );
+  assert.match(
+    studio,
+    /if \(!bootedFor \|\| bootedFor === sessionOwner\) return;\s*\/\/[^\n]*\n\s*if \(status === 'loading'\) return;\s*sessionBootedForRef\.current = null;\s*retry\(\);/,
+    'a sign-out or a different account/brand tears the WebView down; a token refresh does not',
+  );
+
   console.log('studio warm entry contract: all checks passed');
 }
 

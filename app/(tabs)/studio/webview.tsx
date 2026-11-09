@@ -444,6 +444,30 @@ export default function StudioWebViewScreen() {
     setRetryKey((current) => current + 1);
   }, []);
 
+  /*
+    A booted Studio belongs to one account and one brand (Item 3, Nov 2026).
+
+    The WebView stays alive across tabs, and the boot effect deliberately does
+    not re-run the handoff for a warm session. So signing out left the previous
+    brand's Studio page in memory behind the error panel, and a staff member
+    switching their active brand kept the old brand's session — the user id
+    does not change on a brand switch. When the owner changes, unmount the
+    WebView and boot again for whoever is signed in now (or show sign-in).
+  */
+  const sessionOwner =
+    status === 'authenticated' && user?.id ? `${user.id}:${user.activeBrandId ?? ''}` : null;
+  const sessionOwnerNowRef = useRef(sessionOwner);
+  sessionOwnerNowRef.current = sessionOwner;
+  const sessionBootedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    const bootedFor = sessionBootedForRef.current;
+    if (!bootedFor || bootedFor === sessionOwner) return;
+    // A token refresh passes through `loading` for the same account.
+    if (status === 'loading') return;
+    sessionBootedForRef.current = null;
+    retry();
+  }, [retry, sessionOwner, status]);
+
   // The colour scheme only seasons the handoff URL. Keeping it out of the
   // effect's deps matters: ThemeProvider resolves the stored preference just
   // after mount, and that flip used to re-run the effect — minting a SECOND
@@ -596,6 +620,7 @@ export default function StudioWebViewScreen() {
         const handoff = await StudioApi.createHandoff(intendedPath);
         if (!mounted) return;
         sessionEstablishedRef.current = true;
+        sessionBootedForRef.current = sessionOwnerNowRef.current;
         lastInjectedRouteRef.current = getStudioRouteSignature(resolvedRouteKey, { productId, orderId });
         setWebUrl(
           buildStudioWebUrl({
