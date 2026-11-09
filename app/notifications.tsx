@@ -104,13 +104,14 @@ function NotificationCopy({ item }: { item: MobileNotification }) {
     // Lighter than the rest of the app on purpose (owner, Nov 2026: "so bold
     // and boring"): the sentence is 15px/400, names 600, and titles and quotes
     // set in the true italic face — the way a magazine sets a title in a line.
-    <AppText variant="notification" accessibilityLabel={describeNotificationText(source)}>
+    // The whole sentence slants (owner: "slanten the notification texts").
+    <AppText variant="notification" italic accessibilityLabel={describeNotificationText(source)}>
       {segments.map((segment, index) => {
         const key = `${segment.kind}-${index}`;
         if (segment.kind === 'actor') {
           // The primary scan target: semibold in the app's own ink.
           return (
-            <AppText key={key} variant="notificationStrong">
+            <AppText key={key} variant="notificationStrong" italic>
               {segment.text}
             </AppText>
           );
@@ -131,7 +132,7 @@ function NotificationCopy({ item }: { item: MobileNotification }) {
           );
         }
         return (
-          <AppText key={key} variant="notification" tone="secondary">
+          <AppText key={key} variant="notification" tone="secondary" italic>
             {segment.text}
           </AppText>
         );
@@ -229,14 +230,9 @@ function bagEntityLinks(item: MobileNotification): {
 const NotificationRow = React.memo(function NotificationRow({
   item,
   onOpen,
-  first,
-  last,
 }: {
   item: MobileNotification;
   onOpen: (item: MobileNotification) => void;
-  /** First and last rows of a day group round the group's card corners. */
-  first: boolean;
-  last: boolean;
 }) {
   const { theme } = useTheme();
   const unread = !item.isRead;
@@ -254,9 +250,9 @@ const NotificationRow = React.memo(function NotificationRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: theme.colors.surface },
-        first ? styles.rowFirst : null,
-        last ? styles.rowLast : null,
+        // The background marks UNREAD, edge to edge (owner, Nov 2026). Read
+        // rows sit on the page, so the tint is the signal, not a card.
+        { backgroundColor: unread ? theme.colors.surface : 'transparent' },
         pressed ? styles.pressed : null,
       ]}
     >
@@ -326,20 +322,14 @@ const NotificationRow = React.memo(function NotificationRow({
  */
 type NotificationListEntry =
   | { kind: 'header'; key: string; title: string; first: boolean }
-  | { kind: 'row'; key: string; item: MobileNotification; first: boolean; last: boolean };
+  | { kind: 'row'; key: string; item: MobileNotification };
 
 function flattenNotificationGroups(groups: NotificationGroup[]): NotificationListEntry[] {
   const entries: NotificationListEntry[] = [];
   groups.forEach((group, groupIndex) => {
     entries.push({ kind: 'header', key: `h:${group.title}`, title: group.title, first: groupIndex === 0 });
-    group.items.forEach((item, index) => {
-      entries.push({
-        kind: 'row',
-        key: item.id,
-        item,
-        first: index === 0,
-        last: index === group.items.length - 1,
-      });
+    group.items.forEach((item) => {
+      entries.push({ kind: 'row', key: item.id, item });
     });
   });
   return entries;
@@ -425,12 +415,7 @@ export default function NotificationsScreen() {
       entry.kind === 'header' ? (
         <NotificationGroupHeader title={entry.title} first={entry.first} />
       ) : (
-        <NotificationRow
-          item={entry.item}
-          onOpen={handleOpenNotification}
-          first={entry.first}
-          last={entry.last}
-        />
+        <NotificationRow item={entry.item} onOpen={handleOpenNotification} />
       ),
     [handleOpenNotification],
   );
@@ -491,20 +476,20 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      {/*
-        Two rows, for the same reason the web header has two: back + title +
-        "Mark all" on one line leaves the title about 120dp on a 360dp phone,
-        which truncates "Notifications". The action gets its own right-aligned
-        line and can therefore carry its real name — the same words the web
-        surface uses, so the action is called one thing across the product.
-      */}
+      {/* Count and "Mark all as read" sit together in the header (owner, Nov
+          2026): the count is an inline number on the action, not a raised
+          badge floating on its own. */}
       <Header wrapText title="Notifications" left={<AppBackButton fallbackHref="/(tabs)" />}
-        right={unreadCount > 0 ? <View style={[styles.unreadPill, { backgroundColor: theme.colors.primarySoft }]}>
-          <AppText variant="captionBold" tone="primary">{unreadCount > 99 ? '99+' : String(unreadCount)}</AppText>
-        </View> : undefined} />
-      {unreadCount > 0 ? <View style={styles.headerActions}>
-        <Button title="Mark all as read" size="sm" variant="ghost" onPress={() => void handleMarkAllRead()} loading={markingAll} />
-      </View> : null}
+        right={unreadCount > 0 ? (
+          <Button
+            title={`Mark all as read · ${unreadCount > 99 ? '99+' : unreadCount}`}
+            size="xs"
+            variant="ghost"
+            onPress={() => void handleMarkAllRead()}
+            loading={markingAll}
+            accessibilityLabel={`Mark all ${unreadCount} notifications as read`}
+          />
+        ) : undefined} />
 
       {loading ? (
         <View style={styles.stateWrap}>
@@ -560,19 +545,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
   },
-  headerActions: {
-    paddingHorizontal: tokens.spacing.lg,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  unreadPill: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: tokens.spacing.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerCopy: {
     flex: 1,
     gap: tokens.spacing.xs,
@@ -580,8 +552,8 @@ const styles = StyleSheet.create({
   },
   content: {
     // No `gap`: in a FlatList it would space every row apart, not the groups.
-    // Group spacing lives on `groupHeaderSpaced`.
-    paddingHorizontal: tokens.spacing.md,
+    // Group spacing lives on `groupHeaderSpaced`. No side padding: rows run
+    // edge to edge and carry their own inset; headers carry theirs.
     paddingTop: tokens.spacing.md + tokens.spacing.sm,
   },
   stateWrap: {
@@ -598,6 +570,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.md,
     paddingBottom: tokens.spacing.sm,
   },
   // The space a group used to carry: the previous group's bottom padding,
@@ -611,18 +584,10 @@ const styles = StyleSheet.create({
   },
   row: {
     minHeight: 86,
+    // Edge to edge (owner, Nov 2026): an inset background made each row
+    // read as its own card. The text keeps its inset inside the row.
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
-  },
-  // A group's rows read as one rounded card, as before, without a wrapper
-  // view that would defeat virtualization.
-  rowFirst: {
-    borderTopLeftRadius: tokens.radius.lg,
-    borderTopRightRadius: tokens.radius.lg,
-  },
-  rowLast: {
-    borderBottomLeftRadius: tokens.radius.lg,
-    borderBottomRightRadius: tokens.radius.lg,
   },
   rowTop: {
     flexDirection: 'row',

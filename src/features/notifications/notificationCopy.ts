@@ -55,6 +55,17 @@ export type NotificationCopySource = {
 const target = (contentTitle: string | null | undefined, fallback: string): NotificationSegment =>
   contentTitle && contentTitle.trim() ? content(contentTitle.trim()) : plain(fallback);
 
+const QUOTED_SPLIT = /(“[^”]+”|"[^"]+")/;
+const QUOTED_WHOLE = /^(“[^”]+”|"[^"]+")$/;
+
+/** "“Ankara Dress” sent for review" → [content("“Ankara Dress”"), plain(" sent for review")]. */
+export function splitQuotedTitles(text: string): NotificationSegment[] {
+  return text
+    .split(QUOTED_SPLIT)
+    .filter((part) => part.length > 0)
+    .map((part) => (QUOTED_WHOLE.test(part) ? content(part) : plain(part)));
+}
+
 export function describeNotificationSegments(
   source: NotificationCopySource,
 ): NotificationSegment[] {
@@ -102,7 +113,9 @@ export function describeNotificationSegments(
     still emphasised when the message is absent and we compose our own.
   */
   if (source.message && source.message.trim()) {
-    return [plain(source.message.trim())];
+    // Whole, except that a quoted title becomes a title segment.
+    // Splitting on quotes changes no words or grammar.
+    return splitQuotedTitles(source.message.trim());
   }
 
   if (type.includes('PATCH')) {
