@@ -7,7 +7,13 @@ import {
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
 import { useAuth } from '@/src/auth/AuthContext';
-import { isBrandAccount } from '@/src/auth/brandAccess';
+import { hasActiveBrandMembership, isBrandAccount } from '@/src/auth/brandAccess';
+import {
+  shouldConsiderStudioWarm,
+  STUDIO_WARM_DELAY_MS,
+  STUDIO_WARM_SURFACES,
+  wasStudioOpenedRecently,
+} from '@/src/features/studio/studioWarmEntry';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
@@ -462,6 +468,42 @@ export default function TabLayout() {
       preloadTimers.forEach((timer) => clearTimeout(timer));
     };
   }, [preloadIslandTab]);
+
+  /*
+    Warm Studio from the brand's profile — see `studioWarmEntry.ts`.
+
+    The first Studio entry after launch was ~5s of splash (handoff, then the
+    web app booting in the WebView). Booting it hidden while the brand is on
+    their profile, the screen the Studio entry lives on, turns that tap into
+    an instant switch. Never from the Runway; never for a store still in
+    setup; only for a brand who opened Studio in the last two weeks.
+  */
+  const hasBrandWorkspace = hasActiveBrandMembership(user);
+  useEffect(() => {
+    const eligible = shouldConsiderStudioWarm({
+      authenticated: status === 'authenticated',
+      isBrand,
+      hasBrandWorkspace,
+      storeSetupComplete,
+      pathname,
+      alreadyWarmed: preloadedTabNamesRef.current.has('studio'),
+    });
+    if (!eligible) return undefined;
+
+    let cancelled = false;
+    const userId = user?.id ?? null;
+    const timer = setTimeout(() => {
+      void wasStudioOpenedRecently(userId).then((recent) => {
+        // Still on the profile when the answer lands; otherwise do nothing.
+        if (cancelled || !recent || !STUDIO_WARM_SURFACES.has(pathnameRef.current)) return;
+        preloadIslandTab('studio');
+      });
+    }, STUDIO_WARM_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [hasBrandWorkspace, isBrand, pathname, preloadIslandTab, status, storeSetupComplete, user?.id]);
 
   /*
     Warm the Notifications list after Runway has painted.
