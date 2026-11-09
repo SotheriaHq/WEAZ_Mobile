@@ -20,6 +20,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
+import { InlineCardGrid } from '@/components/catalog/InlineCardGrid';
 import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { Button } from '@/components/ui/Button';
@@ -1024,29 +1025,36 @@ export function BrandShopTab({
         // to the pager's onLayout so every row scrolls fully above the bottom island.
         <View>
           {listHeader}
-          <View
-            style={[
-              styles.gridContainer,
-              { paddingHorizontal: SIDE_PADDING, paddingBottom: gridBottomPadding },
-              { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, rowGap: CARD_GAP }
-            ]}
-          >
-            {filteredProducts.map((item) => (
-              <ProductCard
-                key={item.id}
-                product={item}
-                width={cardWidth}
-                wishlisted={Boolean(wishlistByProductId[item.id])}
-                onWishlistPress={isOwner ? undefined : () => toggleProductWishlist(item.id)}
-                standardBagged={Boolean(cartByProductId[item.id])}
-                customBagged={Boolean(customBagByProductId[item.id])}
-                busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
-                pulseStatus={getPulseStatus(item.id, getTotalStock(item) <= 0 && !item.customOrderEnabled)}
-                onPress={() => {
-                  void openProductDetail(item);
-                }}
-              />
-            ))}
+          {/*
+            Up to four products: the grid. More: a fixed two-row strip that
+            scrolls sideways, so a big shop never makes an endless profile
+            (InlineCardGrid). Either way the height is bounded by the cards.
+          */}
+          <View style={[styles.gridContainer, { paddingBottom: gridBottomPadding }]}>
+            <InlineCardGrid
+              items={filteredProducts}
+              keyOf={(item) => item.id}
+              gridCardWidth={cardWidth}
+              sidePadding={SIDE_PADDING}
+              columnGap={CARD_GAP}
+              rowGap={CARD_GAP}
+              accessibilityLabel={`${filteredProducts.length} products, scroll sideways for more`}
+              renderCard={(item, width) => (
+                <ProductCard
+                  product={item}
+                  width={width}
+                  wishlisted={Boolean(wishlistByProductId[item.id])}
+                  onWishlistPress={isOwner ? undefined : () => toggleProductWishlist(item.id)}
+                  standardBagged={Boolean(cartByProductId[item.id])}
+                  customBagged={Boolean(customBagByProductId[item.id])}
+                  busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
+                  pulseStatus={getPulseStatus(item.id, getTotalStock(item) <= 0 && !item.customOrderEnabled)}
+                  onPress={() => {
+                    void openProductDetail(item);
+                  }}
+                />
+              )}
+            />
           </View>
         </View>
       )}
