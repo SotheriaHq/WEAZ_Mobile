@@ -79,6 +79,18 @@ const styles = StyleSheet.create({
     // Sizes to its label (one line) and sits at the end of the price row.
     alignSelf: 'flex-end',
     minWidth: 0,
+    /*
+      A FIXED height, not just a minimum.
+
+      Button's inner pressable has `flexGrow: 1`. Inside the Catalogue's
+      Shop pager, Yoga measured the pill against the pager's height as the
+      space available, so the pill grew to it; the page then measured taller,
+      the pager (sized from that measurement) grew, and the pill grew again —
+      a loop that reached 4,499,230px on device (2026-11-09) and made the
+      Shop tab scroll forever past two cards, with each price centred
+      millions of pixels down.
+    */
+    height: tokens.button.xs.height,
     borderWidth: 0,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,

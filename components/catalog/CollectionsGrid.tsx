@@ -12,6 +12,7 @@ import {
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { CollectionCardSkeleton } from './CollectionCard';
+import { InlineCardGrid, shouldUseInlineStrip } from './InlineCardGrid';
 import { CatalogEntityCard } from './CatalogEntityCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
@@ -127,15 +128,15 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
     resetKey: renderKey ?? `${resolvedNumColumns}:${uniqueCollections.length}`,
   });
 
-  const renderItem = useCallback(
-    ({ item, index }: { item: CollectionDto; index: number }) => {
+  const renderCard = useCallback(
+    (item: CollectionDto, width: number) => {
       const isDraft = item.status === 'DRAFT' || showDrafts;
 
       return (
-        <View style={[styles.cardWrapper, { width: cardWidth }]}>
+        <View style={[styles.cardWrapper, { width }]}>
           <CatalogEntityCard
             collection={item}
-            cardWidth={cardWidth}
+            cardWidth={width}
             isDraft={isDraft}
             impliedStatus={impliedStatus}
             isOwner={isOwner}
@@ -154,8 +155,9 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
         </View>
       );
     },
-    [cardWidth, isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts, impliedStatus],
+    [isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts, impliedStatus],
   );
+  const keyOfCollection = useCallback((item: CollectionDto) => item.id, []);
 
   // Loading skeleton
   if (isLoading && uniqueCollections.length === 0) {
@@ -182,26 +184,25 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
     return <>{emptyComponent}</>;
   }
 
+  /*
+    Up to four cards: the grid. More: a fixed two-row strip that scrolls
+    sideways (InlineCardGrid), so 50 designs do not make a 25-row profile.
+    The strip is virtualized, so it takes every card; the grid keeps the
+    frame-batched slice.
+  */
+  const inline = shouldUseInlineStrip(uniqueCollections.length);
   return (
-    <View
-      style={[
-        styles.grid,
-        {
-          paddingHorizontal: screenPadding,
-          paddingVertical: GRID_LAYOUT.verticalPadding,
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: columnGap,
-          rowGap: rowGap,
-        },
-      ]}
-    >
-      {visibleCollections.map((item, index) => (
-        <React.Fragment key={item.id}>
-          {renderItem({ item, index })}
-        </React.Fragment>
-      ))}
-    </View>
+    <InlineCardGrid
+      items={inline ? uniqueCollections : visibleCollections}
+      keyOf={keyOfCollection}
+      renderCard={renderCard}
+      gridCardWidth={cardWidth}
+      sidePadding={screenPadding}
+      columnGap={columnGap}
+      rowGap={rowGap}
+      paddingVertical={GRID_LAYOUT.verticalPadding}
+      accessibilityLabel={`${uniqueCollections.length} designs, scroll sideways for more`}
+    />
   );
 });
 

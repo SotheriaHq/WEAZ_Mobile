@@ -353,6 +353,9 @@ const styles = StyleSheet.create({
   compactAction: {
     alignSelf: 'flex-end',
     minWidth: 0,
+    // Fixed, like Bag It's pill: a min-height-only Button grows with an
+    // unbounded parent (the Catalogue pager loop, BagItButton.tsx).
+    height: tokens.button.xs.height,
     borderWidth: 0,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,

@@ -24,6 +24,12 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { ReviewFeedbackCard } from '@/components/content-review/ReviewFeedbackCard';
+import {
+  statusMayCarryFeedback,
+  submitLabelFor,
+  useReviewFeedback,
+} from '@/src/features/content-review/reviewFeedback';
 import {
   getAudienceLabel,
   getDiscoveryDimensionSortIndex,
@@ -78,6 +84,7 @@ export default function CreateDesignPreviewScreen() {
     canSaveDraft,
     canPublish,
     activeDesignId,
+    activeDesignStatus,
     isDraft,
     deleteDraft,
     selectedCategory,
@@ -88,6 +95,10 @@ export default function CreateDesignPreviewScreen() {
   } = useDesignEditor();
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
+  // A design the reviewer sent back: show their notes here too, and name the
+  // button for what it does — "Create" read as making a new design.
+  const reviewFeedback = useReviewFeedback({ designId: activeDesignId, status: activeDesignStatus });
+  const resubmitting = statusMayCarryFeedback(activeDesignStatus);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deletePhrase, setDeletePhrase] = React.useState('');
   // Index of the photo open in the full-screen gallery, or null when closed.
@@ -242,13 +253,16 @@ export default function CreateDesignPreviewScreen() {
             },
           ]}
         >
+          {reviewFeedback ? <ReviewFeedbackCard feedback={reviewFeedback} /> : null}
           {!canSaveDraft ? (
             <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
               Add a title to save this as a draft.
             </AppText>
           ) : (
             <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-              Creating confirms these images belong to this design and match the selected views.
+              {resubmitting
+                ? 'Resubmitting sends your changes back for review. We’ll let you know the moment it’s live.'
+                : 'Creating confirms these images belong to this design and match the selected views.'}
             </AppText>
           )}
           {/* Compact footer row: ← Edit | Save Draft | Create */}
@@ -274,7 +288,13 @@ export default function CreateDesignPreviewScreen() {
             </View>
             <View style={styles.actionButton}>
               <Button
-                title={saveState.action === 'publish' ? 'Creating…' : 'Create'}
+                title={
+                  saveState.action === 'publish'
+                    ? resubmitting
+                      ? 'Resubmitting…'
+                      : 'Creating…'
+                    : submitLabelFor(activeDesignStatus)
+                }
                 loading={saveState.action === 'publish'}
                 disabled={!canPublish || isSaving}
                 onPress={() => void save('publish')}

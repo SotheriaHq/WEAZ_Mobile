@@ -101,36 +101,37 @@ function NotificationCopy({ item }: { item: MobileNotification }) {
   const segments = describeNotificationSegments(source);
 
   return (
-    <AppText variant="body" accessibilityLabel={describeNotificationText(source)}>
+    // Lighter than the rest of the app on purpose (owner, Nov 2026: "so bold
+    // and boring"): the sentence is 15px/400, names 600, and titles and quotes
+    // set in the true italic face — the way a magazine sets a title in a line.
+    <AppText variant="notification" accessibilityLabel={describeNotificationText(source)}>
       {segments.map((segment, index) => {
         const key = `${segment.kind}-${index}`;
         if (segment.kind === 'actor') {
-          // Bold and in the app's own ink: the actor is the primary scan target
-          // and must win against everything else in the row.
+          // The primary scan target: semibold in the app's own ink.
           return (
-            <AppText key={key} variant="bodyBold">
+            <AppText key={key} variant="notificationStrong">
               {segment.text}
             </AppText>
           );
         }
         if (segment.kind === 'content') {
-          // Brand-toned, because the content title is the part that is also a
-          // destination — pressing the row opens it.
+          // A title, so italic; brand-toned because pressing the row opens it.
           return (
-            <AppText key={key} variant="bodyBold" tone="primary">
+            <AppText key={key} variant="notification" tone="primary" italic>
               {segment.text}
             </AppText>
           );
         }
         if (segment.kind === 'quote') {
           return (
-            <AppText key={key} variant="body" tone="secondary">
+            <AppText key={key} variant="notification" tone="secondary" italic>
               {segment.text}
             </AppText>
           );
         }
         return (
-          <AppText key={key} variant="body" tone="secondary">
+          <AppText key={key} variant="notification" tone="secondary">
             {segment.text}
           </AppText>
         );

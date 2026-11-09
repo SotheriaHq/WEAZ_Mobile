@@ -7,6 +7,9 @@ import { Roboto_500Medium } from '@expo-google-fonts/roboto/500Medium';
 import { Roboto_600SemiBold } from '@expo-google-fonts/roboto/600SemiBold';
 import { Roboto_700Bold } from '@expo-google-fonts/roboto/700Bold';
 import { Roboto_800ExtraBold } from '@expo-google-fonts/roboto/800ExtraBold';
+// The two italic faces AppText's `italic` uses (notification titles, quotes).
+import { Roboto_400Regular_Italic } from '@expo-google-fonts/roboto/400Regular_Italic';
+import { Roboto_600SemiBold_Italic } from '@expo-google-fonts/roboto/600SemiBold_Italic';
 import { useFonts } from 'expo-font';
 import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -595,6 +598,8 @@ export default function RootLayout() {
     // The display/screen-title tiers sit at 800 so headings are not the same
     // weight as every other heading. Without this they silently fall back.
     Roboto_800ExtraBold,
+    Roboto_400Regular_Italic,
+    Roboto_600SemiBold_Italic,
     // (No icon-library font is preloaded: every marker in the app is an emoji
     //  per Rule 5, so there are no glyphs left for it to serve.)
   });
