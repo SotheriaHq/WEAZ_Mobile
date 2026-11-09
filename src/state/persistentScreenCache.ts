@@ -72,14 +72,40 @@ export function persistScreenState<T>(key: string, value: T): void {
   }, WRITE_DEBOUNCE_MS);
 }
 
+let primePromise: Promise<void> | null = null;
+let primeSettled = false;
+
 /**
  * Load every persisted snapshot back into the warm map.
  *
  * Call once during boot, before the shopper can reach a tab. Anything already
  * in memory wins — a fresh fetch from this session must never be overwritten by
- * a snapshot from the last one.
+ * a snapshot from the last one. Repeated calls share the one prime.
  */
-export async function primePersistentScreenCache(): Promise<void> {
+export function primePersistentScreenCache(): Promise<void> {
+  if (!primePromise) {
+    primePromise = runPrime().finally(() => {
+      primeSettled = true;
+    });
+  }
+  return primePromise;
+}
+
+/** True once the boot prime has finished (or there was none to wait for). */
+export function isPersistentScreenCachePrimed(): boolean {
+  return primeSettled || primePromise === null;
+}
+
+/**
+ * Resolves when the boot prime has finished. A screen that mounts before then
+ * (a fast tap straight after launch) waits for its persisted snapshot here
+ * instead of deciding it has nothing and showing a skeleton.
+ */
+export function persistentScreenCacheReady(): Promise<void> {
+  return primePromise ?? Promise.resolve();
+}
+
+async function runPrime(): Promise<void> {
   const startedAt = perfEnabled() ? primeNow() : 0;
   try {
     /*

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -12,8 +13,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router, useIsFocused } from 'expo-router';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import {
+  isPersistentScreenCachePrimed,
+  persistentScreenCacheReady,
+  persistScreenState,
+} from '@/src/state/persistentScreenCache';
+import { readWarmScreenState } from '@/src/state/screenWarmState';
 
 import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
@@ -269,8 +276,56 @@ function trimMarketSnapshotCache() {
   }
 }
 
+/*
+  Overnight restore.
+
+  The snapshot map lives in memory, so after Android reclaimed the app (an
+  idle night is enough) Market opened on `cache_miss` and a cold skeleton
+  while the Catalogue, which persists, opened on content. The home view — no
+  filters, no search — is now also written through the persisted screen cache
+  under the viewer's own key, and read back when memory has nothing. It comes
+  back STALE, so the screen shows it and refreshes behind it as it already
+  does for a stale in-memory snapshot. Filtered and searched views stay
+  memory-only. Sign-out clears the persisted cache; an expired signed media
+  URL re-resolves from its file id in useResolvedImageUri.
+*/
+export const MARKET_HOME_PERSIST_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+function persistKeyForMarketQuery(queryKey: string): string | null {
+  try {
+    const { viewerKey } = JSON.parse(queryKey) as { viewerKey?: unknown };
+    if (typeof viewerKey !== 'string' || !viewerKey) return null;
+    return queryKey === buildMarketQueryKey(DEFAULT_MARKET_FILTERS, '', viewerKey)
+      ? `market-home:v1:${viewerKey}`
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isRestorableMarketSnapshot(value: unknown, now = Date.now()): value is MarketSnapshot {
+  const snapshot = value as Partial<MarketSnapshot> | null;
+  return Boolean(
+    snapshot &&
+      typeof snapshot.cachedAt === 'number' &&
+      now - snapshot.cachedAt < MARKET_HOME_PERSIST_MAX_AGE_MS &&
+      Array.isArray(snapshot.products) &&
+      Array.isArray(snapshot.designs) &&
+      Array.isArray(snapshot.collections),
+  );
+}
+
 function readMarketSnapshot(queryKey: string) {
-  const snapshot = marketSnapshotCache.get(queryKey);
+  let snapshot = marketSnapshotCache.get(queryKey);
+  if (!snapshot) {
+    const persistKey = persistKeyForMarketQuery(queryKey);
+    const restored = persistKey ? readWarmScreenState<unknown>(persistKey) : null;
+    if (isRestorableMarketSnapshot(restored)) {
+      snapshot = restored;
+      marketSnapshotCache.set(queryKey, restored);
+      trimMarketSnapshotCache();
+    }
+  }
   if (!snapshot) return null;
   return {
     snapshot,
@@ -279,11 +334,11 @@ function readMarketSnapshot(queryKey: string) {
 }
 
 function writeMarketSnapshot(queryKey: string, snapshot: Omit<MarketSnapshot, 'cachedAt'>) {
-  marketSnapshotCache.set(queryKey, {
-    ...snapshot,
-    cachedAt: Date.now(),
-  });
+  const entry: MarketSnapshot = { ...snapshot, cachedAt: Date.now() };
+  marketSnapshotCache.set(queryKey, entry);
   trimMarketSnapshotCache();
+  const persistKey = persistKeyForMarketQuery(queryKey);
+  if (persistKey) persistScreenState(persistKey, entry);
 }
 
 function fetchMarketBatch(params: {
@@ -1922,7 +1977,13 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
     async (mode: 'reset' | 'more', options?: { forceRefresh?: boolean }) => {
       let didStartBackgroundRefresh = false;
       if (mode === 'reset') {
-        const cached = options?.forceRefresh ? null : readMarketSnapshot(marketQueryKey);
+        let cached = options?.forceRefresh ? null : readMarketSnapshot(marketQueryKey);
+        // A tap straight after launch can reach Market before the boot prime
+        // has read the persisted snapshot; wait for it rather than declare a miss.
+        if (!cached && !options?.forceRefresh && !isPersistentScreenCachePrimed()) {
+          await persistentScreenCacheReady();
+          cached = readMarketSnapshot(marketQueryKey);
+        }
         if (cached) {
           navPerf.mark('cache_hit', 'tabs→market');
           applyMarketSnapshot(cached.snapshot);
@@ -2111,6 +2172,37 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
     void loadMarket('reset');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketQueryKey]);
+
+  /*
+    Automatic freshness.
+
+    Market only reloaded when its query changed, so a shopper who left it open
+    overnight, or came back to it after a while, kept looking at old prices
+    and stock until they pulled to refresh. Now coming back to Market — or
+    back to the app while on Market — after the snapshot has gone stale
+    refreshes it behind what is on screen: `loadMarket('reset')` shows the
+    cached snapshot and swaps in the answer inline, never a skeleton.
+    Requests are shared, so this cannot double the mount's own load.
+  */
+  const loadMarketRef = useRef(loadMarket);
+  loadMarketRef.current = loadMarket;
+  const marketQueryKeyRef = useRef(marketQueryKey);
+  marketQueryKeyRef.current = marketQueryKey;
+  // useFocusEffect, not a focus prop: it subscribes without re-rendering the
+  // memoized body on every tab switch.
+  useFocusEffect(
+    useCallback(() => {
+      const refreshIfStale = () => {
+        const cached = readMarketSnapshot(marketQueryKeyRef.current);
+        if (cached && !cached.isFresh) void loadMarketRef.current('reset');
+      };
+      refreshIfStale();
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') refreshIfStale();
+      });
+      return () => subscription.remove();
+    }, []),
+  );
 
   useEffect(() => {
     if (!deferredWorkReady) return;
