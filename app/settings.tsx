@@ -7,6 +7,7 @@ import {
 } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -60,15 +61,12 @@ function SettingRow({
         </AppText>
       </View>
       <View style={styles.rowCopy}>
-        <AppText
-          variant="bodyBold"
-          tone={row.danger ? 'danger' : 'default'}
-          numberOfLines={1}
-        >
+        {/* Labels wrap fully; a row grows rather than cutting its words off. */}
+        <AppText variant="bodyBold" tone={row.danger ? 'danger' : 'default'}>
           {row.title}
         </AppText>
         {row.subtitle ? (
-          <AppText variant="small" tone="muted" numberOfLines={2}>
+          <AppText variant="small" tone="muted">
             {row.subtitle}
           </AppText>
         ) : null}
@@ -77,7 +75,6 @@ function SettingRow({
         <AppText
           variant="captionRegular"
           tone="muted"
-          numberOfLines={1}
           style={styles.metadata}
         >
           {row.metadata}
@@ -92,37 +89,18 @@ function SettingRow({
   );
 }
 
+/*
+  Rule 37: the label, then a divider on its row; the section itself is bare.
+  No card fill, shadow or row rules under it — the heading is the separator.
+*/
 function SettingsSectionBlock({ section }: { section: SettingsSection }) {
-  const { theme } = useTheme();
-  const isActions = section.title === 'Account actions';
-
   return (
     <View style={styles.sectionWrap}>
-      <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
-        {section.title.toUpperCase()}
-      </AppText>
-      <View
-        style={[
-          styles.section,
-          isActions
-            ? { backgroundColor: theme.colors.surfaceAlt }
-            : {
-                backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface,
-                ...tokens.elevation.sm,
-              },
-        ]}
-      >
-        {section.rows.map((row, index) => {
-          const isLast = index === section.rows.length - 1;
-          return (
-            <View
-              key={`${section.title}-${row.title}`}
-              style={isLast ? null : [styles.rowDivider, { borderBottomColor: theme.colors.border }]}
-            >
-              <SettingRow row={row} isDestructive={row.danger} />
-            </View>
-          );
-        })}
+      <SettingsSectionHeading title={section.title} />
+      <View style={styles.section}>
+        {section.rows.map((row) => (
+          <SettingRow key={`${section.title}-${row.title}`} row={row} isDestructive={row.danger} />
+        ))}
       </View>
     </View>
   );
@@ -409,7 +387,7 @@ export default function SettingsScreen() {
         <AppBackButton fallbackHref="/(tabs)/me" />
         <View style={styles.headerCopy}>
           <AppText variant="title">Settings</AppText>
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+          <AppText variant="captionRegular" tone="muted">
             Account, shopping, privacy, and support
           </AppText>
         </View>
@@ -419,7 +397,8 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Math.max(insets.bottom, tokens.spacing.lg) },
+          // The last row clears the home indicator with room to spare.
+          { paddingBottom: insets.bottom + tokens.spacing['2xl'] },
         ]}
       >
         {sections.map((section) => (

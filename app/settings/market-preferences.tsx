@@ -1,3 +1,4 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +9,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { SettingsPanel } from '@/components/settings/SettingsPrimitives';
 import {
   deleteMarketSuppression,
   getMarketSuppressions,
@@ -74,12 +75,12 @@ function getSuppressionDescription(suppression: MarketSuppression) {
 
 function EmptyHiddenState() {
   return (
-    <Card padding="lg" style={styles.emptyCard}>
+    <SettingsPanel style={styles.emptyCard}>
       <AppText variant="bodyBold">Nothing hidden yet</AppText>
       <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
         Items you mark as not interested in market sections or suggestions will appear here.
       </AppText>
-    </Card>
+    </SettingsPanel>
   );
 }
 
@@ -93,7 +94,7 @@ function HiddenContentRow({
   onRestore: (item: MarketSuppression) => void;
 }) {
   return (
-    <Card padding="md" style={styles.suppressionCard}>
+    <SettingsPanel style={styles.suppressionCard}>
       <View style={styles.rowHeader}>
         <View style={styles.rowCopy}>
           <AppText variant="bodyBold" numberOfLines={1}>
@@ -114,7 +115,7 @@ function HiddenContentRow({
           onPress={() => onRestore(item)}
         />
       </View>
-    </Card>
+    </SettingsPanel>
   );
 }
 
@@ -211,14 +212,14 @@ export default function MarketPreferencesScreen() {
 
   const listHeader = (
     <View style={styles.headerContent}>
-      <Card padding="lg" style={styles.infoCard}>
-        <AppText variant="bodyBold">Hidden / Not Interested content</AppText>
+      <SettingsPanel style={styles.infoCard}>
+        <SettingsSectionHeading title="Hidden / Not interested content" />
         <AppText variant="captionRegular" tone="muted">
           Restored items become eligible for future market sections and suggestion blocks.
         </AppText>
-      </Card>
+      </SettingsPanel>
       {loadError ? (
-        <Card padding="lg" style={[styles.errorCard, { borderColor: theme.colors.danger }]}>
+        <SettingsPanel style={[styles.errorCard, { borderColor: theme.colors.danger }]}>
           <AppText variant="bodyBold" tone="danger">
             Could not load preferences
           </AppText>
@@ -226,17 +227,15 @@ export default function MarketPreferencesScreen() {
             {loadError}
           </AppText>
           <Button title="Retry" size="sm" variant="outline" onPress={() => void loadSuppressions()} />
-        </Card>
+        </SettingsPanel>
       ) : null}
     </View>
   );
 
   const listFooter = (
-    <Card padding="lg" style={[styles.resetCard, { borderColor: theme.colors.warning }]}>
+    <SettingsPanel style={[styles.resetCard, { borderColor: theme.colors.warning }]}>
       <View style={styles.resetCopy}>
-        <AppText variant="bodyBold" tone="warning">
-          Reset market preferences
-        </AppText>
+        <SettingsSectionHeading title="Reset market preferences" />
         <AppText variant="captionRegular" tone="muted">
           Records a fresh baseline for your market preferences. It does not delete your account, orders, saved items, products, collections, profile data, or hidden content list. Visible suggestions may adjust as you continue browsing and interacting.
         </AppText>
@@ -247,7 +246,7 @@ export default function MarketPreferencesScreen() {
         disabled={resetBusy}
         onPress={confirmReset}
       />
-    </Card>
+    </SettingsPanel>
   );
 
   if (status === 'loading' || loading) {
@@ -325,7 +324,8 @@ export default function MarketPreferencesScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Math.max(insets.bottom, tokens.spacing.xl) },
+          // The reset card at the end clears the home indicator with room to spare.
+          { paddingBottom: insets.bottom + tokens.spacing['2xl'] },
         ]}
       />
     </SafeAreaView>

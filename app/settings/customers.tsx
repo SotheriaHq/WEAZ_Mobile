@@ -1,3 +1,4 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -72,6 +73,7 @@ export default function CustomerSettings() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
+        <SettingsSectionHeading title="Customer definition" />
         <AppText variant="body">
           Choose how many paid orders a shopper needs to appear in Customers.
           Standard and custom orders count together. Cancelled and fully
@@ -140,6 +142,8 @@ export default function CustomerSettings() {
 }
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { padding: tokens.spacing.lg, gap: tokens.spacing.lg },
+  // The safe area already lifts the content off the home indicator; the extra
+  // bottom space keeps the last control from sitting on the screen's edge.
+  content: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing['2xl'], gap: tokens.spacing.lg },
   group: { gap: tokens.spacing.md },
 });

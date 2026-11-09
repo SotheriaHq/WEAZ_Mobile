@@ -287,12 +287,19 @@ async function main() {
   }
 
   // Wiring the module tests cannot reach.
-  const screen = read('app/settings/notifications.tsx');
-  assert.match(screen, /onRetry=\{\(\) => triggerPushRegistration\(true\)\}/, 'Retry re-registers, not re-saves a setting');
-  assert.match(screen, /DELIVERY_SECTION_PUSH_OFF/);
-  assert.match(screen, /pushControlVisibility\(settings\.push\)\.pushDependents \? \(/, 'device status and quiet hours only while push is on');
-  assert.match(screen, /\{showTimes \? \(/, 'quiet-hour times only while quiet hours are on');
-  assert.doesNotMatch(screen, /could not register for push yet/, 'registration outcomes are not shown as an unsaved setting');
+  // The notification settings are an overview plus one screen per section.
+  const overview = read('app/settings/notifications.tsx');
+  const sectionScreen = read('app/settings/notifications/[section].tsx');
+  const parts = read('components/settings/notifications/NotificationSettingsParts.tsx');
+  const deviceHook = read('src/notifications/useNotificationDevice.ts');
+  assert.match(sectionScreen, /onRetry=\{device\.retry\}/, 'Retry re-registers, not re-saves a setting');
+  assert.match(deviceHook, /retry: \(\) => \{\s*void register\(true\);/, 'the device retry forces a registration');
+  assert.match(overview, /visibleNotificationSections\(settings\)/, 'push-only sections leave the overview with the switch');
+  assert.match(sectionScreen, /section\.requiresPush && !pushOn/, 'a push-only section explains itself while push is off');
+  assert.match(parts, /\{showTimes \? \(/, 'quiet-hour times only while quiet hours are on');
+  for (const [name, source] of [['overview', overview], ['section', sectionScreen], ['parts', parts]]) {
+    assert.doesNotMatch(source, /could not register for push yet/, `${name}: registration outcomes are not an unsaved setting`);
+  }
 
   const http = read('src/api/httpClient.ts');
   assert.match(http, /const authToken = retryableConfig\._accountToken \?\? currentAuthToken;/);

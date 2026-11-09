@@ -1,14 +1,15 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { SettingsPanel } from '@/components/settings/SettingsPrimitives';
 import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { deleteAccount } from '@/src/api/AuthApi';
@@ -27,6 +28,7 @@ const WARNING_POINTS = [
 
 export default function DeleteAccountScreen() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const toast = useToast();
   const { signOut, user } = useAuth();
   const [step, setStep] = useState<'warning' | 'confirm'>('warning');
@@ -85,8 +87,15 @@ export default function DeleteAccountScreen() {
           </View>
         </View>
 
-        <KeyboardAwareFormScroll contentContainerStyle={styles.content}>
-          <Card style={styles.card}>
+        <KeyboardAwareFormScroll
+          contentContainerStyle={[
+            styles.content,
+            // The final button clears the home indicator with room to spare.
+            { paddingBottom: insets.bottom + tokens.spacing['2xl'] },
+          ]}
+        >
+          <SettingsPanel style={styles.card}>
+            <SettingsSectionHeading title="Before you continue" />
             <AppText variant="subtitle" tone="danger">⚠️ This cannot be undone</AppText>
             <AppText variant="body" tone="muted">
               Deleting your account is permanent. Before you continue, make sure you understand what happens:
@@ -104,10 +113,10 @@ export default function DeleteAccountScreen() {
               variant="secondary"
               onPress={() => drillDownPush('/legal/account-deletion' as never)}
             />
-          </Card>
+          </SettingsPanel>
 
           {step === 'warning' ? (
-            <Card style={styles.card}>
+            <SettingsPanel style={styles.card}>
               <AppText variant="body" tone="muted">
                 If you are sure, continue to the final confirmation step.
               </AppText>
@@ -121,9 +130,9 @@ export default function DeleteAccountScreen() {
                 variant="secondary"
                 onPress={() => router.back()}
               />
-            </Card>
+            </SettingsPanel>
           ) : (
-            <Card style={styles.card}>
+            <SettingsPanel style={styles.card}>
               <AppText variant="body" tone="muted">
                 To confirm, enter the email address on this account and your current password.
               </AppText>
@@ -163,7 +172,7 @@ export default function DeleteAccountScreen() {
                   setCurrentPassword('');
                 }}
               />
-            </Card>
+            </SettingsPanel>
           )}
         </KeyboardAwareFormScroll>
       </SafeAreaView>

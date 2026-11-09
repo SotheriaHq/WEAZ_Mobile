@@ -134,6 +134,8 @@ export const queryKeys = {
   notifications: {
     unreadCount: () => ['notifications', 'unreadCount'] as const,
     list: (userId?: string | null) => ['notifications', 'list', normalizeId(userId)] as const,
+    /** Notification preferences, shared by the overview and every section screen. */
+    settings: (userId?: string | null) => ['notifications', 'settings', normalizeId(userId)] as const,
   },
   messaging: {
     unreadCount: () => ['messaging', 'unreadCount'] as const,
@@ -208,6 +210,12 @@ export const isPersistableWiezQueryKey = (queryKey: readonly unknown[]) => {
   }
   if (root === 'media') {
     return scope === 'publicUrl';
+  }
+  // Notification preferences: on/off switches and two quiet-hour times, no
+  // personal data, purged on logout with the rest of `notifications`. On disk,
+  // the Notifications overview paints its summaries instantly after a restart.
+  if (root === 'notifications') {
+    return scope === 'settings';
   }
   // Profile tabs the user round-trips between. Read-only display data with no
   // PII, already purged on logout via PRIVATE_QUERY_ROOTS above. Left out

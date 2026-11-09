@@ -13,7 +13,7 @@ import {
 import { useAuth } from '@/src/auth/AuthContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { SettingsPanel } from '@/components/settings/SettingsPrimitives';
 import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
@@ -410,7 +410,7 @@ export default function EmailPreferencesSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
         <SettingsSection title="Master controls">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel style={styles.card}>
             <SettingsToggleRow
               title="General email updates"
               description="Routine product, community, and operational emails."
@@ -433,11 +433,11 @@ export default function EmailPreferencesSettingsScreen() {
               disabled={pendingKey === 'reset'}
               onPress={resetDefaults}
             />
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
 
         {pendingCriticalChange ? (
-          <Card padding="lg" style={[styles.card, { borderColor: theme.colors.warning }]}>
+          <SettingsPanel style={[styles.card, { borderColor: theme.colors.warning }]}>
             <AppText variant="bodyBold" tone="warning">
               Confirm security email change
             </AppText>
@@ -473,12 +473,12 @@ export default function EmailPreferencesSettingsScreen() {
                 />
               </View>
             </View>
-          </Card>
+          </SettingsPanel>
         ) : null}
 
         {groupedScenarios.map(({ group, items }) => (
           <SettingsSection key={group} title={group}>
-            <Card padding="lg" style={styles.card}>
+            <SettingsPanel style={styles.card}>
               <AppText variant="captionRegular" tone="muted">
                 {GROUP_COPY[group] ?? 'Choose which email updates you want from this category.'}
               </AppText>
@@ -492,7 +492,7 @@ export default function EmailPreferencesSettingsScreen() {
                   onChange={(next) => toggleScenario(key, next)}
                 />
               ))}
-            </Card>
+            </SettingsPanel>
           </SettingsSection>
         ))}
       </KeyboardAwareFormScroll>

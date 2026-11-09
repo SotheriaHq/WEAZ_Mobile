@@ -11,6 +11,16 @@ import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
+
+/** The section label each tab opens with ("Order preferences" carries its own). */
+const SUBSCRIPTION_TAB_HEADINGS = {
+  plans: 'Plans',
+  payments: 'Billing history',
+  history: 'Subscription history',
+  cards: 'Payment methods',
+  preferences: 'Order preferences',
+} as const;
 import { AppBadge } from '@/components/ui/AppBadge';
 import {
   SubscriptionApi,
@@ -359,6 +369,9 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
               </ScrollView>
             </View>
 
+            {/* Rule 37: each tab's content opens with its section label and divider. */}
+            {tab !== 'preferences' ? <SettingsSectionHeading title={SUBSCRIPTION_TAB_HEADINGS[tab]} /> : null}
+
             {/* Error or Loading Banners */}
             {billing.isPending ? (
               <Card variant="elevated">
@@ -390,8 +403,8 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
 
             {/* Preferences Tab */}
             {tab === 'preferences' ? (
-              <Card variant="elevated" padding="lg">
-                <AppText variant="h2">Order Preferences</AppText>
+              <View style={styles.section}>
+                <SettingsSectionHeading title="Order preferences" />
                 {queue.isPending ? (
                   <AppText>Loading queue preferences…</AppText>
                 ) : queue.isError ? (
@@ -461,7 +474,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     ) : null}
                   </View>
                 ) : null}
-              </Card>
+              </View>
             ) : null}
 
             {/* Plans Tab */}
@@ -472,8 +485,9 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                   <Card variant="liquidGlass" padding="lg">
                     <View style={styles.headerRow}>
                       <View>
+                        {/* The card's own eyebrow; the section label above is "Plans". */}
                         <AppText variant="captionBold" tone="primary">
-                          CURRENT SUBSCRIPTION
+                          Current subscription
                         </AppText>
                         <AppText variant="h2" style={{ marginTop: 2 }}>
                           {tierName(subscription.tierKey)} Plan
@@ -556,7 +570,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     <View style={styles.headerRow}>
                       <View>
                         <AppText variant="captionBold" tone="primary">
-                          CURRENT ATELIER MODE
+                          Current atelier mode
                         </AppText>
                         <AppText variant="h2" style={{ marginTop: tokens.spacing.xs }}>
                           WIEZ Creative Free Plan
@@ -818,8 +832,8 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
 
                 {/* Plan Review & Checkout Drawer/Card (ITEM 28) */}
                 {preview ? (
-                  <Card variant="liquidGlass" padding="lg">
-                    <AppText variant="h3">Review {tierName(tier)}</AppText>
+                  <View style={styles.section}>
+                    <SettingsSectionHeading title={`Review ${tierName(tier)}`} />
                     <View style={{ marginTop: tokens.spacing.sm, gap: 4 }}>
                       <AppText variant="bodyBold">
                         {preview.kind === 'DOWNGRADE'
@@ -932,7 +946,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                         }}
                       />
                     </View>
-                  </Card>
+                  </View>
                 ) : null}
               </>
             ) : null}
@@ -1179,6 +1193,8 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // A bare Rule 37 section: heading, then content; no card around it.
+  section: { gap: tokens.spacing.md },
   content: {
     padding: tokens.spacing.lg,
     paddingBottom: tokens.spacing['3xl'],

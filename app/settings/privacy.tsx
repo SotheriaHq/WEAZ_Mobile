@@ -1,3 +1,4 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -111,7 +112,7 @@ function AnalyticsSection() {
 
   return (
     <View style={styles.section}>
-      <AppText variant="captionBold" tone="muted">ANALYTICS</AppText>
+      <SettingsSectionHeading title="Analytics" />
       <PrivacyToggleRow
         emoji="📊"
         label="Usage analytics"
@@ -276,7 +277,7 @@ export default function PrivacySettingsScreen() {
         ]}
       >
         <View style={styles.section}>
-          <AppText variant="captionBold" tone="muted">PROFILE VISIBILITY</AppText>
+          <SettingsSectionHeading title="Profile Visibility" />
           <VisibilityRow
             emoji="🌐"
             label="Public profile"
@@ -294,7 +295,7 @@ export default function PrivacySettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <AppText variant="captionBold" tone="muted">WHAT OTHERS SEE</AppText>
+          <SettingsSectionHeading title="What Others See" />
           <PrivacyToggleRow
             emoji="🪪"
             label="Show my username"
@@ -314,7 +315,7 @@ export default function PrivacySettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <AppText variant="captionBold" tone="muted">MARKET</AppText>
+          <SettingsSectionHeading title="Market" />
           <Pressable
             accessibilityRole="button"
             onPress={() => drillDownPush('/settings/market-preferences' as never)}
@@ -332,7 +333,7 @@ export default function PrivacySettingsScreen() {
         <AnalyticsSection />
 
         <View style={[styles.section, styles.blockedSection]}>
-          <AppText variant="captionBold" tone="muted" style={styles.sectionLabel}>BLOCKED USERS</AppText>
+          <SettingsSectionHeading title="Blocked Users" />
           <View style={styles.emptyState}>
             <AppText variant="title">🚫</AppText>
             <AppText variant="bodyBold">No blocked users</AppText>

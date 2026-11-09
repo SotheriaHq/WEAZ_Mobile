@@ -15,7 +15,7 @@ import {
 import { useAuth } from '@/src/auth/AuthContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { SettingsPanel } from '@/components/settings/SettingsPrimitives';
 import {
   SettingsHeader,
   SettingsSection,
@@ -206,7 +206,7 @@ function PaymentSettingsContent() {
         ]}
       >
         <SettingsSection title="Checkout">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel style={styles.card}>
             <AppText variant="bodyBold">Backend-verified checkout</AppText>
             <AppText variant="captionRegular" tone="muted">
               WIEZ initializes payment from your backend bag and only updates
@@ -227,11 +227,11 @@ function PaymentSettingsContent() {
                 />
               </View>
             </View>
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
 
         <SettingsSection title="Payment summary">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel style={styles.card}>
             <View style={styles.summaryGrid}>
               <View
                 style={[
@@ -264,7 +264,7 @@ function PaymentSettingsContent() {
               )}
               .
             </AppText>
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
 
         <SettingsSection title="Recent payments">
@@ -283,11 +283,11 @@ function PaymentSettingsContent() {
               onAction={() => drillDownPush('/checkout' as never)}
             />
           ) : (
-            <Card padding="lg" style={styles.card}>
+            <SettingsPanel style={styles.card}>
               {paymentSummary.recent.map((order) => (
                 <PaymentOrderRow key={order.id} order={order} />
               ))}
-            </Card>
+            </SettingsPanel>
           )}
         </SettingsSection>
 

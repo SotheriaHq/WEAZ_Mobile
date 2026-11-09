@@ -1,3 +1,4 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +17,7 @@ import {
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { SettingsPanel } from '@/components/settings/SettingsPrimitives';
 import {
   SettingsHeader,
   SettingsOptionRow,
@@ -256,10 +257,10 @@ export default function SizingSettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
-        <Card padding="lg" style={styles.card}>
+        <SettingsPanel style={styles.card}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryCopy}>
-              <AppText variant="bodyBold">Saved measurements</AppText>
+              <SettingsSectionHeading title="Saved measurements" />
               <AppText variant="captionRegular" tone="muted">
                 {describeSavedMeasurements(sizeFit)}
               </AppText>
@@ -277,7 +278,7 @@ export default function SizingSettingsScreen() {
               onPress={() => drillDownPush('/fittings' as never)}
             />
           </View>
-        </Card>
+        </SettingsPanel>
 
         <SettingsSection title="How we size clothes for you">
           <AppText variant="captionRegular" tone="muted">

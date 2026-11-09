@@ -1,10 +1,10 @@
+import { SettingsSectionHeading } from './SettingsSectionHeading';
 import React from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { MuseLoader } from '@/components/ui/MuseLoader';
@@ -55,7 +55,7 @@ export function SettingsStateCard({
   const { theme } = useTheme();
 
   return (
-    <Card padding="lg" style={styles.stateCard}>
+    <View style={styles.stateCard}>
       {loading ? <MuseLoader size={20} /> : null}
       <AppText variant="bodyBold" style={styles.centerText}>
         {title}
@@ -68,7 +68,7 @@ export function SettingsStateCard({
       {actionTitle && onAction ? (
         <Button title={actionTitle} size="sm" variant="secondary" onPress={onAction} />
       ) : null}
-    </Card>
+    </View>
   );
 }
 
@@ -199,9 +199,7 @@ export function SettingsSection({
 }) {
   return (
     <View style={[styles.section, style]}>
-      <AppText variant="captionBold" tone="secondary">
-        {title.toUpperCase()}
-      </AppText>
+      <SettingsSectionHeading title={title} />
       {children}
     </View>
   );
@@ -213,30 +211,18 @@ export function SettingsSection({
  * Each group used to be a `Card` — a full rounded border around content that
  * already sat inside a labelled section, so a settings screen read as a stack
  * of boxes inside boxes and every group competed with its neighbour for
- * attention. The section LABEL is the separator; this adds at most a closing
- * hairline. Same grouping, a fraction of the ink.
+ * attention. The section LABEL is the separator; the heading carries the divider to the right of its label. Same grouping, a fraction of the ink.
  */
 export function SettingsPanel({
   children,
-  divided = true,
   style,
 }: {
   children: React.ReactNode;
-  /** Draw the closing hairline. Off for the last group on a screen. */
-  divided?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { theme } = useTheme();
-
   return (
     <View
-      style={[
-        styles.panel,
-        divided
-          ? { borderBottomWidth: 2, borderBottomColor: theme.colors.border }
-          : null,
-        style,
-      ]}
+      style={[styles.panel, style, styles.barePanel]}
     >
       {children}
     </View>
@@ -266,22 +252,23 @@ const styles = StyleSheet.create({
   section: {
     gap: tokens.spacing.sm,
   },
+  barePanel: {
+    borderWidth: 0, borderTopWidth: 0, borderBottomWidth: 0, borderLeftWidth: 0, borderRightWidth: 0,
+    borderRadius: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0,
+  },
   panel: {
     gap: tokens.spacing.md,
     paddingBottom: tokens.spacing.lg,
   },
   settingRow: {
     minHeight: 64,
-    borderBottomWidth: 2,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.sm,
   },
-  selectedSettingRow: {
-    borderBottomWidth: 2,
-  },
+  selectedSettingRow: {},
   rowCopy: {
     flex: 1,
     minWidth: 0,
