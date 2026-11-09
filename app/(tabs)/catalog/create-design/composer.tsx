@@ -31,6 +31,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { DesignTaxonomyProposalField } from '@/src/features/design-editor/DesignTaxonomyProposalField';
+import { ReviewFeedbackCard, ReviewFieldHint } from '@/components/content-review/ReviewFeedbackCard';
+import { useReviewFeedback } from '@/src/features/content-review/reviewFeedback';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -166,6 +168,7 @@ export default function CreateDesignComposerScreen() {
     saveState,
     canSaveDraft,
     activeDesignId,
+    activeDesignStatus,
     isEditMode,
     pickMedia,
     mediaPickerReady,
@@ -174,6 +177,8 @@ export default function CreateDesignComposerScreen() {
     retryBootstrap,
   } = useDesignEditor();
   const { scheme, theme } = useTheme();
+  // What the reviewer asked for, when this design came back with changes.
+  const reviewFeedback = useReviewFeedback({ designId: activeDesignId, status: activeDesignStatus });
   const [categorizationExpanded, setCategorizationExpanded] = useState(true);
   const [audienceExpanded, setAudienceExpanded] = useState(false);
   const [availabilityExpanded, setAvailabilityExpanded] = useState(false);
@@ -830,7 +835,9 @@ export default function CreateDesignComposerScreen() {
           extraKeyboardSpace={0}
           automaticallyAdjustKeyboardInsets={false}
         >
+          {reviewFeedback ? <ReviewFeedbackCard feedback={reviewFeedback} /> : null}
           <View style={styles.mediaSection}>
+            <ReviewFieldHint feedback={reviewFeedback} focus="media" />
             <View style={styles.sectionTopRow}>
               <View style={styles.sectionTitleCopy}>
                 <AppText variant="bodyBold">Selected media</AppText>
@@ -955,6 +962,7 @@ export default function CreateDesignComposerScreen() {
               </View>
             </Pressable>
 
+            <ReviewFieldHint feedback={reviewFeedback} focus="details" />
             {categorizationExpanded ? (
               <View style={styles.accordionBody}>
                 <OptionRow

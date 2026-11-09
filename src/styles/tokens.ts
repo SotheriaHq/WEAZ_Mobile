@@ -715,6 +715,9 @@ export const tokens = {
      * somewhere to go.
      */
     extraBold: 'Roboto_800ExtraBold',
+    /** True italic faces, for titles and quotes inside copy (AppText `italic`). */
+    regularItalic: 'Roboto_400Regular_Italic',
+    semiBoldItalic: 'Roboto_600SemiBold_Italic',
     // Fallback stack for any place fontFamily is not yet set
     stack: 'Roboto_400Regular, Roboto, system-ui, -apple-system, sans-serif',
   },

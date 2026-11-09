@@ -347,6 +347,18 @@ const viewerIsBrand = (viewer: NotificationViewer): boolean =>
 const routeForOwnProfile = (viewer: NotificationViewer): RouterTarget =>
   (viewerIsBrand(viewer) ? '/catalog' : '/(tabs)/me') as Href;
 
+/** Review events the brand still has to act on (or wait on): open the editor. */
+const CONTENT_REVIEW_EDIT_TYPES = new Set([
+  'CONTENT_SUBMITTED_FOR_REVIEW',
+  'CONTENT_RESUBMITTED',
+  'CONTENT_CHANGES_REQUESTED',
+  'CONTENT_REVIEW_REJECTED',
+  'CONTENT_REVIEW_FAILED',
+  'CONTENT_PUBLISH_FAILED',
+]);
+/** Review events that end with the piece live: open it live. */
+const CONTENT_REVIEW_LIVE_TYPES = new Set(['CONTENT_REVIEW_APPROVED', 'CONTENT_PUBLISHED']);
+
 export function routeForNotification(
   notification: MobileNotification,
   viewer: NotificationViewer = null,
@@ -364,6 +376,44 @@ export function routeForNotification(
   const targetType = target?.type;
   const targetId = target?.id ?? null;
   const actorId = notification.actor?.id ?? null;
+
+  /*
+    Content review: the brand's own item, so never the shopper view.
+
+    These had no branch and fell through to the generic DESIGN target, which
+    opens the public viewer — a brand tapping "sent for review" landed on the
+    shopper screen (owner, Nov 2026). Anything still in the brand's hands
+    (in review, changes requested, not approved, failed) opens the EDITOR,
+    where the reviewer's notes now show; approved/published opens it live.
+  */
+  if (CONTENT_REVIEW_EDIT_TYPES.has(type) || CONTENT_REVIEW_LIVE_TYPES.has(type)) {
+    const text = (value: unknown) =>
+      typeof value === 'string' && value.trim() ? value.trim() : null;
+    const productId = text(payload.productId) ?? (targetType === 'PRODUCT' ? targetId : null);
+    const designId =
+      text(payload.designId) ??
+      text(payload.collectionId) ??
+      text(payload.legacyCollectionId) ??
+      (targetType === 'DESIGN' || targetType === 'COLLECTION' ? targetId : null);
+    if (CONTENT_REVIEW_LIVE_TYPES.has(type)) {
+      if (productId) return { pathname: '/products/[productId]', params: { productId } } as Href;
+      if (designId) return routeForDesignTarget(designId, { openComments: false, commentId: null });
+    } else {
+      if (productId) {
+        return { pathname: '/studio', params: { routeKey: 'editProduct', productId } } as unknown as Href;
+      }
+      if (designId) {
+        return { pathname: '/designs/[designId]/edit', params: { designId } } as unknown as Href;
+      }
+    }
+    return {
+      pathname: '/catalog',
+      params: {
+        tab: 'Collections',
+        visibility: type === 'CONTENT_SUBMITTED_FOR_REVIEW' || type === 'CONTENT_RESUBMITTED' ? 'In Review' : 'Needs Attention',
+      },
+    } as Href;
+  }
   const commentId =
     notification.subTargetId ??
     (typeof payload.commentId === 'string' ? payload.commentId : null);

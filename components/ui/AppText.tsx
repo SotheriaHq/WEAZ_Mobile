@@ -58,9 +58,17 @@ type Variant =
   | 'statLabel'
   | 'money'
   | 'moneyLarge'
-  | 'moneySmall';
+  | 'moneySmall'
+  /**
+   * Notification copy: 15px at a light 400, with names at 600. The owner found
+   * the bell list "so bold and boring" at 17px/600–700 (Nov 2026); messages
+   * are skimmed, so a quieter face with italic titles reads faster. Scoped to
+   * notifications — the heavier ladder stays everywhere else.
+   */
+  | 'notification'
+  | 'notificationStrong';
 
-type Tone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning' | 'disabled';
+type Tone ='default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning' | 'disabled';
 type TypographyTokenKey =
   | 'display'
   | 'title'
@@ -104,6 +112,11 @@ type Props = Omit<TextProps, 'style'> & {
    * variant/tone, never from a `style` override (which `sanitizeStyle` strips).
    */
   onDarkStage?: boolean;
+  /**
+   * Set in the true italic face — for a title or a quoted line inside copy
+   * (notification titles, a reviewer's note). Not for whole paragraphs.
+   */
+  italic?: boolean;
   style?: StyleProp<TextStyle>;
   children: React.ReactNode;
 };
@@ -157,6 +170,19 @@ const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
   money: 'money',
   moneyLarge: 'moneyLarge',
   moneySmall: 'moneySmall',
+  notification: 'bodyReadable',
+  notificationStrong: 'bodyReadable',
+};
+
+/**
+ * The real italic face for each family, loaded in app/_layout.tsx. Android
+ * otherwise fakes a slant from the upright face, and on a phone whose system
+ * font is a handwriting face (the test A17) an unresolved family can render in
+ * that instead. Families without an entry fall back to `fontStyle: 'italic'`.
+ */
+const ITALIC_FAMILY: Record<string, string> = {
+  [tokens.fontFamily.regular]: tokens.fontFamily.regularItalic,
+  [tokens.fontFamily.semiBold]: tokens.fontFamily.semiBoldItalic,
 };
 
 /**
@@ -300,6 +326,7 @@ export function AppText({
   tone = 'default',
   muted = false,
   onDarkStage = false,
+  italic = false,
   style,
   children,
   ...rest
@@ -332,8 +359,13 @@ export function AppText({
           ? tokens.fontFamily.medium
           : variant === 'bodyStrong'
             ? tokens.fontFamily.bold
-            : FONT_FAMILY_MAP[tokenKey];
-  const fontFamily = fontFallbackMode ? undefined : intendedFamily;
+            : variant === 'notification'
+              ? tokens.fontFamily.regular
+              : variant === 'notificationStrong'
+                ? tokens.fontFamily.semiBold
+                : FONT_FAMILY_MAP[tokenKey];
+  const italicFamily = italic ? ITALIC_FAMILY[intendedFamily] : undefined;
+  const fontFamily = fontFallbackMode ? undefined : italicFamily ?? intendedFamily;
   const fontWeight = FONT_WEIGHT_BY_FAMILY[intendedFamily] ?? tier.weight;
   const fontVariant = TABULAR_TIERS.has(tokenKey)
     ? (['tabular-nums'] as TextStyle['fontVariant'])
@@ -358,6 +390,9 @@ export function AppText({
       style={[
         {
           ...(fontFamily ? { fontFamily } : {}),
+          // With a true italic face loaded the family already slants; the
+          // style still tells fallback mode and unmapped families to slant.
+          ...(italic ? { fontStyle: 'italic' as const } : {}),
           fontSize: tier.size,
           fontWeight,
           lineHeight: tier.lineHeight,

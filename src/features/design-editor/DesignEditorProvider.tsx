@@ -126,6 +126,8 @@ type ContextValue = {
   customMeasurementKeys: string[];
   originalMediaIds: string[];
   activeDesignId: string | null;
+  /** The design's publication status — CHANGES_REQUESTED drives the review feedback and "Resubmit for review". */
+  activeDesignStatus: ContentPublicationStatus;
   isEditMode: boolean;
   isDraft: boolean;
   saveState: {
@@ -1479,6 +1481,7 @@ export function DesignEditorProvider({
       customMeasurementKeys,
       originalMediaIds,
       activeDesignId,
+      activeDesignStatus,
       isEditMode: Boolean(activeDesignId),
       isDraft: activeDesignStatus === 'DRAFT',
       saveState: {

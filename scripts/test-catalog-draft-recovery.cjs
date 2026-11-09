@@ -58,6 +58,10 @@ mocks.set('@/src/utils/mobileNavigation', { drillDownPush: noop });
 mocks.set('@/src/utils/perf', { perfMeasure: noop });
 mocks.set('@/src/utils/navPerf', { navPerf: new Proxy({}, { get: () => noop }) });
 mocks.set('@/src/perf/commitCost', { useCommitCost: noop });
+// Review feedback loads over the network; this test renders the composer for
+// draft recovery, where there is no review to show.
+mocks.set('@/src/features/content-review/reviewFeedback', { useReviewFeedback: () => null });
+mocks.set('@/components/content-review/ReviewFeedbackCard', { ReviewFeedbackCard: () => null, ReviewFieldHint: () => null });
 const { tokens } = load(path.join(root, 'src/styles/tokens.ts'));
 mocks.set('@/src/theme/ThemeProvider', { useTheme: () => ({ theme: tokens.themes.dark, scheme: 'dark' }) });
 const providerSource = fs.readFileSync(path.join(root, 'src/features/design-editor/DesignEditorProvider.tsx'), 'utf8');
