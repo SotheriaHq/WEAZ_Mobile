@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
@@ -33,6 +33,7 @@ import {
   isBrandOwner,
 } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
+import { markStudioOpened } from '@/src/features/studio/studioWarmEntry';
 import { jumpToIslandTabRoot } from '@/src/navigation/islandTabStack';
 import {
   registerStudioInPlaceHandler,
@@ -354,8 +355,12 @@ export default function StudioWebViewScreen() {
   const brandTitle = user?.brandFullName?.trim() || (user?.username ? `@${user.username.replace(/^@/, '')}` : 'Store');
   const dashboardTitleNode = (
     <View style={styles.dashboardTitleRow}>
-      {/* Smaller and one line, so the header's controls stay beside it. */}
-      <AppText variant="subtitle" numberOfLines={1}>{brandTitle}</AppText>
+      {/* Name and LIVE share one row. The name yields width (one line, then
+          an ellipsis) so the header's controls stay beside it; LIVE never
+          shrinks and never drops under the name. */}
+      <AppText variant="subtitle" numberOfLines={1} style={styles.dashboardTitleText}>
+        {brandTitle}
+      </AppText>
       <View style={[styles.livePill, { borderColor: theme.colors.success }]}>
         <View style={[styles.liveDot, { backgroundColor: theme.colors.success }]} />
         <AppText variant="badgeLabel" tone="success">
@@ -377,6 +382,18 @@ export default function StudioWebViewScreen() {
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const hasBrandWorkspace = hasActiveBrandMembership(user);
   const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
+  // False while the tab shell has warmed Studio in the background.
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
+  // Remember that this brand uses Studio, so later sessions warm it ahead of
+  // the tap (studioWarmEntry.ts). Only when Studio is actually on screen.
+  const userIdForWarm = user?.id ?? null;
+  useFocusEffect(
+    useCallback(() => {
+      void markStudioOpened(userIdForWarm);
+    }, [userIdForWarm]),
+  );
   const queryClient = useQueryClient();
   const commerce = useBrandCommerceAccess();
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
@@ -532,6 +549,10 @@ export default function StudioWebViewScreen() {
       // their essentials. Essentials forwards to the wizard on its own when it
       // is already done, so this is the correct entry from any state.
       if (storeSetupComplete === false && !STORE_SETUP_EXEMPT_ROUTES.has(resolvedRouteKey)) {
+        // A Studio warmed in the background (studioWarmEntry.ts) is not on
+        // screen: never toast or redirect from it. The effect re-runs on
+        // focus, and the redirect happens then.
+        if (!isFocusedRef.current) return;
         if (!setupRedirectNotifiedRef.current) {
           setupRedirectNotifiedRef.current = true;
           toast.info('Finish setting up your store to open Studio.');
@@ -564,7 +585,11 @@ export default function StudioWebViewScreen() {
       // renderer was killed for memory while Runway/Market bitmaps sat in RAM.
       // Disk cache is untouched, so returning to a feed re-decodes, not
       // re-downloads.
-      void ExpoImage.clearMemoryCache().catch(() => undefined);
+      // Not for a background warm: the brand is looking at their profile, and
+      // dropping its decoded images would flicker the very screen on display.
+      if (isFocusedRef.current) {
+        void ExpoImage.clearMemoryCache().catch(() => undefined);
+      }
 
       try {
         const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
@@ -609,6 +634,7 @@ export default function StudioWebViewScreen() {
   }, [
     hasBrandWorkspace,
     invalidRouteKey,
+    isFocused,
     isStudioEligible,
     navigateStudioInPlace,
     orderId,
@@ -1553,11 +1579,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
   },
   dashboardTitleRow: {
-    alignItems: 'flex-start',
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  dashboardTitleText: {
+    flexShrink: 1,
     minWidth: 0,
   },
   livePill: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
