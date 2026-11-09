@@ -1,3 +1,4 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,6 +80,7 @@ export default function CurrencySettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
         ListHeaderComponent={
           <View style={styles.intro}>
+            <SettingsSectionHeading title="Display currency" />
             <AppText variant="body" tone="muted">
               See prices in your own currency. You always pay in Naira (NGN), and other currencies
               are estimates at today&apos;s rate.
@@ -115,7 +117,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: 2,
   },
   rowLabel: {
     flex: 1,

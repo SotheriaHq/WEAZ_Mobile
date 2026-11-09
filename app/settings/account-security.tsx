@@ -580,7 +580,7 @@ export default function AccountSecuritySettingsScreen() {
 
         {showSessions ? (
         <SettingsSection title="Login sessions">
-          <SettingsPanel divided={false}>
+          <SettingsPanel>
             <View style={styles.inlineHeader}>
               <AppText variant="captionRegular" tone="muted" style={styles.inlineCopy}>
                 Revoke anything you do not recognise.

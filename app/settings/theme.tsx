@@ -1,3 +1,4 @@
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -108,6 +109,7 @@ export default function ThemeSettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
+        <SettingsSectionHeading title="Colour theme" />
         <View style={styles.optionRow}>
           {THEME_OPTIONS.map((option) => {
             const selected = shownPreference === option.value;

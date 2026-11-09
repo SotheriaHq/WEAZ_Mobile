@@ -63,15 +63,12 @@ const styles = StyleSheet.create({
     paddingTop: tokens.spacing.lg,
     gap: tokens.spacing['2xl'],
   },
-  list: {
-    borderBottomWidth: 2,
-  },
+  list: {},
   row: {
     minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: 2,
   },
   rowLabel: {
     flex: 1,

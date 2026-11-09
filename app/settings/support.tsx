@@ -11,7 +11,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { env } from '@/src/config/env';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { SettingsPanel } from '@/components/settings/SettingsPrimitives';
 import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
@@ -73,7 +73,7 @@ export default function SupportSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
         <SettingsSection title="Fast help">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel style={styles.card}>
             <AppText variant="bodyBold">Choose the right support path</AppText>
             <AppText variant="captionRegular" tone="muted">
               Native support tickets are not exposed by this backend yet, so this screen routes you to the backend-backed account, order, and legal areas available now.
@@ -94,11 +94,11 @@ export default function SupportSettingsScreen() {
                 <Button title="Legal" variant="secondary" onPress={() => drillDownPush('/legal' as never)} />
               </View>
             </View>
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
 
         <SettingsSection title="Report details">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel style={styles.card}>
             <AppText variant="bodyBold">Prepare a problem report</AppText>
             <AppText variant="captionRegular" tone="muted">
               Add a short summary and copy a report with your account context. This does not send anything until a backend support endpoint exists.
@@ -115,11 +115,11 @@ export default function SupportSettingsScreen() {
               onPress={() => void copyReport()}
               disabled={!problemSummary.trim()}
             />
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
 
         <SettingsSection title="Guides">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel style={styles.card}>
             <AppText variant="bodyBold">Web help and policies</AppText>
             <AppText variant="captionRegular" tone="muted">
               Open the available web help or review policies that govern shopper orders, payments, privacy, and safety.
@@ -139,7 +139,7 @@ export default function SupportSettingsScreen() {
               variant="outline"
               onPress={() => drillDownPush('/legal/trust-safety-policy' as never)}
             />
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
       </KeyboardAwareFormScroll>
     </SafeAreaView>
