@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { QuickPressable } from '@/components/ui/QuickPressable';
-import { BlurView } from 'expo-blur';
+import {
+  WiezLiquidGlass,
+  WiezLiquidGlassBackdrop,
+  useLiquidGlassBlurTarget,
+} from '@/components/ui/WiezLiquidGlass';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -41,6 +45,7 @@ export type BrandHeaderContactItem = {
  */
 const BANNER_EDIT_CONTROL_CLEARANCE =
   tokens.spacing.lg + 34 + tokens.spacing.sm;
+const HEADER_ICON_GLASS_SIZE = { width: 48, height: 48 } as const;
 
 export type BrandProfileHeaderProps = {
   brandName: string;
@@ -146,6 +151,7 @@ function HeaderIconButton({
   disabled = false,
   bare = false,
   badgeCount,
+  blurTarget,
 }: {
   label: string;
   value: string;
@@ -153,10 +159,20 @@ function HeaderIconButton({
   disabled?: boolean;
   bare?: boolean;
   badgeCount?: number;
+  blurTarget?: React.RefObject<View | null>;
 }) {
-  const { scheme, theme } = useTheme();
-
   if (!onPress) return null;
+
+  const badge =
+    typeof badgeCount === 'number' && badgeCount > 0 ? (
+      // Notification count: no background pill — the number renders in the
+      // system/brand color and bold, matching the runway + island convention.
+      <View style={styles.headerIconBadge} pointerEvents="none">
+        <AppText variant="badgeLabel" tone="primary" style={styles.headerIconBadgeText}>
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </AppText>
+      </View>
+    ) : null;
 
   // Acts while the finger is down (see QuickPressable): the ⋯ menu and QR
   // buttons waited for the finger to lift.
@@ -168,36 +184,40 @@ function HeaderIconButton({
         styles.headerIconButton,
         bare && styles.headerIconButtonBare,
         {
-          backgroundColor: bare ? 'transparent' : theme.colors.glassSurfaceStrong,
-          borderColor: bare ? 'transparent' : theme.colors.glassBorder,
-          borderWidth: bare ? 0 : 2,
-          opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
+          opacity: disabled ? 0.55 : pressed ? (bare ? 0.78 : 0.92) : 1,
         },
       ]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      {!bare ? (
-        <BlurView
-          intensity={24}
-          tint={scheme === 'dark' ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
-      {/* `tone`, not a colour override: AppText owns colour, and the glyph is
-          an emoji, which renders in its own palette regardless. */}
-      <AppText variant="bodyReadable" tone={bare ? 'default' : 'inverse'} style={styles.headerIconText}>
-        {value}
-      </AppText>
-      {typeof badgeCount === 'number' && badgeCount > 0 ? (
-        // Notification count: no background pill — the number renders in the
-        // system/brand color and bold, matching the runway + island convention.
-        <View style={styles.headerIconBadge} pointerEvents="none">
-          <AppText variant="badgeLabel" tone="primary" style={styles.headerIconBadgeText}>
-            {badgeCount > 99 ? '99+' : badgeCount}
-          </AppText>
-        </View>
-      ) : null}
+      {({ pressed }) =>
+        bare ? (
+          <>
+            <AppText variant="bodyReadable" tone="default" style={styles.headerIconText}>
+              {value}
+            </AppText>
+            {badge}
+          </>
+        ) : (
+          <WiezLiquidGlass
+            mode="enhanced"
+            intensity="regular"
+            borderRadius={tokens.radius.full}
+            blurTarget={blurTarget}
+            initialSize={HEADER_ICON_GLASS_SIZE}
+            pressed={pressed}
+            style={styles.headerIconGlassSurface}
+            contentStyle={styles.headerIconGlassContent}
+          >
+            {/* `tone`, not a colour override: AppText owns colour, while subtle
+                text halo keeps high-contrast legibility across bright/dark banners. */}
+            <AppText variant="bodyReadable" tone="inverse" style={styles.headerIconGlassGlyph}>
+              {value}
+            </AppText>
+            {badge}
+          </WiezLiquidGlass>
+        )
+      }
     </QuickPressable>
   );
 }
@@ -238,8 +258,13 @@ function BannerHeader({
   | 'onNotifications'
   | 'unreadNotificationCount'
 >) {
-  const { scheme, theme } = useTheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const {
+    targetRef: bannerBlurTargetRef,
+    blurTargetRef,
+    onTargetLayout: handleBannerBackdropLayout,
+  } = useLiquidGlassBlurTarget();
   const resolvedBanner = useResolvedImageUri({
     src: bannerUrl,
     fileId: bannerFileId ?? undefined,
@@ -249,30 +274,36 @@ function BannerHeader({
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-      <View style={[styles.bannerImage, bannerLoading ? styles.uploadPreviewDim : null]}>
-        {resolvedBanner ? (
-          <StableImage
-            uri={resolvedBanner}
-            containerStyle={styles.bannerImage}
-            imageStyle={styles.bannerImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <LinearGradient
-            colors={[theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as [string, string, string]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.bannerImage}
-          />
-        )}
-      </View>
+      <WiezLiquidGlassBackdrop
+        targetRef={bannerBlurTargetRef}
+        onLayout={handleBannerBackdropLayout}
+        style={styles.bannerBackdrop}
+      >
+        <View style={[styles.bannerImage, bannerLoading ? styles.uploadPreviewDim : null]}>
+          {resolvedBanner ? (
+            <StableImage
+              uri={resolvedBanner}
+              containerStyle={styles.bannerImage}
+              imageStyle={styles.bannerImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <LinearGradient
+              colors={[theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as [string, string, string]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.bannerImage}
+            />
+          )}
+        </View>
 
-      <LinearGradient
-        colors={['transparent', tokens.scrim(0.08), tokens.scrim(0.42), tokens.scrim(0.68)]}
-        locations={[0, 0.40, 0.75, 1]}
-        style={styles.bannerBottomGradient}
-        pointerEvents="none"
-      />
+        <LinearGradient
+          colors={['transparent', tokens.scrim(0.08), tokens.scrim(0.42), tokens.scrim(0.68)]}
+          locations={[0, 0.40, 0.75, 1]}
+          style={styles.bannerBottomGradient}
+          pointerEvents="none"
+        />
+      </WiezLiquidGlassBackdrop>
       {/* A shimmer, not a status report.
           This was a blurred overlay carrying a pill that said "Uploading" —
           chrome announcing a background task the user already knows they
@@ -285,19 +316,25 @@ function BannerHeader({
       ) : null}
 
       <View style={[styles.bannerControls, { top: insets.top }]}>
-        <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} blurTarget={blurTargetRef} />
         <View style={styles.bannerRightControls}>
           {onNotifications ? (
-            <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} />
+            <HeaderIconButton
+              label="Notifications"
+              value="🔔"
+              onPress={onNotifications}
+              badgeCount={unreadNotificationCount}
+              blurTarget={blurTargetRef}
+            />
           ) : (
-            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
+            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} blurTarget={blurTargetRef} />
           )}
           {onOpenMenu ? (
             <View ref={menuAnchorRef} collapsable={false}>
-              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} />
+              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} blurTarget={blurTargetRef} />
             </View>
           ) : (
-            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
+            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} blurTarget={blurTargetRef} />
           )}
         </View>
       </View>
@@ -1060,6 +1097,10 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: tokens.radius.xl,
     borderBottomRightRadius: tokens.radius.xl,
   },
+  bannerBackdrop: {
+    width: '100%',
+    height: '100%',
+  },
   bannerImage: {
     width: '100%',
     height: '100%',
@@ -1120,7 +1161,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -1131,8 +1173,22 @@ const styles = StyleSheet.create({
     elevation: 0,
     overflow: 'visible',
   },
+  headerIconGlassSurface: {
+    width: '100%',
+    height: '100%',
+  },
+  headerIconGlassContent: {
+    width: '100%',
+    height: '100%',
+  },
   headerIconText: {
     textAlign: 'center',
+  },
+  headerIconGlassGlyph: {
+    textAlign: 'center',
+    textShadowColor: tokens.scrim(0.84),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3.5,
   },
   /* `fontStyle` is legal on AppText; size/weight/colour are not — those come
      from the `smallBold` variant. The old inline 10px size was also below
@@ -1150,6 +1206,9 @@ const styles = StyleSheet.create({
   },
   headerIconBadgeText: {
     textAlign: 'center',
+    textShadowColor: tokens.tintLight(0.88),
+    textShadowOffset: { width: 0, height: 0.5 },
+    textShadowRadius: 2.5,
   },
   /*
     Bounded by `right`, never by a percentage.

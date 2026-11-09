@@ -494,6 +494,109 @@ export const tokens = {
   },
 
   /**
+   * Clear optical Liquid Glass material tokens for media overlays and glass controls.
+   *
+   * Tuned separately from opaque frosted chrome (`glassSurfaceStrong` / `island`)
+   * so background photography remains clearly perceptible inside light (0.08-0.20)
+   * and dark (0.12-0.28) transmission envelopes without milky white/gray washout.
+   */
+  liquidGlass: {
+    light: {
+      transmission: {
+        lightweight: {
+          subtle: 'rgba(255,255,255,0.10)',
+          regular: 'rgba(255,255,255,0.15)',
+          prominent: 'rgba(255,255,255,0.19)',
+        },
+        enhanced: {
+          subtle: 'rgba(255,255,255,0.04)',
+          regular: 'rgba(255,255,255,0.07)',
+          prominent: 'rgba(255,255,255,0.11)',
+        },
+      },
+      pressedOverlay: 'rgba(255,255,255,0.14)',
+      outerFresnelHex: '#0F141E',
+      outerFresnelOpacity: 0.20,
+      outerFresnelStroke: 'rgba(15,20,30,0.20)',
+      specularHex: '#FFFFFF',
+      rimStops: [
+        { offset: '0%', opacity: 0.84 },
+        { offset: '26%', opacity: 0.34 },
+        { offset: '52%', opacity: 0.08 },
+        { offset: '78%', opacity: 0.20 },
+        { offset: '100%', opacity: 0.48 },
+      ] as const,
+      reflectionColors: [
+        'rgba(255,255,255,0.34)',
+        'rgba(255,255,255,0.09)',
+        'rgba(255,255,255,0)',
+      ] as readonly [string, string, string],
+      depthColors: [
+        'rgba(255,255,255,0.08)',
+        'rgba(15,20,30,0)',
+        'rgba(15,20,30,0)',
+        'rgba(15,20,30,0.14)',
+      ] as readonly [string, string, string, string],
+      shadowColor: 'rgba(15,20,30,0.18)',
+      blurTint: 'default' as const,
+      blurIntensity: {
+        subtle: 12,
+        regular: 17,
+        prominent: 22,
+      },
+      blurReductionFactor: 2.5,
+    },
+    dark: {
+      transmission: {
+        lightweight: {
+          subtle: 'rgba(15,20,30,0.15)',
+          regular: 'rgba(15,20,30,0.22)',
+          prominent: 'rgba(15,20,30,0.27)',
+        },
+        enhanced: {
+          subtle: 'rgba(15,20,30,0.08)',
+          regular: 'rgba(15,20,30,0.14)',
+          prominent: 'rgba(15,20,30,0.18)',
+        },
+      },
+      pressedOverlay: 'rgba(255,255,255,0.10)',
+      outerFresnelHex: '#000000',
+      outerFresnelOpacity: 0.34,
+      outerFresnelStroke: 'rgba(0,0,0,0.34)',
+      specularHex: '#FFFFFF',
+      rimStops: [
+        { offset: '0%', opacity: 0.60 },
+        { offset: '26%', opacity: 0.24 },
+        { offset: '52%', opacity: 0.06 },
+        { offset: '78%', opacity: 0.14 },
+        { offset: '100%', opacity: 0.34 },
+      ] as const,
+      reflectionColors: [
+        'rgba(255,255,255,0.22)',
+        'rgba(255,255,255,0.06)',
+        'rgba(255,255,255,0)',
+      ] as readonly [string, string, string],
+      depthColors: [
+        'rgba(255,255,255,0.05)',
+        'rgba(15,20,30,0)',
+        'rgba(15,20,30,0)',
+        'rgba(0,0,0,0.24)',
+      ] as readonly [string, string, string, string],
+      shadowColor: 'rgba(0,0,0,0.36)',
+      blurTint: 'systemUltraThinMaterialDark' as const,
+      blurIntensity: {
+        subtle: 12,
+        regular: 17,
+        prominent: 22,
+      },
+      blurReductionFactor: 2.5,
+    },
+    transparent: 'rgba(255,255,255,0)',
+    tintForScheme: (scheme: ThemeScheme, alpha: number): string =>
+      scheme === 'dark' ? `rgba(15,20,30,${alpha})` : `rgba(255,255,255,${alpha})`,
+  },
+
+  /**
    * Full-bleed content-viewer chrome palette.
    *
    * A full-bleed viewer that is deep-dark in BOTH themes (same policy as the
