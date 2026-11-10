@@ -513,7 +513,7 @@ export const tokens = {
    */
   liquidGlass: {
     menuGlyphFill: '#FFFFFF',
-    menuGlyphStroke: 'rgba(15,20,30,0.82)',
+    menuGlyphStroke: 'rgba(20,20,22,0.82)',
     light: {
       transmission: {
         lightweight: {
@@ -539,9 +539,9 @@ export const tokens = {
         prominent: 0,
       },
       pressedOverlay: 'rgba(255,255,255,0.12)',
-      outerFresnelHex: '#0F141E',
+      outerFresnelHex: '#141416',
       outerFresnelOpacity: 0.16,
-      outerFresnelStroke: 'rgba(15,20,30,0.16)',
+      outerFresnelStroke: 'rgba(20,20,22,0.16)',
       specularHex: '#FFFFFF',
       rimStops: [
         { offset: '0%', opacity: 0.56 },
@@ -556,12 +556,12 @@ export const tokens = {
         'rgba(255,255,255,0)',
       ] as readonly [string, string, string],
       depthColors: [
-        'rgba(255,255,255,0.02)',
-        'rgba(15,20,30,0)',
-        'rgba(15,20,30,0)',
-        'rgba(15,20,30,0.015)',
+        'rgba(255,255,255,0.015)',
+        'rgba(20,20,22,0)',
+        'rgba(20,20,22,0)',
+        'rgba(20,20,22,0.012)',
       ] as readonly [string, string, string, string],
-      shadowColor: 'rgba(15,20,30,0.14)',
+      shadowColor: 'rgba(20,20,22,0.14)',
       blurTint: 'default' as const,
       blurIntensity: {
         subtle: 8,
@@ -573,17 +573,17 @@ export const tokens = {
     dark: {
       transmission: {
         lightweight: {
-          subtle: 'rgba(15,20,30,0.05)',
-          regular: 'rgba(15,20,30,0.085)',
-          prominent: 'rgba(15,20,30,0.12)',
+          subtle: 'rgba(20,20,22,0.05)',
+          regular: 'rgba(20,20,22,0.085)',
+          prominent: 'rgba(20,20,22,0.12)',
         },
         enhanced: {
-          subtle: 'rgba(15,20,30,0.02)',
-          regular: 'rgba(15,20,30,0.03)',
-          prominent: 'rgba(15,20,30,0.055)',
+          subtle: 'rgba(20,20,22,0.02)',
+          regular: 'rgba(20,20,22,0.03)',
+          prominent: 'rgba(20,20,22,0.055)',
         },
       },
-      tintHex: '#10141E',
+      tintHex: '#141416',
       tintAlpha: {
         subtle: 0.02,
         regular: 0.03,
@@ -613,9 +613,9 @@ export const tokens = {
       ] as readonly [string, string, string],
       depthColors: [
         'rgba(255,255,255,0.02)',
-        'rgba(15,20,30,0)',
-        'rgba(15,20,30,0)',
-        'rgba(0,0,0,0.025)',
+        'rgba(20,20,22,0)',
+        'rgba(20,20,22,0)',
+        'rgba(0,0,0,0.02)',
       ] as readonly [string, string, string, string],
       shadowColor: 'rgba(0,0,0,0.28)',
       blurTint: 'systemUltraThinMaterialDark' as const,
@@ -628,7 +628,7 @@ export const tokens = {
     },
     transparent: 'rgba(255,255,255,0)',
     tintForScheme: (scheme: ThemeScheme, alpha: number): string =>
-      scheme === 'dark' ? `rgba(15,20,30,${alpha})` : `rgba(255,255,255,${alpha})`,
+      scheme === 'dark' ? `rgba(20,20,22,${alpha})` : `rgba(255,255,255,${alpha})`,
     lab: {
       light: {
         stageBg: '#FFFFFF',

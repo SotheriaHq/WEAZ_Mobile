@@ -41,7 +41,7 @@ function flattenStyle(style) {
 
 function parseColorMock(input) {
   if (input === '#FFFFFF' || input === '#ffffff') return -1;
-  if (input === '#10141E') return -15723490;
+  if (input === '#141416') return -15461354;
   if (input === '#FAF5FF') return -330241;
   if (input === '#1A2230') return -15064528;
   return 0;
@@ -668,12 +668,23 @@ async function runTests() {
     assert.match(agsl, /float2 rawGrad = float2\(gx, gy\)/, 'Shader must compute smooth C1 finite-difference SDF normals');
     assert.match(agsl, /fragCoord - lensNormal \* edgeShiftPx/, 'Shader must apply convex physical Snell inward sampling');
     assert.match(agsl, /bezelReachDp/, 'Meniscus bevel must adapt cleanly across circles, pills, and cards');
-    assert.match(agsl, /float maxSlope = clamp\(refractStr \* 0\.68,\s*0\.0,\s*0\.82\)/, 'Shader must enforce monotonic Jacobian slope bound <= 0.82');
-    assert.match(agsl, /float physicalCapPx = \(bezelWidth \* maxSlope\)/, 'Shader must cap edge shift against bezelWidth/curveExp to prevent caustic folding');
+    assert.match(agsl, /float rampEnd = mix\(/, 'Shader must use C2 Hermite-integrated smooth-ramp meniscus profile');
+    assert.match(agsl, /float peakNormSlope = 1\.0 \/ max\(totalArea,\s*0\.25\)/, 'Shader must compute peak normalized meniscus slope for Jacobian clamping');
+    assert.match(agsl, /float maxSlope = clamp\(refractStr \* 0\.50,\s*0\.0,\s*0\.68\)/, 'Shader must enforce restrained monotonic Jacobian slope bound <= 0.68');
+    assert.match(agsl, /float physicalCapPx = \(bezelWidth \* maxSlope\) \/ max\(peakNormSlope,\s*1\.0\)/, 'Shader must cap edge shift against bezelWidth and peakNormSlope to prevent caustic folding and text twisting');
+    assert.match(agsl, /float smoothEdgeT = smoothstep\(0\.0,\s*1\.0,\s*edgeT\)/, 'Optical tint transition must smoothstep cleanly from flat core to rim');
+    assert.doesNotMatch(agsl, /float3\(0\.16,\s*0\.19,\s*0\.30\)/, 'Optical bevel shading must stay neutral achromatic instead of blue-lavender indigo');
+    assert.match(agsl, /rgb = mix\(rgb,\s*float3\(0\.06,\s*0\.06,\s*0\.065\),\s*bevelShadeAlpha\)/, 'Bright backdrops must use compact neutral charcoal optical lip depth');
     assert.doesNotMatch(agsl, /corePull/, 'Central optical core must have zero displacement/pull');
     assert.doesNotMatch(agsl, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
     assert.match(agsl, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
     assert.match(agsl, /bevelShadeCurve/, 'Bright backdrops must use soft beveled edge depth rather than a 1px dark ring');
+
+    assert.equal(
+      tokens.liquidGlass.dark.tintHex,
+      '#141416',
+      'Dark-theme liquid glass tint must stay neutral charcoal (#141416) without indigo/lavender bias',
+    );
   }
 
   // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)

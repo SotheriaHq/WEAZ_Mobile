@@ -41,7 +41,7 @@ class WiezLiquidGlassLensView(
 
   private var cornerRadiusDp: Float = 999f
   private var blurRadiusDp: Float = 0f
-  private var refractionStrength: Float = 0.88f
+  private var refractionStrength: Float = 0.90f
   private var chromaticAberration: Float = 0f
   private var rimStrength: Float = 1.0f
   private var reflectionStrength: Float = 1.0f
