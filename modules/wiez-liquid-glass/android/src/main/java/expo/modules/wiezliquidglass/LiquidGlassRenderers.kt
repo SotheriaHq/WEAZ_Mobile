@@ -105,18 +105,23 @@ half4 main(float2 fragCoord) {
 
   // Adaptive meniscus shoulder width across small controls, elongated pills, and cards.
   // Inner plateau keeps inward > bezelWidth at zero distortion (crystal clear center).
-  float bezelReachDp = mix(6.0, 28.0, thickness) * mix(0.85, 1.28, curvature);
-  float bezelWidth = min(minHalf * mix(0.22, 0.86, thickness), bezelReachDp * density);
-  bezelWidth = max(bezelWidth, density * 4.0);
+  float bezelReachDp = mix(8.0, 26.0, thickness) * mix(0.88, 1.24, curvature);
+  float bezelWidth = min(minHalf * mix(0.32, 0.86, thickness), bezelReachDp * density);
+  bezelWidth = max(bezelWidth, density * 5.0);
 
   float edgeT = clamp(1.0 - inward / bezelWidth, 0.0, 1.0);
-  float curveExp = mix(2.55, 1.25, curvature);
+  float curveExp = mix(2.15, 1.25, curvature);
   float meniscus = edgeT > 0.0001 ? pow(edgeT, curveExp) : 0.0;
 
-  // Physical convex Snell refraction: subtract outward normal to sample inward
-  // toward the lens core, creating visible outward magnification & contour wrapping
-  // along curved borders while keeping rim samples safely inside backdrop bounds.
-  float maxShiftPx = min((7.0 + thickness * 12.0) * density * refractStr, minHalf * 0.92);
+  // Physical convex Snell refraction with strict monotonic Jacobian guarantee:
+  // u_sample(u) = u + maxShiftPx * (1 - u/bezelWidth)^curveExp, so
+  // d(u_sample)/du = 1 - (maxShiftPx * curveExp / bezelWidth) * edgeT^(curveExp - 1).
+  // Clamping maxSlope <= 0.82 guarantees d(u_sample)/du >= 0.18 > 0 across every radius,
+  // pill, and rounded card, eliminating caustic folding, mirrored pixels, and dark bar smears.
+  float maxSlope = clamp(refractStr * 0.68, 0.0, 0.82);
+  float physicalCapPx = (bezelWidth * maxSlope) / max(curveExp, 1.0);
+  float desiredShiftPx = (6.0 + thickness * 11.5) * density * refractStr;
+  float maxShiftPx = min(desiredShiftPx, physicalCapPx);
   float edgeShiftPx = maxShiftPx * meniscus;
   float2 displaced = fragCoord - lensNormal * edgeShiftPx;
 

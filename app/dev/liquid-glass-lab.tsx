@@ -59,9 +59,9 @@ const PRESET_CONFIGS: Record<
       preset: 'calibrated',
       rawHidden: false,
       refractionEnabled: true,
-      refractionStrength: 0.88,
-      curvature: 0.58,
-      opticalThickness: 0.42,
+      refractionStrength: 0.92,
+      curvature: 0.64,
+      opticalThickness: 0.48,
       blurRadius: 0,
       fresnelIntensity: 1.0,
       reflectionIntensity: 1.0,
@@ -76,8 +76,8 @@ const PRESET_CONFIGS: Record<
       rawHidden: false,
       refractionEnabled: true,
       refractionStrength: 1.6,
-      curvature: 0.72,
-      opticalThickness: 0.74,
+      curvature: 0.74,
+      opticalThickness: 0.76,
       blurRadius: 0,
       fresnelIntensity: 1.15,
       reflectionIntensity: 1.1,
@@ -91,9 +91,9 @@ const PRESET_CONFIGS: Record<
       preset: 'off',
       rawHidden: false,
       refractionEnabled: false,
-      refractionStrength: 0.88,
-      curvature: 0.58,
-      opticalThickness: 0.42,
+      refractionStrength: 0.92,
+      curvature: 0.64,
+      opticalThickness: 0.48,
       blurRadius: 0,
       fresnelIntensity: 1.0,
       reflectionIntensity: 1.0,
@@ -108,8 +108,8 @@ const PRESET_CONFIGS: Record<
       rawHidden: true,
       refractionEnabled: false,
       refractionStrength: 0,
-      curvature: 0.58,
-      opticalThickness: 0.42,
+      curvature: 0.64,
+      opticalThickness: 0.48,
       blurRadius: 0,
       fresnelIntensity: 0,
       reflectionIntensity: 0,
@@ -155,9 +155,9 @@ const PRESET_CONFIGS: Record<
       preset: 'frosted',
       rawHidden: false,
       refractionEnabled: true,
-      refractionStrength: 0.88,
-      curvature: 0.58,
-      opticalThickness: 0.42,
+      refractionStrength: 0.92,
+      curvature: 0.64,
+      opticalThickness: 0.48,
       blurRadius: 6,
       fresnelIntensity: 1.0,
       reflectionIntensity: 1.0,
@@ -427,21 +427,27 @@ function StagePatternCanvas({
             <AppText
               variant="smallBold"
               onDarkStage={stageScheme === 'dark'}
+              onLightStage={stageScheme === 'light'}
               tone="default"
+              style={styles.gridTextLineTop}
             >
               WIEZ OPTICAL BENCH 0123456789 AABBCCDD
             </AppText>
             <AppText
               variant="cardTitle"
               onDarkStage={stageScheme === 'dark'}
+              onLightStage={stageScheme === 'light'}
               tone="primary"
+              style={styles.gridTextLineUpperEdge}
             >
-              MENISCUS EDGE LINE 0123456789 REFRACTION
+              MENISCUS EDGE LINE 0123456789 REFRACT
             </AppText>
             <AppText
               variant="smallBold"
               onDarkStage={stageScheme === 'dark'}
+              onLightStage={stageScheme === 'light'}
               tone="default"
+              style={styles.gridTextLineLowerEdge}
             >
               CLEAR CENTER · CURVED SNELL BOUNDARY
             </AppText>
@@ -1073,6 +1079,7 @@ function LiquidGlassLabContent() {
                   <AppText
                     variant="smallBold"
                     onDarkStage={stageScheme === 'dark'}
+                    onLightStage={stageScheme === 'light'}
                     tone="default"
                   >
                     Liquid Pill
@@ -1103,6 +1110,7 @@ function LiquidGlassLabContent() {
                   <AppText
                     variant="cardTitle"
                     onDarkStage={stageScheme === 'dark'}
+                    onLightStage={stageScheme === 'light'}
                     tone="default"
                   >
                     Rounded Surface Lens
@@ -1110,6 +1118,7 @@ function LiquidGlassLabContent() {
                   <AppText
                     variant="captionRegular"
                     onDarkStage={stageScheme === 'dark'}
+                    onLightStage={stageScheme === 'light'}
                     tone="secondary"
                   >
                     {`R=${optical.refractionEnabled ? optical.refractionStrength.toFixed(2) : '0.00'} · C=${optical.curvature.toFixed(2)} · T=${optical.opticalThickness.toFixed(2)}`}
@@ -1140,6 +1149,7 @@ function LiquidGlassLabContent() {
                   <AppText
                     variant="smallBold"
                     onDarkStage={stageScheme === 'dark'}
+                    onLightStage={stageScheme === 'light'}
                     tone="default"
                   >
                     Elongated Meniscus Bar
@@ -1200,6 +1210,7 @@ function LiquidGlassLabContent() {
                     <AppText
                       variant="bodyBold"
                       onDarkStage={stageScheme === 'dark'}
+                      onLightStage={stageScheme === 'light'}
                       tone="default"
                     >
                       {`SCROLL LINE 0${rowIndex} · REFRACT EDGE TEST`}
@@ -1233,6 +1244,7 @@ function LiquidGlassLabContent() {
                 <AppText
                   variant="smallBold"
                   onDarkStage={stageScheme === 'dark'}
+                  onLightStage={stageScheme === 'light'}
                   tone="default"
                 >
                   Scroll Behind Glass
@@ -1538,12 +1550,26 @@ const styles = StyleSheet.create({
   },
   gridTypographyBand: {
     position: 'absolute',
-    top: 32,
+    top: 0,
     left: tokens.spacing['2xl'],
     right: tokens.spacing['2xl'],
-    bottom: 24,
-    justifyContent: 'space-between',
+    bottom: 0,
     alignItems: 'center',
+  },
+  gridTextLineTop: {
+    position: 'absolute',
+    top: 66,
+    textAlign: 'center',
+  },
+  gridTextLineUpperEdge: {
+    position: 'absolute',
+    top: 96,
+    textAlign: 'center',
+  },
+  gridTextLineLowerEdge: {
+    position: 'absolute',
+    bottom: 92,
+    textAlign: 'center',
   },
   stripeRow: {
     flex: 1,
@@ -1562,13 +1588,12 @@ const styles = StyleSheet.create({
   },
   photoTypographyBand: {
     position: 'absolute',
-    top: 24,
+    top: 78,
     left: tokens.spacing['2xl'],
     right: tokens.spacing['2xl'],
     bottom: 24,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
   },
   specimenOverlay: {
     position: 'absolute',

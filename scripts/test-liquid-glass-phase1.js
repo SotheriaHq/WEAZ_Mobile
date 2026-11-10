@@ -668,6 +668,8 @@ async function runTests() {
     assert.match(agsl, /float2 rawGrad = float2\(gx, gy\)/, 'Shader must compute smooth C1 finite-difference SDF normals');
     assert.match(agsl, /fragCoord - lensNormal \* edgeShiftPx/, 'Shader must apply convex physical Snell inward sampling');
     assert.match(agsl, /bezelReachDp/, 'Meniscus bevel must adapt cleanly across circles, pills, and cards');
+    assert.match(agsl, /float maxSlope = clamp\(refractStr \* 0\.68,\s*0\.0,\s*0\.82\)/, 'Shader must enforce monotonic Jacobian slope bound <= 0.82');
+    assert.match(agsl, /float physicalCapPx = \(bezelWidth \* maxSlope\)/, 'Shader must cap edge shift against bezelWidth/curveExp to prevent caustic folding');
     assert.doesNotMatch(agsl, /corePull/, 'Central optical core must have zero displacement/pull');
     assert.doesNotMatch(agsl, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
     assert.match(agsl, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
@@ -995,6 +997,13 @@ async function runTests() {
   );
   assert.match(labGateSource, /__DEV__ \|\| isWiezDebugEnabled\('nav'\)/);
   assert.match(labScreenSource, /if \(!isLiquidGlassLabEnabled\(\)\)[\s\S]*?<Redirect href="\/" \/>/);
+  assert.match(labScreenSource, /onLightStage=\{stageScheme === 'light'\}/, 'Lab stage text must stay high-contrast when Light stage renders inside Dark app theme');
+
+  const appTextSource = fs.readFileSync(
+    path.join(ROOT, 'components', 'ui', 'AppText.tsx'),
+    'utf8',
+  );
+  assert.match(appTextSource, /LIGHT_STAGE_THEME/, 'AppText must define symmetric LIGHT_STAGE_THEME for light calibration surfaces');
 
   // Verify release gating logic in isolated sandbox with __DEV__ = false vs true
   const vm = require('node:vm');
