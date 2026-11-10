@@ -356,7 +356,7 @@ const CONTENT_REVIEW_EDIT_TYPES = new Set([
   'CONTENT_REVIEW_FAILED',
   'CONTENT_PUBLISH_FAILED',
 ]);
-/** Review events that end with the piece live: open it live. */
+/** Review events that end with the piece live: open it where the brand manages it. */
 const CONTENT_REVIEW_LIVE_TYPES = new Set(['CONTENT_REVIEW_APPROVED', 'CONTENT_PUBLISHED']);
 
 export function routeForNotification(
@@ -384,7 +384,8 @@ export function routeForNotification(
     opens the public viewer — a brand tapping "sent for review" landed on the
     shopper screen (owner, Nov 2026). Anything still in the brand's hands
     (in review, changes requested, not approved, failed) opens the EDITOR,
-    where the reviewer's notes now show; approved/published opens it live.
+    where the reviewer's notes now show; approved/published opens it where
+    the brand manages it (see below).
   */
   if (CONTENT_REVIEW_EDIT_TYPES.has(type) || CONTENT_REVIEW_LIVE_TYPES.has(type)) {
     const text = (value: unknown) =>
@@ -396,8 +397,18 @@ export function routeForNotification(
       text(payload.legacyCollectionId) ??
       (targetType === 'DESIGN' || targetType === 'COLLECTION' ? targetId : null);
     if (CONTENT_REVIEW_LIVE_TYPES.has(type)) {
-      if (productId) return { pathname: '/products/[productId]', params: { productId } } as Href;
-      if (designId) return routeForDesignTarget(designId, { openComments: false, commentId: null });
+      /*
+        Approved/published is still the BRAND's notice about its own piece, so
+        it opens where the brand manages it — never the shopper product page or
+        design viewer (owner, Nov 2026: "Notifications routing brands to view
+        screens. That is bad."). A product opens in the Studio editor, where
+        an owner's own product always opens from the catalogue; a design opens
+        the catalogue's Public shelf, as on web.
+      */
+      if (productId) {
+        return { pathname: '/studio', params: { routeKey: 'editProduct', productId } } as unknown as Href;
+      }
+      return { pathname: '/catalog', params: { tab: 'Collections', visibility: 'Public' } } as Href;
     } else {
       if (productId) {
         return { pathname: '/studio', params: { routeKey: 'editProduct', productId } } as unknown as Href;

@@ -141,6 +141,21 @@ const asString = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
 
 /**
+ * One Studio page as a comparable key: the path without hash or trailing
+ * slash, plus its `tab` (Studio sections are `/studio?tab=…`). Other query
+ * values (a review note, a highlight) do not make it a different page.
+ */
+function normalizeStudioEntryPath(path: string): string {
+  const [beforeHash] = path.split('#');
+  const queryStart = beforeHash.indexOf('?');
+  const pathname = queryStart >= 0 ? beforeHash.slice(0, queryStart) : beforeHash;
+  const query = queryStart >= 0 ? beforeHash.slice(queryStart + 1) : '';
+  const tab = /(?:^|&)tab=([^&]*)/.exec(query)?.[1];
+  const base = pathname.replace(/\/+$/, '') || '/';
+  return tab ? `${base}?tab=${tab}` : base;
+}
+
+/**
  * `/store/status` has always returned which of the three checks failed, and no
  * client ever read it. Saying "complete your brand profile" to someone who
  * believes they already did is the least useful thing the app can say — the
@@ -321,6 +336,8 @@ export default function StudioWebViewScreen() {
     studioRouteReport?: string;
     productId?: string;
     orderId?: string;
+    /** `catalog` when the Catalogue opened this page — see `catalogEntryRef`. */
+    from?: string;
   }>();
   const { status, user, signOut } = useAuth();
   const { scheme, theme } = useTheme();
@@ -355,10 +372,19 @@ export default function StudioWebViewScreen() {
   const brandTitle = user?.brandFullName?.trim() || (user?.username ? `@${user.username.replace(/^@/, '')}` : 'Store');
   const dashboardTitleNode = (
     <View style={styles.dashboardTitleRow}>
-      {/* Name and LIVE share one row. The name yields width (one line, then
-          an ellipsis) so the header's controls stay beside it; LIVE never
-          shrinks and never drops under the name. */}
-      <AppText variant="subtitle" numberOfLines={1} style={styles.dashboardTitleText}>
+      {/* Name and LIVE share one row; LIVE never shrinks and never drops
+          under the name. The name is never cut off (owner, Nov 2026: "there
+          is still truncation of the brand name on the store navbar") — on
+          Store, Upgrade and the QR button leave it about half the header, so
+          it takes a second line and shrinks a little before it would ever
+          need an ellipsis. */}
+      <AppText
+        variant="subtitle"
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+        style={styles.dashboardTitleText}
+      >
         {brandTitle}
       </AppText>
       <View style={[styles.livePill, { borderColor: theme.colors.success }]}>
@@ -434,6 +460,42 @@ export default function StudioWebViewScreen() {
 
   // The page's own location, from its ROUTE_CHANGED reports.
   const lastWebPathRef = useRef<string | null>(null);
+
+  /*
+    A Studio page the Catalogue opened goes BACK to the Catalogue.
+
+    Tapping a product on the Catalogue's Shop tab opens the Studio editor. The
+    Studio WebView stays alive all session, so its web history still held the
+    pages of earlier visits, and 👈 walked back through those and then the
+    Dashboard instead of returning to the card the brand tapped (owner, Nov
+    2026: "whenever i route into screens on the studio while i am on
+    catalogue, the back emoji … is not smart enough to take me back").
+
+    The Catalogue marks its links `from: 'catalog'`. While the brand is still
+    on that page, Back leaves Studio for the Catalogue. If they went deeper
+    from it, Back first steps back to it, then out. Leaving Studio ends it.
+  */
+  const catalogEntryRef = useRef<{ path: string; reached: boolean; left: boolean } | null>(null);
+  const entryFrom = asString(params.from);
+  useEffect(() => {
+    if (entryFrom !== 'catalog') return;
+    let path = '';
+    try {
+      path = normalizeStudioEntryPath(buildStudioPath(resolvedRouteKey, { productId, orderId }));
+    } catch {
+      // A route missing its id never matches a page report, so Back still
+      // returns to the Catalogue — the one thing the mark promises.
+    }
+    // Already showing that page (same product again): the page sends no new
+    // report, so it counts as reached now.
+    const showing = lastWebPathRef.current ? normalizeStudioEntryPath(lastWebPathRef.current) : null;
+    catalogEntryRef.current = { path, reached: Boolean(path) && showing === path, left: false };
+    // Consumed: a later island hop to the same screen must not inherit it.
+    router.setParams({ from: undefined } as never);
+  }, [entryFrom, orderId, productId, resolvedRouteKey]);
+  useFocusEffect(useCallback(() => () => {
+    catalogEntryRef.current = null;
+  }, []));
 
   const retry = useCallback(() => {
     sessionEstablishedRef.current = false;
@@ -754,6 +816,15 @@ export default function StudioWebViewScreen() {
     Back can never be swallowed.
   */
   const handleStudioBack = useCallback(() => {
+    // Opened from the Catalogue and still on that page (or never got there):
+    // back to the Catalogue, not through Studio's older history.
+    const catalogEntry = catalogEntryRef.current;
+    if (catalogEntry && !catalogEntry.left) {
+      catalogEntryRef.current = null;
+      webBackPendingRef.current = false;
+      closeStudio();
+      return;
+    }
     const ready = loadStateRef.current === 'ready' && Boolean(webViewRef.current);
     const webPathname = (lastWebPathRef.current ?? '/studio').split('?')[0].replace(/\/+$/, '') || '/';
     const onStudioSubPage = webPathname.startsWith('/studio/');
@@ -1035,6 +1106,15 @@ export default function StudioWebViewScreen() {
           if (message.path && message.path === lastWebPathRef.current) break;
           if (message.path) {
             lastWebPathRef.current = message.path;
+            const catalogEntry = catalogEntryRef.current;
+            if (catalogEntry) {
+              if (normalizeStudioEntryPath(message.path) === catalogEntry.path) {
+                catalogEntry.reached = true;
+                catalogEntry.left = false;
+              } else if (catalogEntry.reached) {
+                catalogEntry.left = true;
+              }
+            }
             if (!openNavigationTarget(message.path, 'route-report')) break;
             const report = getStudioRouteReport(message.path);
             if (report) {
@@ -1123,9 +1203,7 @@ export default function StudioWebViewScreen() {
    *      `/(tabs)` — whose `initialRouteName` is `index`. So a brand who opened
    *      Notifications from their own Store and pressed back landed on Runway.
    *   2. It unmounted the WebView and with it the warm Studio session, so
-   *      coming back re-ran the whole handoff and reload. `handleMenuStaff`
-   *      right below already documents that exact cost as the reason it stays
-   *      in-place.
+   *      coming back re-ran the whole handoff and reload.
    *
    * `drillDownPush` is what every other caller of these routes uses
    * (`catalog/index.tsx`, `me.tsx`, `RunwayFeedScreen`), so this also makes the
@@ -1145,22 +1223,6 @@ export default function StudioWebViewScreen() {
     setProfileMenuVisible(false);
     drillDownPush('/orders' as any);
   }, []);
-
-  const handleMenuFinance = useCallback(() => {
-    setProfileMenuVisible(false);
-    drillDownPush('/studio/finance' as any);
-  }, []);
-
-  const handleMenuStaff = useCallback(() => {
-    setProfileMenuVisible(false);
-    // Stay in the WebView shell — native /studio/staff unmounted the session
-    // and forced a full re-handoff when returning to Store.
-    if (sessionEstablishedRef.current && loadState === 'ready') {
-      navigateStudioInPlace('staff');
-      return;
-    }
-    drillDownPush({ pathname: '/studio', params: { routeKey: 'staff' } } as any);
-  }, [loadState, navigateStudioInPlace]);
 
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);
@@ -1515,8 +1577,6 @@ export default function StudioWebViewScreen() {
         onOpenProfile={handleMenuProfile}
         onOpenNotifications={handleMenuNotifications}
         onOpenOrders={handleMenuOrders}
-        onOpenFinance={handleMenuFinance}
-        onOpenStaff={handleMenuStaff}
         onOpenHelp={openHelp}
         onSignOut={handleStudioSignOut}
       />

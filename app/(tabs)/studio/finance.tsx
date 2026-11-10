@@ -177,8 +177,6 @@ export default function StudioFinanceScreen() {
         onOpenProfile={profileMenu.openProfile}
         onOpenNotifications={profileMenu.openNotifications}
         onOpenOrders={profileMenu.openOrders}
-        onOpenFinance={profileMenu.openFinance}
-        onOpenStaff={profileMenu.openStaff}
         onOpenHelp={profileMenu.openHelp}
         onSignOut={profileMenu.handleSignOut}
       />
@@ -206,8 +204,6 @@ export default function StudioFinanceScreen() {
         onOpenProfile={profileMenu.openProfile}
         onOpenNotifications={profileMenu.openNotifications}
         onOpenOrders={profileMenu.openOrders}
-        onOpenFinance={profileMenu.openFinance}
-        onOpenStaff={profileMenu.openStaff}
         onOpenHelp={profileMenu.openHelp}
         onSignOut={profileMenu.handleSignOut}
       />
@@ -485,8 +481,6 @@ export default function StudioFinanceScreen() {
         onOpenProfile={profileMenu.openProfile}
         onOpenNotifications={profileMenu.openNotifications}
         onOpenOrders={profileMenu.openOrders}
-        onOpenFinance={profileMenu.openFinance}
-        onOpenStaff={profileMenu.openStaff}
         onOpenHelp={profileMenu.openHelp}
         onSignOut={profileMenu.handleSignOut}
       />

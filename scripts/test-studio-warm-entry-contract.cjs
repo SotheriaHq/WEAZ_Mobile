@@ -112,6 +112,41 @@ async function main() {
     'a sign-out or a different account/brand tears the WebView down; a token refresh does not',
   );
 
+  // A Studio page opened from the Catalogue goes back to the Catalogue (owner,
+  // Nov 2026: "the back emoji … is not smart enough to take me back to
+  // catalogue").
+  assert.match(
+    studio,
+    /const catalogEntry = catalogEntryRef\.current;\s*if \(catalogEntry && !catalogEntry\.left\) \{\s*catalogEntryRef\.current = null;\s*webBackPendingRef\.current = false;\s*closeStudio\(\);\s*return;\s*\}/,
+    'Back on the page the Catalogue opened returns to the Catalogue',
+  );
+  assert.ok(
+    studio.indexOf('if (catalogEntry && !catalogEntry.left)') < studio.indexOf('webViewRef.current?.goBack()'),
+    'the Catalogue return runs before the web history walk',
+  );
+  assert.match(studio, /router\.setParams\(\{ from: undefined \} as never\)/, 'the mark is consumed so an island hop does not inherit it');
+  assert.match(studio, /useFocusEffect\(useCallback\(\(\) => \(\) => \{\s*catalogEntryRef\.current = null;/, 'leaving Studio ends it');
+  assert.match(read('components/catalog/BrandShopTab.tsx'), /routeKey: 'editProduct', productId: product\.id, from: 'catalog'/, 'the Shop tab marks its Studio links');
+  assert.equal(
+    (read('app/(tabs)/catalog/index.tsx').match(/routeKey: 'essentials', from: 'catalog'/g) ?? []).length,
+    2,
+    'both Catalogue setup links are marked',
+  );
+
+  // The avatar menu does not repeat island links (owner, Nov 2026: "the staff
+  // link should be removed. any link already on the studio island should not
+  // have to be repeated on the dropdown").
+  const profileMenu = read('components/studio/StudioHeaderProfile.tsx');
+  assert.doesNotMatch(profileMenu, /label: 'Staff'/, 'no Staff in the Studio avatar menu');
+  assert.doesNotMatch(profileMenu, /label: 'Finance'/, 'no Finance in the Studio avatar menu (it is an island chip)');
+
+  // The brand name on the Studio header is never cut off (owner, Nov 2026).
+  assert.match(
+    studio,
+    /numberOfLines=\{2\}\s*adjustsFontSizeToFit\s*minimumFontScale=\{0\.8\}\s*style=\{styles\.dashboardTitleText\}/,
+    'the header name wraps and shrinks before it would truncate',
+  );
+
   console.log('studio warm entry contract: all checks passed');
 }
 

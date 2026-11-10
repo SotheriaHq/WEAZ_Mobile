@@ -40,4 +40,13 @@ assert.match(composer, /const isBlankStart = isBlankComposerStart\(params\);/);
 assert.match(composer, /router\.setParams\(AUTO_OPEN_CONSUMED_PARAMS\);/);
 assert.match(composer, /!isEditMode &&\s+!isBlankStart &&/);
 assert.equal((composer.match(/router\.setParams\(/g) ?? []).length, 1, 'Composer params may only change through the entry handover');
+// Save draft / Preview end the form; no pinned footer and its band of page
+// colour under them (owner, Nov 2026: "the darkbg under the buttons on the
+// create design form is back again").
+assert.doesNotMatch(composer, /KeyboardStickyFooter/, 'the composer actions are not a pinned footer');
+assert.ok(
+  composer.indexOf('styles.footerActions') > composer.indexOf('<KeyboardAwareFormScroll') &&
+    composer.indexOf('styles.footerActions') < composer.indexOf('</KeyboardAwareFormScroll>'),
+  'the composer actions sit inside the scrolling form',
+);
 console.log('Design composer entry: the empty composer stays open and the picker opens once.');

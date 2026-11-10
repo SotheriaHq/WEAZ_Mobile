@@ -2,7 +2,9 @@
  * Content review on the app (owner, Nov 2026).
  *
  *  - A review notification opens the brand's EDITOR (never the shopper view)
- *    until the piece is approved; approved/published open it live.
+ *    until the piece is approved; approved/published open it where the brand
+ *    manages it (the Studio editor / the catalogue's Public shelf), never the
+ *    shopper product page or design viewer.
  *  - The editor and the preview show what the reviewer asked for, mark the
  *    part of the form it points at, and the submit button says "Resubmit for
  *    review" instead of "Create".
@@ -90,6 +92,18 @@ for (const type of [
   assert.match(routing, new RegExp(`CONTENT_REVIEW_EDIT_TYPES = new Set\\(\\[[^\\]]*'${type}'`), `${type} opens the editor`);
 }
 assert.match(routing, /CONTENT_REVIEW_LIVE_TYPES = new Set\(\['CONTENT_REVIEW_APPROVED', 'CONTENT_PUBLISHED'\]\)/);
+// Approved/published: the brand's own surfaces, never a shopper view (owner,
+// Nov 2026: "Notifications routing brands to view screens. That is bad.").
+{
+  const start = routing.indexOf('if (CONTENT_REVIEW_LIVE_TYPES.has(type)) {');
+  const end = routing.indexOf('} else {', start);
+  assert.ok(start > 0 && end > start, 'the approved/published branch exists');
+  const liveBranch = routing.slice(start, end);
+  assert.doesNotMatch(liveBranch, /\/products\/\[productId\]/, 'an approved product does not open the shopper product page');
+  assert.doesNotMatch(liveBranch, /routeForDesignTarget/, 'an approved design does not open the design viewer');
+  assert.match(liveBranch, /routeKey: 'editProduct', productId/, 'an approved product opens in the Studio editor');
+  assert.match(liveBranch, /tab: 'Collections', visibility: 'Public'/, "an approved design opens the catalogue's Public shelf");
+}
 assert.match(routing, /pathname: '\/designs\/\[designId\]\/edit', params: \{ designId \}/, 'designs open in the composer');
 assert.match(routing, /routeKey: 'editProduct', productId/, 'products open in the Studio product editor');
 assert.ok(

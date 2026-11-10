@@ -30,13 +30,31 @@
  * Market's body sits behind a memo shell that absorbs auth and bag changes,
  * the BagFlow value no longer changes per route, and no tab screen subscribes
  * to the app's URL (Catalogue reads its own route, not `usePathname`).
+ *
+ * THEME. The one change every screen must take is the theme, and taking it in
+ * every mounted tab at once was the ~1s before a theme tap showed (owner, Nov
+ * 2026: "the theme change is still not instant"). A tab that is not focused —
+ * including every tab while Settings is open on top — reads the theme through
+ * `DeferredThemeScope`, so the screen on display repaints first and the hidden
+ * ones follow in the background. Nothing is unmounted or hidden.
  */
 import type React from 'react';
+import { useIsFocused } from 'expo-router';
+
+import { DeferredThemeScope } from '@/src/theme/ThemeProvider';
 
 type TabLayoutArgs = {
   children: React.ReactElement;
 };
 
+function ThemeDeferredWhileHidden({ children }: { children: React.ReactElement }) {
+  // Rendered inside the screen's navigation context (the navigator wraps the
+  // layout's element in its `NavigationProvider`), so this is the tab's own
+  // focus — false for every tab while a stack screen covers the tab shell.
+  const focused = useIsFocused();
+  return <DeferredThemeScope deferred={!focused}>{children}</DeferredThemeScope>;
+}
+
 export function freezeHiddenTabLayout({ children }: TabLayoutArgs) {
-  return children;
+  return <ThemeDeferredWhileHidden>{children}</ThemeDeferredWhileHidden>;
 }

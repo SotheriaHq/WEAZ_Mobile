@@ -644,9 +644,10 @@ export function BrandShopTab({
       // draft. It used to open the shopper product page (bag it, sizes, price
       // to pay), which is the wrong screen for the person who sells it.
       if (isOwner) {
+        // `from: 'catalog'`: Studio's 👈 brings the brand back here.
         drillDownPush({
           pathname: '/studio',
-          params: { routeKey: 'editProduct', productId: product.id },
+          params: { routeKey: 'editProduct', productId: product.id, from: 'catalog' },
         } as any);
         return;
       }

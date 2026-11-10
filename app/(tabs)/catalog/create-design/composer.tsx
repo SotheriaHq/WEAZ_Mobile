@@ -13,10 +13,8 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
-import { KeyboardStickyFooter } from '@/components/ui/KeyboardStickyFooter';
 import Reanimated, {
   FadeIn,
   FadeOut,
@@ -799,17 +797,6 @@ export default function CreateDesignComposerScreen() {
     [filterSelection, toggleFilterValue],
   );
 
-  // Dynamic action-area height measurement ensures exact clearance for keyboard
-  // avoidance and scrolling, adapting naturally as helper text expands/contracts.
-  const [footerHeight, setFooterHeight] = useState(0);
-
-  const handleFooterLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextHeight = Math.round(event.nativeEvent.layout.height);
-    if (nextHeight > 0 && Math.abs(nextHeight - footerHeight) > 1) {
-      setFooterHeight(nextHeight);
-    }
-  }, [footerHeight]);
-
   if (booting && isEditMode) {
     return <AppLoaderScreen message="Loading composer" />;
   }
@@ -829,8 +816,8 @@ export default function CreateDesignComposerScreen() {
         <KeyboardAwareFormScroll
           style={styles.flex}
           contentContainerStyle={styles.content}
-          // The footer collapses while the keyboard is open, so the focused
-          // field only needs breathing room above the keyboard, not footer room.
+          // The actions scroll with the form, so the focused field only needs
+          // breathing room above the keyboard, not footer room.
           bottomOffset={tokens.spacing.xl}
           extraKeyboardSpace={0}
           automaticallyAdjustKeyboardInsets={false}
@@ -1218,18 +1205,25 @@ export default function CreateDesignComposerScreen() {
               />
             </Card>
           ) : null}
-        </KeyboardAwareFormScroll>
-        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }} hideWhileKeyboardOpen>
+          {/*
+            The actions END the form — no pinned bar under it.
+
+            Pinned below the scroll, the footer took its own strip of page
+            colour, and the form was cut off at that strip's edge: the dark
+            band under Save draft / Preview (owner, Nov 2026: "the idea was to
+            have those buttons be without an obvious layer or bg"). 279b20e
+            moved them into the form; a later SIT merge brought the pinned
+            footer back. In the form they also never sit on a typed field.
+          */}
           <View
-            onLayout={handleFooterLayout}
             style={[
               styles.footerActions,
               {
+                paddingTop: tokens.spacing.md,
                 paddingBottom: Math.max(
-                  insets.bottom + tokens.spacing.sm,
-                  tokens.spacing.lg,
+                  insets.bottom + tokens.spacing.xl,
+                  tokens.spacing['2xl'],
                 ),
-                paddingHorizontal: tokens.spacing.lg,
               },
             ]}
           >
@@ -1280,7 +1274,7 @@ export default function CreateDesignComposerScreen() {
               </View>
             </View>
           </View>
-        </KeyboardStickyFooter>
+        </KeyboardAwareFormScroll>
 {renderSheets ? (
         <>
           <AppSelectSheet

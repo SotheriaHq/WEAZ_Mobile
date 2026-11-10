@@ -37,6 +37,10 @@ vm.runInNewContext(output, {
   require: (request) => {
     if (request === 'react') return { useCallback: (fn) => fn, useMemo: (fn) => fn(), Fragment: 'Fragment', createElement: () => null };
     if (request === 'react-native') return { FlatList: 'FlatList', StyleSheet: { create: (s) => s }, View: 'View' };
+    if (request === '@/src/styles/tokens') return { tokens: { spacing: { lg: 16 } } };
+    if (request === '@/src/system/ScreenChrome') {
+      return { useScreenChrome: () => ({ windowHeight: 900, insets: { top: 24 }, standardScreenBottomPadding: 110 }) };
+    }
     return require(request);
   },
 });
@@ -47,6 +51,19 @@ assert.equal(grid.shouldCapGridHeight(50), true);
 // The capped height does not depend on the count: 6 cards and 50 are as tall.
 const h = grid.cappedGridHeight({ cardHeight: 300, rowGap: 12, visibleRows: 2.5, paddingVertical: 16 });
 assert.equal(h, Math.round(300 * 2.5 + 12 * 2 + 16), 'two and a half rows, so the next row peeks');
+
+// 3. The capped area fits above the floating island (owner, Nov 2026: "i had
+//    to extra scroll out of it to see the complete part of the bottom cards").
+const fit = (height) =>
+  grid.fitGridHeightToViewport({ height, windowHeight: 900, topInset: 24, bottomClearance: 110, margin: 16 });
+assert.equal(fit(850), 900 - 24 - 110 - 16, 'a grid taller than the clear space is cut to it');
+assert.equal(fit(500), 500, 'a grid that already fits keeps its height');
+assert.equal(
+  grid.fitGridHeightToViewport({ height: 500, windowHeight: 0, topInset: 0, bottomClearance: 110, margin: 16 }),
+  500,
+  'an unmeasured window never collapses the grid',
+);
+assert.match(read('components/catalog/InlineCardGrid.tsx'), /bottomClearance: standardScreenBottomPadding/, 'the island clearance is the floor');
 
 const source = read('components/catalog/InlineCardGrid.tsx');
 assert.match(source, /numColumns=\{2\}/, 'two cards per row, always (owner: no three across)');
