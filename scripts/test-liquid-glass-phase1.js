@@ -739,6 +739,11 @@ async function runTests() {
     assert.equal(lenses.length, 1, 'API 31 must use clean RenderEffect native lens instead of noisy Dimezis BlurView');
     assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
     assert.equal(lenses[0].props.refractionStrength, 0);
+    assert.equal(
+      lenses[0].props.blurRadius,
+      4,
+      'API 31-32 RenderEffect fallback must derive non-zero blur from blurIntensity / blurReductionFactor (12 / 3 = 4)',
+    );
     assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 1, 'API 31-32 renders single thin SVG directional rim');
     await renderer.act(async () => tree.unmount());
   }
@@ -1143,8 +1148,214 @@ async function runTests() {
     }
   }
 
+  // ── 9. Phase 2 Consolidation & Regression Fixes ───────────────────────────
+  // 9a. Single-source optics defaults in tokens match Phase 1 v4 baseline
+  assert.equal(tokens.liquidGlass.optics.curvature, 0.66);
+  assert.equal(tokens.liquidGlass.optics.opticalThickness, 0.55);
+  assert.equal(tokens.liquidGlass.optics.chromaticAberration, 0);
+  assert.equal(tokens.liquidGlass.optics.refractionStrength.subtle, 0.74);
+  assert.equal(tokens.liquidGlass.optics.refractionStrength.regular, 1.02);
+  assert.equal(tokens.liquidGlass.optics.refractionStrength.prominent, 1.2);
+
+  // 9b. initialSize seeds first paint BEFORE layout, while onLayout updates flexible surfaces
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
+  harness.setScheme('light');
+  {
+    let tree;
+    await renderer.act(async () => {
+      tree = renderer.create(
+        React.createElement(
+          'View',
+          null,
+          React.createElement(
+            WiezLiquidGlass,
+            {
+              mode: 'lightweight',
+              borderRadius: tokens.radius.full,
+              initialSize: { width: 120, height: 40 },
+              pointerEvents: 'none',
+              testID: 'flexible-pill',
+            },
+            React.createElement('ChildLabel', null, 'Initial'),
+          ),
+          React.createElement(
+            WiezLiquidGlass,
+            {
+              mode: 'lightweight',
+              borderRadius: tokens.radius.full,
+              initialSize: { width: 48, height: 48 },
+              style: { width: 48, height: 48 },
+              testID: 'fixed-circle',
+            },
+            React.createElement('ChildLabel', null, '48'),
+          ),
+        ),
+        { createNodeMock },
+      );
+    });
+
+    const pillInitial = collectNodes(tree.toJSON(), (n) => n.props?.testID === 'flexible-pill')[0];
+    assert.equal(pillInitial.props.pointerEvents, 'none', 'pointerEvents prop must forward to root View');
+    assert.equal(flattenStyle(pillInitial.props.style).borderRadius, 20);
+    assert.equal(collectNodes(pillInitial, (n) => n.type === 'Svg')[0].props.width, 120);
+    assert.equal(collectNodes(pillInitial, (n) => n.type === 'Svg')[0].props.height, 40);
+
+    await renderer.act(async () => {
+      pillInitial.props.onLayout({ nativeEvent: { layout: { width: 180, height: 60 } } });
+    });
+    const pillResized = collectNodes(tree.toJSON(), (n) => n.props?.testID === 'flexible-pill')[0];
+    assert.equal(
+      flattenStyle(pillResized.props.style).borderRadius,
+      30,
+      'onLayout resize must update borderRadius clamping beyond initialSize seed',
+    );
+    assert.equal(collectNodes(pillResized, (n) => n.type === 'Svg')[0].props.width, 180);
+    assert.equal(collectNodes(pillResized, (n) => n.type === 'Svg')[0].props.height, 60);
+
+    const fixedCircle = collectNodes(tree.toJSON(), (n) => n.props?.testID === 'fixed-circle')[0];
+    await renderer.act(async () => {
+      fixedCircle.props.onLayout({ nativeEvent: { layout: { width: 64, height: 64 } } });
+    });
+    const fixedAfter = collectNodes(tree.toJSON(), (n) => n.props?.testID === 'fixed-circle')[0];
+    assert.equal(
+      collectNodes(fixedAfter, (n) => n.type === 'Svg')[0].props.width,
+      48,
+      'Fixed numeric style dimensions must take precedence over onLayout changes',
+    );
+    await renderer.act(async () => tree.unmount());
+  }
+
+  // 9c. API 31-32 RenderEffect blur preset scaling & explicit 0 override vs AGSL 0dp invariance
+  {
+    function HarnessBlur({ intensity = 'regular', blurRadius }) {
+      const { targetRef, blurTargetRef, onTargetLayout } = useLiquidGlassBlurTarget();
+      return React.createElement(
+        'View',
+        null,
+        React.createElement(WiezLiquidGlassBackdrop, { targetRef, onLayout: onTargetLayout }),
+        React.createElement(WiezLiquidGlass, {
+          mode: 'enhanced',
+          intensity,
+          blurRadius,
+          blurTarget: blurTargetRef,
+          initialSize: { width: 48, height: 48 },
+        }),
+      );
+    }
+
+    harness.setPlatform('android', 31);
+    harness.setNativeCaps({ available: true, runtimeShader: false, renderEffectBlur: true });
+    for (const [intensity, expectedBlur] of [
+      ['subtle', 2.7],
+      ['regular', 4],
+      ['prominent', 5.3],
+    ]) {
+      let tree;
+      await renderer.act(async () => {
+        tree = renderer.create(React.createElement(HarnessBlur, { intensity }), { createNodeMock });
+      });
+      const lens = collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView')[0];
+      assert.equal(
+        lens.props.blurRadius,
+        expectedBlur,
+        `API 31 ${intensity} RenderEffect blur must equal ${expectedBlur}dp`,
+      );
+      await renderer.act(async () => tree.unmount());
+    }
+
+    // Explicit blurRadius={0} opt-out honored on API 31-32
+    {
+      let tree;
+      await renderer.act(async () => {
+        tree = renderer.create(
+          React.createElement(HarnessBlur, { intensity: 'prominent', blurRadius: 0 }),
+          { createNodeMock },
+        );
+      });
+      const lens = collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView')[0];
+      assert.equal(lens.props.blurRadius, 0, 'Explicit blurRadius={0} override must disable API 31 blur');
+      await renderer.act(async () => tree.unmount());
+    }
+
+    // API 33+ AGSL preserves strictly 0dp default even on prominent intensity
+    harness.setPlatform('android', 37);
+    harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
+    {
+      let tree;
+      await renderer.act(async () => {
+        tree = renderer.create(React.createElement(HarnessBlur, { intensity: 'prominent' }), {
+          createNodeMock,
+        });
+      });
+      const lens = collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView')[0];
+      assert.equal(lens.props.blurRadius, 0, 'API 33+ AGSL prominent preset must remain strictly 0dp default blur');
+      await renderer.act(async () => tree.unmount());
+    }
+  }
+
+  // 9d. Numeric intensity bounds derive directly from tokens.liquidGlass with zero drift
+  harness.setPlatform('android', 37);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
+  for (const scheme of ['light', 'dark']) {
+    harness.setScheme(scheme);
+    const palette = tokens.liquidGlass[scheme];
+    for (const [intensity, expectedKey] of [
+      [0, 'subtle'],
+      [1, 'prominent'],
+    ]) {
+      function HarnessNumericTint() {
+        const { targetRef, blurTargetRef, onTargetLayout } = useLiquidGlassBlurTarget();
+        return React.createElement(
+          'View',
+          null,
+          React.createElement(WiezLiquidGlassBackdrop, { targetRef, onLayout: onTargetLayout }),
+          React.createElement(WiezLiquidGlass, {
+            mode: 'lightweight',
+            intensity,
+            initialSize: { width: 80, height: 32 },
+            testID: 'num-lw',
+          }),
+          React.createElement(WiezLiquidGlass, {
+            mode: 'enhanced',
+            intensity,
+            blurTarget: blurTargetRef,
+            initialSize: { width: 48, height: 48 },
+            testID: 'num-enh',
+          }),
+        );
+      }
+      let tree;
+      await renderer.act(async () => {
+        tree = renderer.create(React.createElement(HarnessNumericTint), { createNodeMock });
+      });
+      const json = tree.toJSON();
+      const lwNode = collectNodes(json, (n) => n.props?.testID === 'num-lw')[0];
+      const lwFill = collectNodes(
+        lwNode,
+        (n) =>
+          n.type === 'View' &&
+          typeof flattenStyle(n.props?.style).backgroundColor === 'string' &&
+          flattenStyle(n.props?.style).backgroundColor.startsWith('rgba(') &&
+          flattenStyle(n.props?.style).backgroundColor !== palette.pressedOverlay,
+      )[0];
+      assert.equal(
+        parseRgbaAlpha(flattenStyle(lwFill.props.style).backgroundColor),
+        palette.lightweightTintAlpha[expectedKey],
+        `${scheme} lightweight numeric intensity=${intensity} must match ${expectedKey} token`,
+      );
+      const enhLens = collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView')[0];
+      assert.equal(
+        enhLens.props.tintAlpha,
+        palette.tintAlpha[expectedKey],
+        `${scheme} enhanced numeric intensity=${intensity} must match ${expectedKey} tintAlpha token`,
+      );
+      await renderer.act(async () => tree.unmount());
+    }
+  }
+
   console.log(
-    'PASS test-liquid-glass-phase1: Material-system optical envelopes, v2 AGSL shader invariants, arbitrary shapes, Lab removal/unreachability, and Catalog integration verified.',
+    'PASS test-liquid-glass-phase1: Material-system optical envelopes, v2 AGSL shader invariants, arbitrary shapes, Phase 2 API 31 RenderEffect / layout resize / token sync, Lab removal, and Catalog integration verified.',
   );
 }
 

@@ -514,6 +514,16 @@ export const tokens = {
   liquidGlass: {
     menuGlyphFill: '#FFFFFF',
     menuGlyphStroke: 'rgba(20,20,22,0.82)',
+    optics: {
+      curvature: 0.66,
+      opticalThickness: 0.55,
+      chromaticAberration: 0,
+      refractionStrength: {
+        subtle: 0.74,
+        regular: 1.02,
+        prominent: 1.2,
+      },
+    },
     light: {
       transmission: {
         lightweight: {
@@ -526,6 +536,11 @@ export const tokens = {
           regular: 'rgba(255,255,255,0.02)',
           prominent: 'rgba(255,255,255,0.04)',
         },
+      },
+      lightweightTintAlpha: {
+        subtle: 0.045,
+        regular: 0.07,
+        prominent: 0.1,
       },
       tintHex: '#FFFFFF',
       tintAlpha: {
@@ -582,6 +597,11 @@ export const tokens = {
           regular: 'rgba(20,20,22,0.03)',
           prominent: 'rgba(20,20,22,0.055)',
         },
+      },
+      lightweightTintAlpha: {
+        subtle: 0.05,
+        regular: 0.085,
+        prominent: 0.12,
       },
       tintHex: '#141416',
       tintAlpha: {

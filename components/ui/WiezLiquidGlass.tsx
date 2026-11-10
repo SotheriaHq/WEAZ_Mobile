@@ -44,8 +44,9 @@ const DEPTH_START = { x: 0.5, y: 0.0 } as const;
 const DEPTH_END = { x: 0.5, y: 1.0 } as const;
 const DEPTH_LOCATIONS = [0, 0.25, 0.72, 1] as const;
 
-const DEFAULT_CURVATURE = 0.66;
-const DEFAULT_OPTICAL_THICKNESS = 0.55;
+const DEFAULT_CURVATURE = tokens.liquidGlass.optics.curvature;
+const DEFAULT_OPTICAL_THICKNESS = tokens.liquidGlass.optics.opticalThickness;
+const DEFAULT_CHROMA = tokens.liquidGlass.optics.chromaticAberration;
 
 export type WiezLiquidGlassMode = 'lightweight' | 'enhanced';
 export type WiezLiquidGlassIntensityPreset = 'subtle' | 'regular' | 'prominent';
@@ -62,11 +63,13 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   /**
    * Optical rendering path:
    * - `lightweight`: multi-layer sheer translucency, hairline directional SVG specular rim,
-   *   and outer-corner specular highlight with zero native backdrop capture pass.
+   *   and outer-corner specular highlight with zero native backdrop capture pass. Preferred
+   *   for scrolling `FlatList` rows, multi-card grids, live video (`SurfaceView`), `WebView`
+   *   containers, and cross-window Android `Modal` overlays.
    * - `enhanced`: uses the hardware Android `RenderNode` + `RenderEffect` + API 33+ AGSL
-   *   optical refraction pipeline when `blurTarget` is supplied (no Dimezis stipple or
-   *   opaque grey fills); falls back cleanly to API 31-32 RenderEffect or `lightweight` on
-   *   older APIs, unsupported surfaces (SurfaceView/Video/WebView), or omitted target.
+   *   optical refraction pipeline when `blurTarget` points to a sibling
+   *   `WiezLiquidGlassBackdrop` (no Dimezis stipple or opaque grey fills); falls back cleanly
+   *   to API 31–32 `RenderEffect` blur or `lightweight` on older APIs, missing targets, or iOS.
    */
   mode?: WiezLiquidGlassMode;
   /** Visual density preset (`subtle` | `regular` | `prominent`) or normalized scalar `0..1`. */
@@ -88,7 +91,7 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   curvature?: number;
   /** Override optical bezel thickness/reach (`0..1`). Defaults to `0.55`. */
   opticalThickness?: number;
-  /** Override optional Gaussian scatter blur radius in dp (`0..24`). Defaults to `0` on AGSL. */
+  /** Override optional Gaussian scatter blur radius in dp (`0..24`). Defaults to `0` on AGSL and token-derived blur on API 31–32 `RenderEffect`. */
   blurRadius?: number;
   /** Override Fresnel edge lighting intensity (`0..1.5`). Defaults to `highlightIntensity`. */
   fresnelIntensity?: number;
@@ -98,12 +101,14 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   tintAlpha?: number;
   /** Optional chromatic dispersion (`0..1`). Defaults to `0` (disabled). */
   chromaticAberration?: number;
-  /** Sibling/ancestor backdrop ref paired with `WiezLiquidGlassBackdrop` on Android. */
+  /** Sibling backdrop ref paired with `WiezLiquidGlassBackdrop` via `useLiquidGlassBlurTarget()` on Android. Never attach to an ancestor containing this lens. */
   blurTarget?: React.RefObject<View | null>;
-  /** Known control dimensions so curved rim geometry paints cleanly before async layout. */
+  /** Initial control dimensions used to paint curved rim geometry before async layout completes. */
   initialSize?: WiezLiquidGlassSize;
   /** Optional pressed state illumination without heavy opaque fill shifts. */
   pressed?: boolean;
+  /** Optional touch behavior for decorative/non-interactive glass badges or pills. */
+  pointerEvents?: ViewProps['pointerEvents'];
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   testID?: string;
@@ -158,6 +163,10 @@ export function getLiquidGlassCapabilities() {
  * Exposing a fresh snapshot upon target attachment ensures sibling glass lenses
  * resolve the native view handle deterministically on the initial synchronous commit
  * pass without mounting stale opaque fallback frames.
+ *
+ * Pair `{ targetRef, onTargetLayout }` with `<WiezLiquidGlassBackdrop>` and pass
+ * `blurTargetRef` to sibling `<WiezLiquidGlass mode="enhanced" />` instances only.
+ * Do not attach `targetRef` to an ancestor containing `WiezLiquidGlass` children.
  */
 export function useLiquidGlassBlurTarget() {
   const targetRef = React.useRef<View | null>(null);
@@ -190,6 +199,12 @@ export function useLiquidGlassBlurTarget() {
 /**
  * Wraps background media behind Android Liquid Glass controls so native optical
  * lenses sample underlying pixels cleanly without capturing interactive glass chrome.
+ *
+ * Must be rendered as a **sibling** behind floating controls (never wrap a
+ * `WiezLiquidGlass mode="enhanced"` lens inside `WiezLiquidGlassBackdrop`). Avoid
+ * placing live `Video` (`SurfaceView`), Chromium `WebView`, or fast-scrolling `FlatList`
+ * cards inside `WiezLiquidGlassBackdrop`; those surfaces should pair with
+ * `mode="lightweight"` controls on Android.
  */
 export const WiezLiquidGlassBackdrop = React.memo(function WiezLiquidGlassBackdrop({
   targetRef,
@@ -219,6 +234,10 @@ export const WiezLiquidGlassBackdrop = React.memo(function WiezLiquidGlassBackdr
   );
 });
 
+function lerpRounded(min: number, max: number, normalized: number, precision = 1000): number {
+  return Math.round((min + (max - min) * clamp(normalized, 0, 1)) * precision) / precision;
+}
+
 function resolveTransmissionColor(
   scheme: ThemeScheme,
   intensity: WiezLiquidGlassIntensity,
@@ -236,16 +255,9 @@ function resolveTransmissionColor(
     return bucket[intensity] ?? bucket.regular;
   }
 
-  const normalized = clamp(intensity, 0, 1);
-  if (scheme === 'dark') {
-    const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.025, 0.06] : [0.06, 0.14];
-    const alpha = Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
-    return tokens.liquidGlass.tintForScheme('dark', alpha);
-  }
-
-  const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.015, 0.04] : [0.05, 0.12];
-  const alpha = Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
-  return tokens.liquidGlass.tintForScheme('light', alpha);
+  const alphaScale = liveBlurEnabled ? palette.tintAlpha : palette.lightweightTintAlpha;
+  const alpha = lerpRounded(alphaScale.subtle, alphaScale.prominent, intensity);
+  return tokens.liquidGlass.tintForScheme(scheme, alpha);
 }
 
 function resolveTintAlpha(
@@ -260,9 +272,7 @@ function resolveTintAlpha(
   if (typeof intensity === 'string') {
     return palette.tintAlpha[intensity] ?? palette.tintAlpha.regular;
   }
-  const normalized = clamp(intensity, 0, 1);
-  const [minAlpha, maxAlpha] = scheme === 'dark' ? [0.025, 0.06] : [0.015, 0.04];
-  return Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
+  return lerpRounded(palette.tintAlpha.subtle, palette.tintAlpha.prominent, intensity);
 }
 
 function resolveOpticalBlurDp(
@@ -288,8 +298,27 @@ function resolveIosBlurIntensity(
   if (typeof intensity === 'string') {
     return palette.blurIntensity[intensity] ?? palette.blurIntensity.regular;
   }
-  const normalized = clamp(intensity, 0, 1);
-  return Math.round(8 + normalized * 8);
+  return Math.round(
+    palette.blurIntensity.subtle +
+      clamp(intensity, 0, 1) * (palette.blurIntensity.prominent - palette.blurIntensity.subtle),
+  );
+}
+
+function resolveRenderEffectBlurDp(
+  scheme: ThemeScheme,
+  intensity: WiezLiquidGlassIntensity,
+  blurRadiusOverride?: number,
+): number {
+  if (typeof blurRadiusOverride === 'number' && Number.isFinite(blurRadiusOverride)) {
+    return clamp(blurRadiusOverride, 0, 24);
+  }
+  const palette = tokens.liquidGlass[scheme];
+  const baseBlur = resolveIosBlurIntensity(scheme, intensity);
+  const reductionFactor =
+    typeof palette.blurReductionFactor === 'number' && palette.blurReductionFactor > 0
+      ? palette.blurReductionFactor
+      : 3;
+  return clamp(Math.round((baseBlur / reductionFactor) * 10) / 10, 0, 24);
 }
 
 function resolveRefractionAmount(
@@ -299,12 +328,11 @@ function resolveRefractionAmount(
   if (typeof refractionStrengthOverride === 'number' && Number.isFinite(refractionStrengthOverride)) {
     return clamp(refractionStrengthOverride, 0, 2);
   }
+  const table = tokens.liquidGlass.optics.refractionStrength;
   if (typeof intensity === 'string') {
-    if (intensity === 'subtle') return 0.74;
-    if (intensity === 'prominent') return 1.2;
-    return 1.02;
+    return table[intensity] ?? table.regular;
   }
-  return Math.round((0.65 + clamp(intensity, 0, 1) * 0.6) * 100) / 100;
+  return lerpRounded(0.65, 1.25, intensity, 100);
 }
 
 /**
@@ -315,8 +343,11 @@ function resolveRefractionAmount(
  *   + verified AGSL `RuntimeShader` with smooth finite-difference SDF normals, convex
  *   meniscus refraction, optional scatter blur (0dp default), sheer tint, and
  *   luminance-aware Fresnel edge lighting without 1px dark-ring outlines.
- * - Android API 31–32: Noise-free `RenderEffect` blur pass + hairline SVG specular rim.
- * - Older APIs / `lightweight` / missing target: Clean sheer translucent stack + hairline SVG rim.
+ * - Android API 31–32 (`mode="enhanced"` + `blurTarget`): Noise-free `RenderEffect` blur
+ *   derived from `tokens.liquidGlass.{scheme}.blurIntensity / blurReductionFactor` +
+ *   hairline SVG specular rim.
+ * - Older APIs / `lightweight` / missing target / iOS fallback: Clean sheer translucent
+ *   stack + hairline SVG rim (or `BlurView` on iOS `enhanced`).
  */
 export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   children,
@@ -333,10 +364,11 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   fresnelIntensity,
   reflectionIntensity,
   tintAlpha,
-  chromaticAberration = 0,
+  chromaticAberration = DEFAULT_CHROMA,
   blurTarget,
   initialSize,
   pressed = false,
+  pointerEvents,
   style,
   contentStyle,
   testID,
@@ -350,39 +382,41 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   const rimGradientId = `wlg-rim-${instanceId}`;
 
   const flattenedStyle = React.useMemo(() => StyleSheet.flatten(style) ?? {}, [style]);
-  const explicitWidth =
-    typeof initialSize?.width === 'number'
-      ? initialSize.width
-      : typeof flattenedStyle.width === 'number'
-        ? flattenedStyle.width
-        : 0;
-  const explicitHeight =
-    typeof initialSize?.height === 'number'
-      ? initialSize.height
-      : typeof flattenedStyle.height === 'number'
-        ? flattenedStyle.height
-        : 0;
+  const styleWidth =
+    typeof flattenedStyle.width === 'number' && flattenedStyle.width > 0
+      ? flattenedStyle.width
+      : 0;
+  const styleHeight =
+    typeof flattenedStyle.height === 'number' && flattenedStyle.height > 0
+      ? flattenedStyle.height
+      : 0;
+  const seedWidth =
+    typeof initialSize?.width === 'number' && initialSize.width > 0 ? initialSize.width : 0;
+  const seedHeight =
+    typeof initialSize?.height === 'number' && initialSize.height > 0 ? initialSize.height : 0;
 
-  const [measuredSize, setMeasuredSize] = React.useState<WiezLiquidGlassSize>(() => ({
-    width: explicitWidth,
-    height: explicitHeight,
-  }));
+  const [layoutSize, setLayoutSize] = React.useState<WiezLiquidGlassSize | null>(null);
 
-  const handleLayout = React.useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width * 10) / 10;
-    const nextHeight = Math.round(event.nativeEvent.layout.height * 10) / 10;
-    if (nextWidth <= 0 || nextHeight <= 0) return;
+  const handleLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      if (styleWidth > 0 && styleHeight > 0) return;
+      const nextWidth = Math.round(event.nativeEvent.layout.width * 10) / 10;
+      const nextHeight = Math.round(event.nativeEvent.layout.height * 10) / 10;
+      if (nextWidth <= 0 || nextHeight <= 0) return;
 
-    setMeasuredSize((previous) =>
-      Math.abs(previous.width - nextWidth) < 0.5 &&
-      Math.abs(previous.height - nextHeight) < 0.5
-        ? previous
-        : { width: nextWidth, height: nextHeight },
-    );
-  }, []);
+      setLayoutSize((previous) =>
+        previous &&
+        Math.abs(previous.width - nextWidth) < 0.5 &&
+        Math.abs(previous.height - nextHeight) < 0.5
+          ? previous
+          : { width: nextWidth, height: nextHeight },
+      );
+    },
+    [styleWidth, styleHeight],
+  );
 
-  const surfaceWidth = explicitWidth > 0 ? explicitWidth : measuredSize.width;
-  const surfaceHeight = explicitHeight > 0 ? explicitHeight : measuredSize.height;
+  const surfaceWidth = styleWidth > 0 ? styleWidth : (layoutSize?.width ?? seedWidth);
+  const surfaceHeight = styleHeight > 0 ? styleHeight : (layoutSize?.height ?? seedHeight);
 
   const hasBlurTarget = Boolean(blurTarget?.current);
   const canUseEnhancedPlatform =
@@ -418,6 +452,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   );
   const tintAlphaValue = resolveTintAlpha(effectiveScheme, intensity, tintAlpha);
   const opticalBlurDp = resolveOpticalBlurDp(effectiveScheme, intensity, blurRadius);
+  const renderEffectBlurDp = resolveRenderEffectBlurDp(effectiveScheme, intensity, blurRadius);
   const iosBlurIntensityValue = resolveIosBlurIntensity(effectiveScheme, intensity);
   const refractionAmount = resolveRefractionAmount(intensity, refractionStrength);
   const highlightScalar = highlightIntensity === false ? 0 : clamp(highlightIntensity, 0, 1.5);
@@ -450,6 +485,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   return (
     <View
       {...accessibilityProps}
+      pointerEvents={pointerEvents}
       testID={testID}
       onLayout={handleLayout}
       style={[
@@ -474,7 +510,13 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
           importantForAccessibility="no-hide-descendants"
           targetViewId={androidTargetHandle ?? undefined}
           cornerRadius={clampedBorderRadius}
-          blurRadius={androidAgslActive ? (typeof blurRadius === 'number' ? opticalBlurDp : 0) : opticalBlurDp}
+          blurRadius={
+            androidAgslActive
+              ? typeof blurRadius === 'number'
+                ? opticalBlurDp
+                : 0
+              : renderEffectBlurDp
+          }
           refractionStrength={androidAgslActive && refraction ? refractionAmount : 0}
           chromaticAberration={androidAgslActive ? effectiveChroma : 0}
           rimStrength={effectiveRimStrength}
