@@ -113,13 +113,6 @@ type Props = Omit<TextProps, 'style'> & {
    */
   onDarkStage?: boolean;
   /**
-   * Resolve `tone` against the LIGHT palette regardless of the active theme.
-   *
-   * Counterpart to `onDarkStage` for optical calibration surfaces and light
-   * stage canvases evaluated while the device theme is set to dark mode.
-   */
-  onLightStage?: boolean;
-  /**
    * Set in the true italic face — for a title or a quoted line inside copy
    * (notification titles, a reviewer's note). Not for whole paragraphs.
    */
@@ -142,12 +135,6 @@ const warnedMissingVariant = new Set<string>();
 /** Palette used by `onDarkStage` — the same tokens the Runway matte is built
  *  from, so stage chrome stays legible in light mode. */
 const DARK_STAGE_THEME = { colors: tokens.themes.dark.colors } as ReturnType<
-  typeof useTheme
->['theme'];
-
-/** Palette used by `onLightStage` — ensures high-contrast dark ink on light
- *  test stages when the surrounding app chrome is running in dark mode. */
-const LIGHT_STAGE_THEME = { colors: tokens.themes.light.colors } as ReturnType<
   typeof useTheme
 >['theme'];
 
@@ -339,18 +326,13 @@ export function AppText({
   tone = 'default',
   muted = false,
   onDarkStage = false,
-  onLightStage = false,
   italic = false,
   style,
   children,
   ...rest
 }: Props) {
   const { theme: activeTheme } = useTheme();
-  const theme = onDarkStage
-    ? DARK_STAGE_THEME
-    : onLightStage
-      ? LIGHT_STAGE_THEME
-      : activeTheme;
+  const theme = onDarkStage ? DARK_STAGE_THEME : activeTheme;
   const fontFallbackMode = useFontFallbackMode();
   const variant = providedVariant ?? 'body';
 

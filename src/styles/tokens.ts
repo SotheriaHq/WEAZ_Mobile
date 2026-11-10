@@ -629,32 +629,6 @@ export const tokens = {
     transparent: 'rgba(255,255,255,0)',
     tintForScheme: (scheme: ThemeScheme, alpha: number): string =>
       scheme === 'dark' ? `rgba(20,20,22,${alpha})` : `rgba(255,255,255,${alpha})`,
-    lab: {
-      light: {
-        stageBg: '#FFFFFF',
-        gridMinor: '#CBD5E1',
-        gridMajor: '#0F172A',
-        gridAccent: '#9333EA',
-        gridDiagonal: '#2563EB',
-        tileA: '#F8FAFC',
-        tileB: '#E2E8F0',
-        stripeColors: ['#FFFFFF', '#090B12', '#9333EA', '#0EA5E9', '#10B981', '#F97316'] as const,
-        photoGradient: ['#1E1B4B', '#7E22CE', '#EC4899', '#F59E0B', '#FFFFFF'] as const,
-      },
-      dark: {
-        stageBg: '#07090F',
-        gridMinor: '#1E293B',
-        gridMajor: '#F8FAFC',
-        gridAccent: '#C084FC',
-        gridDiagonal: '#38BDF8',
-        tileA: '#0B1120',
-        tileB: '#1E293B',
-        stripeColors: ['#07090F', '#FFFFFF', '#A855F7', '#38BDF8', '#34D399', '#FB923C'] as const,
-        photoGradient: ['#050814', '#4C1D95', '#BE185D', '#0284C7', '#0F172A'] as const,
-      },
-      inkOnLight: '#050914',
-      inkOnDark: '#FFFFFF',
-    },
   },
 
   /**

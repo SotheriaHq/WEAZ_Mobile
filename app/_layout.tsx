@@ -794,7 +794,6 @@ function RootStack() {
       <Stack.Screen name="collection-gallery" options={{ headerShown: false }} />
       <Stack.Screen name="search" options={{ headerShown: false }} />
       <Stack.Screen name="products/[productId]" options={{ headerShown: false }} />
-      <Stack.Screen name="dev/liquid-glass-lab" options={{ headerShown: false }} />
     </Stack>
   );
 }

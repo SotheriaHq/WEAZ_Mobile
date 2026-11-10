@@ -1,13 +1,11 @@
 import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
-import { router } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { QuickPressable } from '@/components/ui/QuickPressable';
-import { isLiquidGlassLabEnabled } from '@/src/features/dev/liquidGlassLabGate';
 import { useSyncedThemePreference } from '@/src/hooks/useSyncedThemePreference';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -164,35 +162,6 @@ export default function ThemeSettingsScreen() {
             ? `WIEZ follows your phone — right now ${followingLabel}.`
             : `WIEZ stays in ${themePreference} mode on every device you sign in to.`}
         </AppText>
-
-        {isLiquidGlassLabEnabled() ? (
-          <View style={styles.labSection}>
-            <SettingsSectionHeading title="Developer calibration" />
-            <QuickPressable
-              onPress={() => router.push('/dev/liquid-glass-lab' as any)}
-              accessibilityRole="button"
-              accessibilityLabel="Open Liquid Glass optical lab"
-              style={({ pressed }) => [
-                styles.labRow,
-                {
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surface,
-                },
-                pressed ? styles.pressed : null,
-              ]}
-            >
-              <View style={styles.labRowCopy}>
-                <AppText variant="bodyBold">Liquid Glass Optical Lab</AppText>
-                <AppText variant="captionRegular" tone="muted">
-                  Refraction, meniscus curvature, motion & A/B bench
-                </AppText>
-              </View>
-              <AppText variant="subtitle" tone="muted">
-                ›
-              </AppText>
-            </QuickPressable>
-          </View>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -320,22 +289,5 @@ const styles = StyleSheet.create({
   },
   footnote: {
     textAlign: 'center',
-  },
-  labSection: {
-    gap: tokens.spacing.sm,
-  },
-  labRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
-    borderRadius: tokens.radius.md,
-    borderWidth: 2,
-  },
-  labRowCopy: {
-    flex: 1,
-    gap: tokens.spacing.xs,
   },
 });

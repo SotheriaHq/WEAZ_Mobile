@@ -56,31 +56,6 @@ import {
 import { drillDownPush } from './mobileNavigation';
 import { resolveMobileAuthRoute } from './authLinkRouting';
 import { nativePathForWebLink } from '@/src/navigation/webLinkRouting';
-import { isLiquidGlassLabEnabled } from '@/src/features/dev/liquidGlassLabGate';
-
-function resolveLiquidGlassLabRoute(url: string | null) {
-  if (!url || !isLiquidGlassLabEnabled()) return null;
-  try {
-    const parsed = new URL(url, 'https://wiez.mobile');
-    const normalizedPath =
-      parsed.hostname && parsed.hostname !== 'wiez.mobile'
-        ? `/${parsed.hostname}${parsed.pathname}`.replace(/\/+$/, '')
-        : parsed.pathname.replace(/\/+$/, '');
-    if (normalizedPath !== '/dev/liquid-glass-lab') {
-      return null;
-    }
-    const params: Record<string, string> = {};
-    parsed.searchParams.forEach((value, key) => {
-      if (value) params[key] = value;
-    });
-    return {
-      pathname: '/dev/liquid-glass-lab' as const,
-      params,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function resolvePaymentReturnRoute(url: string | null) {
   if (!url) return null;
@@ -239,12 +214,6 @@ export function useNotificationRouting() {
         const paymentRoute = resolvePaymentReturnRoute(url);
         if (paymentRoute) {
           router.replace(paymentRoute as any);
-          return;
-        }
-
-        const labRoute = resolveLiquidGlassLabRoute(url);
-        if (labRoute) {
-          router.replace(labRoute as any);
           return;
         }
 

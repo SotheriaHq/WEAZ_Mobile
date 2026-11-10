@@ -1017,69 +1017,134 @@ async function runTests() {
     assert.equal(lenses[0].props.fallbackColor, 0, 'Lens fallbackColor must stay transparent (0)');
     assert.equal(lenses[1].props.cornerRadius, 24, 'Card borderRadius must preserve 24dp rounding');
     assert.equal(lenses[1].props.curvature, 0.9);
-    assert.equal(lenses[1].props.blurRadius, 6, 'Optional calibration blurRadius must forward cleanly');
+    assert.equal(lenses[1].props.blurRadius, 6, 'Optional scatter blurRadius must forward cleanly');
     await renderer.act(async () => tree.unmount());
   }
 
-  // ── 8. Calibration Lab Gate & Route Isolation Checks ──────────────────────
-  const labGateSource = fs.readFileSync(
-    path.join(ROOT, 'src', 'features', 'dev', 'liquidGlassLabGate.ts'),
-    'utf8',
+  // ── 8. Temporary Optical Lab Complete Removal & Unreachability Checks ─────
+  assert.equal(
+    fs.existsSync(path.join(ROOT, 'app', 'dev', 'liquid-glass-lab.tsx')),
+    false,
+    'Temporary Optical Lab route app/dev/liquid-glass-lab.tsx must be completely removed',
   );
-  const labScreenSource = fs.readFileSync(
-    path.join(ROOT, 'app', 'dev', 'liquid-glass-lab.tsx'),
-    'utf8',
+  assert.equal(
+    fs.existsSync(path.join(ROOT, 'src', 'features', 'dev', 'liquidGlassLabGate.ts')),
+    false,
+    'Temporary Optical Lab gate src/features/dev/liquidGlassLabGate.ts must be completely removed',
   );
-  assert.match(labGateSource, /__DEV__ \|\| isWiezDebugEnabled\('nav'\)/);
-  assert.match(labScreenSource, /if \(!isLiquidGlassLabEnabled\(\)\)[\s\S]*?<Redirect href="\/" \/>/);
-  assert.match(labScreenSource, /onLightStage=\{stageScheme === 'light'\}/, 'Lab stage text must stay high-contrast when Light stage renders inside Dark app theme');
 
-  const appTextSource = fs.readFileSync(
-    path.join(ROOT, 'components', 'ui', 'AppText.tsx'),
+  const rootLayoutSource = fs.readFileSync(path.join(ROOT, 'app', '_layout.tsx'), 'utf8');
+  assert.doesNotMatch(
+    rootLayoutSource,
+    /dev\/liquid-glass-lab/,
+    'Root navigator must not register dev/liquid-glass-lab',
+  );
+
+  const themeSettingsSource = fs.readFileSync(
+    path.join(ROOT, 'app', 'settings', 'theme.tsx'),
     'utf8',
   );
-  assert.match(appTextSource, /LIGHT_STAGE_THEME/, 'AppText must define symmetric LIGHT_STAGE_THEME for light calibration surfaces');
+  assert.doesNotMatch(
+    themeSettingsSource,
+    /liquid-glass-lab|liquidGlassLabGate|isLiquidGlassLabEnabled|Liquid Glass Optical Lab/,
+    'Appearance settings must not expose Optical Lab debug entry controls',
+  );
+  assert.match(
+    themeSettingsSource,
+    /<SettingsSectionHeading title="Colour theme" \/>/,
+    'Appearance settings must retain Rule 37 Colour theme section heading',
+  );
 
-  // Verify release gating logic in isolated sandbox with __DEV__ = false vs true
+  const notificationRoutingSource = fs.readFileSync(
+    path.join(ROOT, 'src', 'utils', 'notificationRouting.ts'),
+    'utf8',
+  );
+  assert.doesNotMatch(
+    notificationRoutingSource,
+    /liquid-glass-lab|resolveLiquidGlassLabRoute|isLiquidGlassLabEnabled/,
+    'Deep-link router must not handle or navigate to Optical Lab URLs',
+  );
+
+  const mobileRoutingSource = fs.readFileSync(
+    path.join(ROOT, 'src', 'utils', 'mobileRouting.ts'),
+    'utf8',
+  );
+  assert.doesNotMatch(
+    mobileRoutingSource,
+    /liquid-glass-lab/,
+    'Mobile notification route mapper must not reference Optical Lab',
+  );
   const vm = require('node:vm');
-  function evalLabGate(isDev, debugNavEnv) {
-    const diagTranspiled = ts.transpileModule(
-      fs.readFileSync(
-        path.join(ROOT, 'src', 'features', 'feed', 'utils', 'feedDiagnostics.ts'),
-        'utf8',
-      ),
-      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } },
-    ).outputText;
-    const gateTranspiled = ts.transpileModule(labGateSource, {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-    }).outputText;
-    const gateModule = { exports: {} };
-    const sandbox = {
-      __DEV__: isDev,
-      process: {
-        env: debugNavEnv !== undefined ? { EXPO_PUBLIC_DEBUG_NAV: debugNavEnv } : {},
-      },
-      module: gateModule,
-      exports: gateModule.exports,
-      require: (req) => {
-        if (req.endsWith('feedDiagnostics')) {
-          const m = { exports: {} };
-          vm.runInNewContext(diagTranspiled, { ...sandbox, module: m, exports: m.exports });
-          return m.exports;
-        }
-        throw new Error(`Unexpected import in labGate eval: ${req}`);
-      },
-    };
-    vm.runInNewContext(gateTranspiled, sandbox);
-    return gateModule.exports.isLiquidGlassLabEnabled();
+  const routingModule = { exports: {} };
+  const compiledMobileRouting = ts.transpileModule(mobileRoutingSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+  }).outputText;
+  vm.runInNewContext(compiledMobileRouting, {
+    module: routingModule,
+    exports: routingModule.exports,
+    URL,
+    URLSearchParams,
+  });
+  for (const labUrl of [
+    'wiezmobile://dev/liquid-glass-lab',
+    'wiezmobile://dev/liquid-glass-lab?mode=v4',
+    '/dev/liquid-glass-lab',
+  ]) {
+    const resolvedLabFallback = routingModule.exports.routeForNotification({
+      type: 'SYSTEM',
+      targetUrl: labUrl,
+      payload: { targetUrl: labUrl },
+      target: null,
+      actor: null,
+      subTargetId: null,
+    });
+    assert.equal(
+      resolvedLabFallback,
+      '/notifications',
+      `Deep link ${labUrl} must never resolve to Optical Lab`,
+    );
   }
-  assert.equal(evalLabGate(false, undefined), false, 'Lab gate MUST return false in production builds');
-  assert.equal(evalLabGate(false, '0'), false, 'Lab gate MUST return false when EXPO_PUBLIC_DEBUG_NAV=0');
-  assert.equal(evalLabGate(false, '1'), true, 'Lab gate opens in instrumented preview builds (EXPO_PUBLIC_DEBUG_NAV=1)');
-  assert.equal(evalLabGate(true, undefined), true, 'Lab gate opens in __DEV__ builds');
+
+  assert.equal(
+    'lab' in tokens.liquidGlass,
+    false,
+    'Diagnostic tokens.liquidGlass.lab palette must be removed while preserving reusable material tokens',
+  );
+
+  const appTextSource = fs.readFileSync(path.join(ROOT, 'components', 'ui', 'AppText.tsx'), 'utf8');
+  assert.doesNotMatch(
+    appTextSource,
+    /LIGHT_STAGE_THEME|onLightStage/,
+    'AppText must not retain Optical Lab-only LIGHT_STAGE_THEME / onLightStage props',
+  );
+
+  // Sweep all runtime source directories (app/, components/, src/) for stale Lab symbols
+  function walkRuntimeFiles(dir, out = []) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        walkRuntimeFiles(fullPath, out);
+      } else if (/\.(ts|tsx|js|jsx|json)$/.test(entry.name)) {
+        out.push(fullPath);
+      }
+    }
+    return out;
+  }
+  const staleLabPattern = /liquid-glass-lab|liquidGlassLab|isLiquidGlassLabEnabled|resolveLiquidGlassLabRoute/;
+  for (const dirName of ['app', 'components', 'src']) {
+    for (const filePath of walkRuntimeFiles(path.join(ROOT, dirName))) {
+      const fileSource = fs.readFileSync(filePath, 'utf8');
+      assert.doesNotMatch(
+        fileSource,
+        staleLabPattern,
+        `Runtime file ${path.relative(ROOT, filePath)} must not reference removed Optical Lab`,
+      );
+    }
+  }
 
   console.log(
-    'PASS test-liquid-glass-phase1: Material-system optical envelopes, v2 AGSL shader invariants, arbitrary shapes, Lab gating, and Catalog integration verified.',
+    'PASS test-liquid-glass-phase1: Material-system optical envelopes, v2 AGSL shader invariants, arbitrary shapes, Lab removal/unreachability, and Catalog integration verified.',
   );
 }
 
