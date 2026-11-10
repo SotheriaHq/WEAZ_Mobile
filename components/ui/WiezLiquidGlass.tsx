@@ -21,6 +21,7 @@ import Svg, {
 
 import {
   getWiezLiquidGlassBackdropNativeView,
+  getWiezLiquidGlassDiagnostics,
   getWiezLiquidGlassLensNativeView,
   isWiezLiquidGlassNativeAvailable,
   supportsWiezLiquidGlassRenderEffectBlur,
@@ -34,7 +35,7 @@ const ANDROID_HARDWARE_BLUR_MIN_API = 31;
 const ANDROID_AGSL_REFRACTION_MIN_API = 33;
 
 // Confine the static reflection highlight to a tight top-left outer crescent
-// so the central 66% of the glass lens remains clear and unobstructed.
+// so the central core of the glass lens remains clear and unobstructed.
 const REFLECTION_START = { x: 0.04, y: 0.0 } as const;
 const REFLECTION_END = { x: 0.62, y: 0.62 } as const;
 const REFLECTION_LOCATIONS = [0, 0.14, 0.34] as const;
@@ -42,6 +43,9 @@ const REFLECTION_LOCATIONS = [0, 0.14, 0.34] as const;
 const DEPTH_START = { x: 0.5, y: 0.0 } as const;
 const DEPTH_END = { x: 0.5, y: 1.0 } as const;
 const DEPTH_LOCATIONS = [0, 0.25, 0.72, 1] as const;
+
+const DEFAULT_CURVATURE = 0.58;
+const DEFAULT_OPTICAL_THICKNESS = 0.42;
 
 export type WiezLiquidGlassMode = 'lightweight' | 'enhanced';
 export type WiezLiquidGlassIntensityPreset = 'subtle' | 'regular' | 'prominent';
@@ -59,25 +63,41 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
    * Optical rendering path:
    * - `lightweight`: multi-layer sheer translucency, hairline directional SVG specular rim,
    *   and outer-corner specular highlight with zero native backdrop capture pass.
-   * - `enhanced`: uses the local hardware Android `RenderNode` + `RenderEffect` + API 33+
-   *   AGSL optical lens pipeline when `blurTarget` is supplied (no Dimezis blue-noise stipple
-   *   or opaque neutral tint fills); gracefully falls back to API 31-32 clean blur or
-   *   `lightweight` on older Android devices or when no target is available.
+   * - `enhanced`: uses the hardware Android `RenderNode` + `RenderEffect` + API 33+ AGSL
+   *   optical refraction pipeline when `blurTarget` is supplied (no Dimezis stipple or
+   *   opaque grey fills); falls back cleanly to API 31-32 RenderEffect or `lightweight` on
+   *   older APIs, unsupported surfaces (SurfaceView/Video/WebView), or omitted target.
    */
   mode?: WiezLiquidGlassMode;
   /** Visual density preset (`subtle` | `regular` | `prominent`) or normalized scalar `0..1`. */
   intensity?: WiezLiquidGlassIntensity;
   /** Corner radius in logical pixels. Defaults to circular/pill radius (`tokens.radius.full`). */
   borderRadius?: number;
-  /** Specular rim and directional highlight intensity (`0..1`), or `false` to disable highlights. */
+  /** Specular rim and directional highlight intensity (`0..1.5`), or `false` to disable highlights. */
   highlightIntensity?: number | false;
   /** Follow active WIEZ theme (`auto`) or lock to `light` / `dark` optical tuning. */
   tintMode?: WiezLiquidGlassTintMode;
   /**
-   * Enables geometric perimeter meniscus refraction & subtle edge chromatic dispersion
-   * on supported hardware (Android API 33+ AGSL in `enhanced` mode). Defaults to `true`.
+   * Enables geometric convex meniscus refraction on supported hardware (Android API 33+ AGSL
+   * in `enhanced` mode). Defaults to `true`.
    */
   refraction?: boolean;
+  /** Override displacement amplitude scalar (`0..2`). Defaults from `intensity`. */
+  refractionStrength?: number;
+  /** Override meniscus shoulder dome curve (`0..1`: crisp lip -> curved dome). Defaults to `0.58`. */
+  curvature?: number;
+  /** Override optical bezel thickness/reach (`0..1`). Defaults to `0.48`. */
+  opticalThickness?: number;
+  /** Override optional Gaussian scatter blur radius in dp (`0..24`). Defaults to `0` on AGSL. */
+  blurRadius?: number;
+  /** Override Fresnel edge lighting intensity (`0..1.5`). Defaults to `highlightIntensity`. */
+  fresnelIntensity?: number;
+  /** Override specular shoulder reflection intensity (`0..1.5`). Defaults to `highlightIntensity`. */
+  reflectionIntensity?: number;
+  /** Override sheer optical tint alpha (`0..0.6`). Defaults to theme crystal-sheer token. */
+  tintAlpha?: number;
+  /** Optional chromatic dispersion (`0..1`). Defaults to `0` (disabled). */
+  chromaticAberration?: number;
   /** Sibling/ancestor backdrop ref paired with `WiezLiquidGlassBackdrop` on Android. */
   blurTarget?: React.RefObject<View | null>;
   /** Known control dimensions so curved rim geometry paints cleanly before async layout. */
@@ -120,6 +140,18 @@ export function supportsNativeLiquidGlassRefraction(): boolean {
   return supportsWiezLiquidGlassRefraction();
 }
 
+export function getLiquidGlassCapabilities() {
+  const apiLevel = getAndroidApiLevel();
+  const diagnostics = getWiezLiquidGlassDiagnostics();
+  return {
+    platform: Platform.OS,
+    apiLevel,
+    enhancedSupported: supportsEnhancedLiquidGlass(),
+    agslRefractionSupported: supportsNativeLiquidGlassRefraction(),
+    ...diagnostics,
+  };
+}
+
 /**
  * Synchronizes a target View ref as an immutable ref-object snapshot once mounted.
  *
@@ -157,7 +189,7 @@ export function useLiquidGlassBlurTarget() {
 
 /**
  * Wraps background media behind Android Liquid Glass controls so native optical
- * lenses sample underlying banner artwork without capturing controls themselves.
+ * lenses sample underlying pixels cleanly without capturing interactive glass chrome.
  */
 export const WiezLiquidGlassBackdrop = React.memo(function WiezLiquidGlassBackdrop({
   targetRef,
@@ -191,7 +223,12 @@ function resolveTransmissionColor(
   scheme: ThemeScheme,
   intensity: WiezLiquidGlassIntensity,
   liveBlurEnabled: boolean,
+  tintAlphaOverride?: number,
 ): string {
+  if (typeof tintAlphaOverride === 'number' && Number.isFinite(tintAlphaOverride)) {
+    const clampedAlpha = Math.round(clamp(tintAlphaOverride, 0, 0.6) * 1000) / 1000;
+    return tokens.liquidGlass.tintForScheme(scheme, clampedAlpha);
+  }
   const palette = tokens.liquidGlass[scheme];
   const bucket = liveBlurEnabled ? palette.transmission.enhanced : palette.transmission.lightweight;
 
@@ -211,7 +248,14 @@ function resolveTransmissionColor(
   return tokens.liquidGlass.tintForScheme('light', alpha);
 }
 
-function resolveTintAlpha(scheme: ThemeScheme, intensity: WiezLiquidGlassIntensity): number {
+function resolveTintAlpha(
+  scheme: ThemeScheme,
+  intensity: WiezLiquidGlassIntensity,
+  tintAlphaOverride?: number,
+): number {
+  if (typeof tintAlphaOverride === 'number' && Number.isFinite(tintAlphaOverride)) {
+    return clamp(tintAlphaOverride, 0, 0.6);
+  }
   const palette = tokens.liquidGlass[scheme];
   if (typeof intensity === 'string') {
     return palette.tintAlpha[intensity] ?? palette.tintAlpha.regular;
@@ -224,7 +268,11 @@ function resolveTintAlpha(scheme: ThemeScheme, intensity: WiezLiquidGlassIntensi
 function resolveOpticalBlurDp(
   scheme: ThemeScheme,
   intensity: WiezLiquidGlassIntensity,
+  blurRadiusOverride?: number,
 ): number {
+  if (typeof blurRadiusOverride === 'number' && Number.isFinite(blurRadiusOverride)) {
+    return clamp(blurRadiusOverride, 0, 24);
+  }
   const palette = tokens.liquidGlass[scheme];
   if (typeof intensity === 'string') {
     return palette.opticalBlurDp[intensity] ?? palette.opticalBlurDp.regular;
@@ -244,24 +292,31 @@ function resolveIosBlurIntensity(
   return Math.round(8 + normalized * 8);
 }
 
-function resolveRefractionAmount(intensity: WiezLiquidGlassIntensity): number {
+function resolveRefractionAmount(
+  intensity: WiezLiquidGlassIntensity,
+  refractionStrengthOverride?: number,
+): number {
+  if (typeof refractionStrengthOverride === 'number' && Number.isFinite(refractionStrengthOverride)) {
+    return clamp(refractionStrengthOverride, 0, 2);
+  }
   if (typeof intensity === 'string') {
     if (intensity === 'subtle') return 0.65;
-    if (intensity === 'prominent') return 0.95;
-    return 0.85;
+    if (intensity === 'prominent') return 1.12;
+    return 0.88;
   }
-  return Math.round((0.55 + clamp(intensity, 0, 1) * 0.45) * 100) / 100;
+  return Math.round((0.55 + clamp(intensity, 0, 1) * 0.55) * 100) / 100;
 }
 
 /**
  * Shared WIEZ Liquid Glass optical material primitive.
  *
- * Prioritizes optically clear background transmission across light and dark
- * themes. On Android API 33+ in `enhanced` mode, performs a single-pass hardware
- * RenderNode + AGSL localized outer-meniscus refraction (~33% perimeter), 0dp center
- * blur, zero chromatic aberration, sheer tint, and luminance-aware Fresnel edge lighting.
- * On Android API 31-32 provides clean RenderEffect pass paired with hairline SVG rim lighting,
- * and on older API levels or `lightweight` mode degrades cleanly without opaque grey overlays.
+ * Shape-aware optical system across circles, pills, and rounded cards:
+ * - Android API 33+ (`mode="enhanced"` + `blurTarget`): Single-pass hardware `RenderNode`
+ *   + verified AGSL `RuntimeShader` with smooth finite-difference SDF normals, convex
+ *   meniscus refraction, optional scatter blur (0dp default), sheer tint, and
+ *   luminance-aware Fresnel edge lighting without 1px dark-ring outlines.
+ * - Android API 31–32: Noise-free `RenderEffect` blur pass + hairline SVG specular rim.
+ * - Older APIs / `lightweight` / missing target: Clean sheer translucent stack + hairline SVG rim.
  */
 export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   children,
@@ -271,6 +326,14 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   highlightIntensity = 1,
   tintMode = 'auto',
   refraction = true,
+  refractionStrength,
+  curvature = DEFAULT_CURVATURE,
+  opticalThickness = DEFAULT_OPTICAL_THICKNESS,
+  blurRadius,
+  fresnelIntensity,
+  reflectionIntensity,
+  tintAlpha,
+  chromaticAberration = 0,
   blurTarget,
   initialSize,
   pressed = false,
@@ -351,28 +414,38 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
     effectiveScheme,
     intensity,
     liveOpticalBackdropActive,
+    tintAlpha,
   );
-  const tintAlphaValue = resolveTintAlpha(effectiveScheme, intensity);
-  const opticalBlurDp = resolveOpticalBlurDp(effectiveScheme, intensity);
+  const tintAlphaValue = resolveTintAlpha(effectiveScheme, intensity, tintAlpha);
+  const opticalBlurDp = resolveOpticalBlurDp(effectiveScheme, intensity, blurRadius);
   const iosBlurIntensityValue = resolveIosBlurIntensity(effectiveScheme, intensity);
-  const refractionAmount = resolveRefractionAmount(intensity);
-  const highlightScalar = highlightIntensity === false ? 0 : clamp(highlightIntensity, 0, 1);
+  const refractionAmount = resolveRefractionAmount(intensity, refractionStrength);
+  const highlightScalar = highlightIntensity === false ? 0 : clamp(highlightIntensity, 0, 1.5);
+  const effectiveRimStrength =
+    typeof fresnelIntensity === 'number' && Number.isFinite(fresnelIntensity)
+      ? clamp(fresnelIntensity, 0, 1.5)
+      : highlightScalar;
+  const effectiveReflectionStrength =
+    typeof reflectionIntensity === 'number' && Number.isFinite(reflectionIntensity)
+      ? clamp(reflectionIntensity, 0, 1.5)
+      : highlightScalar;
+  const effectiveCurvature = clamp(curvature, 0, 1);
+  const effectiveThickness = clamp(opticalThickness, 0, 1);
+  const effectiveChroma = clamp(chromaticAberration, 0, 1);
 
   const clampedBorderRadius =
     surfaceWidth > 0 && surfaceHeight > 0
       ? Math.min(Math.max(0, borderRadius), Math.min(surfaceWidth, surfaceHeight) / 2)
       : Math.max(0, borderRadius);
 
-  const fallbackCanvasColor = tokens.themes[effectiveScheme].colors.surfaceAlt;
   const tintColorInt = toAndroidColorInt(palette.tintHex);
-  const fallbackColorInt = toAndroidColorInt(fallbackCanvasColor);
 
   // When Android API 33+ AGSL is active, refraction + blur + sheer tint + rim + corner
   // gloss all composite inside one hardware fragment shader pass; avoid stacking extra JS
   // gradient/SVG layers on top. API 31-32, iOS, and lightweight render the JS rim stack.
   const renderJsGlassOverlays = !androidAgslActive;
   const canRenderRimSvg =
-    renderJsGlassOverlays && highlightScalar > 0 && surfaceWidth > 6 && surfaceHeight > 6;
+    renderJsGlassOverlays && effectiveRimStrength > 0 && surfaceWidth > 6 && surfaceHeight > 6;
 
   return (
     <View
@@ -395,28 +468,26 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
     >
       {/* Android API 31+ / 33+ native RenderNode optical lens */}
       {androidNativeLensActive && NativeLensView ? (
-        <View
+        <NativeLensView
           pointerEvents="none"
           accessible={false}
           importantForAccessibility="no-hide-descendants"
-          style={[StyleSheet.absoluteFill, { borderRadius: clampedBorderRadius }]}
-        >
-          <NativeLensView
-            targetViewId={androidTargetHandle ?? undefined}
-            cornerRadius={clampedBorderRadius}
-            blurRadius={androidAgslActive ? 0 : opticalBlurDp}
-            refractionStrength={androidAgslActive && refraction ? refractionAmount : 0}
-            chromaticAberration={0}
-            rimStrength={highlightScalar}
-            reflectionStrength={highlightScalar}
-            tintColor={tintColorInt}
-            tintAlpha={tintAlphaValue}
-            fallbackColor={fallbackColorInt}
-            isDark={effectiveScheme === 'dark'}
-            pressed={pressed}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
+          targetViewId={androidTargetHandle ?? undefined}
+          cornerRadius={clampedBorderRadius}
+          blurRadius={androidAgslActive ? (typeof blurRadius === 'number' ? opticalBlurDp : 0) : opticalBlurDp}
+          refractionStrength={androidAgslActive && refraction ? refractionAmount : 0}
+          chromaticAberration={androidAgslActive ? effectiveChroma : 0}
+          rimStrength={effectiveRimStrength}
+          reflectionStrength={effectiveReflectionStrength}
+          curvature={effectiveCurvature}
+          opticalThickness={effectiveThickness}
+          tintColor={tintColorInt}
+          tintAlpha={tintAlphaValue}
+          fallbackColor={0}
+          isDark={effectiveScheme === 'dark'}
+          pressed={pressed}
+          style={StyleSheet.absoluteFill}
+        />
       ) : null}
 
       {/* iOS native UIVisualEffectView backdrop blur */}
@@ -455,14 +526,14 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
           />
 
           {/* Tight top-left outer crescent reflection highlight */}
-          {highlightScalar > 0 ? (
+          {effectiveReflectionStrength > 0 ? (
             <View
               pointerEvents="none"
               accessible={false}
               importantForAccessibility="no-hide-descendants"
               style={[
                 StyleSheet.absoluteFill,
-                { opacity: highlightScalar, borderRadius: clampedBorderRadius },
+                { opacity: clamp(effectiveReflectionStrength, 0, 1), borderRadius: clampedBorderRadius },
               ]}
             >
               <ExpoLinearGradient
@@ -518,7 +589,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
                     key={stop.offset}
                     offset={stop.offset}
                     stopColor={palette.specularHex}
-                    stopOpacity={stop.opacity * highlightScalar}
+                    stopOpacity={clamp(stop.opacity * effectiveRimStrength, 0, 1)}
                   />
                 ))}
               </SvgLinearGradient>

@@ -18,14 +18,16 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Hardware-accelerated Android optical Liquid Glass surface.
+ * Hardware-accelerated Android optical Liquid Glass lens surface.
  *
- * - API 33+: Crisp zero-center-blur AGSL RuntimeShader lens with localized outer-meniscus
- *   refraction (~33% perimeter), sheer optical tint, and luminance-aware Fresnel rim lighting.
+ * - API 33+: Single-pass GPU RenderNode + AGSL RuntimeShader performing SDF normal
+ *   estimation, smooth C1 convex meniscus refraction across arbitrary shapes (circles,
+ *   pills, rounded rectangles), optional chained blur, sheer optical tint, and
+ *   luminance-aware Fresnel edge lighting.
  * - API 31-32: Clean RenderEffect lens over an offscreen RenderNode (no stipple grain
- *   or opaque TintStyle grey fill), paired with JS SVG specular rim lighting.
+ *   or opaque neutral tint fills), paired with JS SVG specular rim lighting.
  * - Idle frames replay the cached GPU RenderNode without re-recording the backdrop tree;
- *   re-capture occurs only when backdrop visuals invalidate or relative geometry shifts.
+ *   re-capture occurs only when visible backdrop visuals invalidate or relative geometry shifts.
  */
 @SuppressLint("ViewConstructor")
 class WiezLiquidGlassLensView(
@@ -39,13 +41,14 @@ class WiezLiquidGlassLensView(
 
   private var cornerRadiusDp: Float = 999f
   private var blurRadiusDp: Float = 0f
-  private var refractionStrength: Float = 0.85f
+  private var refractionStrength: Float = 0.88f
   private var chromaticAberration: Float = 0f
   private var rimStrength: Float = 1.0f
   private var reflectionStrength: Float = 1.0f
+  private var curvature: Float = 0.58f
+  private var opticalThickness: Float = 0.42f
   private var tintColorArgb: Int = Color.WHITE
   private var tintAlpha: Float = 0.02f
-  private var fallbackColorArgb: Int = Color.TRANSPARENT
   private var isDark: Boolean = false
   private var pressedState: Boolean = false
 
@@ -111,14 +114,14 @@ class WiezLiquidGlassLensView(
   }
 
   fun setBlurRadius(value: Float) {
-    val clamped = if (value.isFinite()) max(0f, value) else 0f
+    val clamped = if (value.isFinite()) min(32f, max(0f, value)) else 0f
     if (clamped == blurRadiusDp) return
     blurRadiusDp = clamped
     needsEffectUpdate = true
   }
 
   fun setRefractionStrength(value: Float) {
-    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0f
+    val clamped = if (value.isFinite()) min(2f, max(0f, value)) else 0f
     if (clamped == refractionStrength) return
     refractionStrength = clamped
     needsEffectUpdate = true
@@ -145,6 +148,20 @@ class WiezLiquidGlassLensView(
     needsEffectUpdate = true
   }
 
+  fun setCurvature(value: Float) {
+    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0.58f
+    if (clamped == curvature) return
+    curvature = clamped
+    needsEffectUpdate = true
+  }
+
+  fun setOpticalThickness(value: Float) {
+    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0.42f
+    if (clamped == opticalThickness) return
+    opticalThickness = clamped
+    needsEffectUpdate = true
+  }
+
   fun setTintColorValue(color: Int?) {
     val resolved = color ?: Color.WHITE
     if (resolved == tintColorArgb) return
@@ -153,18 +170,15 @@ class WiezLiquidGlassLensView(
   }
 
   fun setTintAlpha(value: Float) {
-    val clamped = if (value.isFinite()) min(0.5f, max(0f, value)) else 0f
+    val clamped = if (value.isFinite()) min(0.6f, max(0f, value)) else 0f
     if (clamped == tintAlpha) return
     tintAlpha = clamped
     needsEffectUpdate = true
   }
 
-  fun setFallbackColorValue(color: Int?) {
-    val resolved = color ?: Color.TRANSPARENT
-    if (resolved == fallbackColorArgb) return
-    fallbackColorArgb = resolved
-    needsCapture = true
-    needsEffectUpdate = true
+  fun setFallbackColorValue(@Suppress("UNUSED_PARAMETER") color: Int?) {
+    // Retained as a backwards-compatible prop setter; capturing RenderNodes stay transparent
+    // to prevent subpixel perimeter color bleed.
   }
 
   fun setIsDark(dark: Boolean) {
@@ -184,13 +198,17 @@ class WiezLiquidGlassLensView(
       resolveTargetView(forceNotify = false)
     }
     invalidateOutline()
-    invalidate()
+    if (isShown) {
+      invalidate()
+    }
   }
 
   internal fun onBackdropInvalidated() {
     if (isCapturingSelf) return
     needsCapture = true
-    invalidate()
+    if (isShown) {
+      invalidate()
+    }
   }
 
   private fun unregisterBackdropListener() {
@@ -215,12 +233,14 @@ class WiezLiquidGlassLensView(
     if (forceNotify || resolved != null) {
       needsCapture = true
       needsEffectUpdate = true
-      invalidate()
+      if (isShown) {
+        invalidate()
+      }
     }
   }
 
   private fun checkTargetGeometryChanged() {
-    if (!isAttachedToWindow || isCapturingSelf || visibility != View.VISIBLE) return
+    if (!isAttachedToWindow || isCapturingSelf || !isShown || width <= 0 || height <= 0) return
     val id = targetViewId ?: return
 
     var target = targetRef?.get()
@@ -248,6 +268,7 @@ class WiezLiquidGlassLensView(
     val targetVersion = if (target is WiezLiquidGlassBackdropView) target.backdropVersion else 0L
 
     if (
+      needsCapture ||
       relX != lastLensInTargetX ||
       relY != lastLensInTargetY ||
       target.width != lastTargetWidth ||
@@ -255,6 +276,13 @@ class WiezLiquidGlassLensView(
       targetVersion != lastBackdropVersion
     ) {
       needsCapture = true
+      invalidate()
+    }
+  }
+
+  override fun onVisibilityChanged(changedView: View, visibility: Int) {
+    super.onVisibilityChanged(changedView, visibility)
+    if (isShown && (needsCapture || needsEffectUpdate)) {
       invalidate()
     }
   }
@@ -321,7 +349,7 @@ class WiezLiquidGlassLensView(
 
     val shouldCapture = needsCapture || geometryChanged
     val density = max(resources.displayMetrics.density, 1f)
-    val pad = ceil(20f * density).toInt()
+    val pad = ceil((blurRadiusDp + 36f) * density).toInt()
     val maxRadius = min(width, height) * 0.5f
     val cornerRadiusPx = min(max(0f, cornerRadiusDp * density), maxRadius)
 
@@ -333,9 +361,10 @@ class WiezLiquidGlassLensView(
       chromaticPx = chromaticAberration * density,
       rimStrength = rimStrength,
       reflectionStrength = reflectionStrength,
+      curvature = curvature,
+      opticalThickness = opticalThickness,
       tintColorArgb = tintColorArgb,
       tintAlpha = tintAlpha,
-      fallbackColorArgb = fallbackColorArgb,
       isDark = isDark,
       pressed = pressedState,
     )

@@ -12,6 +12,8 @@ import {
 type NativeModuleShape = {
   supportsRuntimeShader?: boolean;
   supportsRenderEffectBlur?: boolean;
+  shaderCompileError?: string | null;
+  engineVersion?: number;
 };
 
 export type NativeWiezLiquidGlassBackdropProps = ViewProps & {
@@ -26,6 +28,8 @@ export type NativeWiezLiquidGlassLensProps = ViewProps & {
   chromaticAberration?: number;
   rimStrength?: number;
   reflectionStrength?: number;
+  curvature?: number;
+  opticalThickness?: number;
   tintColor?: number;
   tintAlpha?: number;
   fallbackColor?: number;
@@ -75,6 +79,17 @@ export function supportsWiezLiquidGlassRefraction(): boolean {
 export function supportsWiezLiquidGlassRenderEffectBlur(): boolean {
   ensureNativeLoaded();
   return Boolean(cachedModule?.supportsRenderEffectBlur);
+}
+
+export function getWiezLiquidGlassDiagnostics() {
+  ensureNativeLoaded();
+  return {
+    nativeAvailable: Boolean(cachedModule && cachedBackdropView && cachedLensView),
+    supportsRuntimeShader: Boolean(cachedModule?.supportsRuntimeShader),
+    supportsRenderEffectBlur: Boolean(cachedModule?.supportsRenderEffectBlur),
+    shaderCompileError: cachedModule?.shaderCompileError ?? null,
+    engineVersion: cachedModule?.engineVersion ?? null,
+  };
 }
 
 export function getWiezLiquidGlassBackdropNativeView():

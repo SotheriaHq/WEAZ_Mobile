@@ -157,6 +157,15 @@ function createHarness() {
             mockPlatform.OS === 'android' && nativeAvailable && supportsRuntimeShader,
           supportsWiezLiquidGlassRenderEffectBlur: () =>
             mockPlatform.OS === 'android' && nativeAvailable && supportsRenderEffectBlur,
+          getWiezLiquidGlassDiagnostics: () => ({
+            available: mockPlatform.OS === 'android' && nativeAvailable,
+            supportsRuntimeShader:
+              mockPlatform.OS === 'android' && nativeAvailable && supportsRuntimeShader,
+            supportsRenderEffectBlur:
+              mockPlatform.OS === 'android' && nativeAvailable && supportsRenderEffectBlur,
+            shaderCompileError: null,
+            engineVersion: 2,
+          }),
           getWiezLiquidGlassBackdropNativeView: () =>
             mockPlatform.OS === 'android' && nativeAvailable ? NativeBackdropView : null,
           getWiezLiquidGlassLensNativeView: () =>
@@ -323,6 +332,7 @@ async function runTests() {
     getAndroidApiLevel,
     supportsEnhancedLiquidGlass,
     supportsNativeLiquidGlassRefraction,
+    getLiquidGlassCapabilities,
   } = harness.loadTs(path.join(ROOT, 'components', 'ui', 'WiezLiquidGlass.tsx'));
   const { BrandProfileHeader } = harness.loadTs(
     path.join(ROOT, 'components', 'catalog', 'BrandProfileHeader.tsx'),
@@ -615,7 +625,7 @@ async function runTests() {
     await renderer.act(async () => tree.unmount());
   }
 
-  // Verify Kotlin/AGSL optical shader invariants (0.33 outer meniscus, C1 pow(edgeT,1.50), brightBg Fresnel, no wireframe outerEdgeMask)
+  // Verify v2 Kotlin/AGSL Material-System optical shader invariants & crash/fringe fixes
   {
     const rendererSource = fs.readFileSync(
       path.join(
@@ -633,12 +643,35 @@ async function runTests() {
       ),
       'utf8',
     );
-    assert.match(rendererSource, /minHalf \* 0\.33/, 'Meniscus width must remain confined to ~33% perimeter');
-    assert.match(rendererSource, /pow\(edgeT,\s*1\.50\)/, 'Meniscus transition must use smooth pow(edgeT, 1.50) curve');
-    assert.doesNotMatch(rendererSource, /corePull/, 'Central optical core must have zero displacement/pull');
-    assert.doesNotMatch(rendererSource, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
-    assert.match(rendererSource, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
-    assert.match(rendererSource, /bevelShadeCurve/, 'Bright backdrops must use soft beveled edge depth rather than a 1px dark ring');
+    const agslMatch = /private const val LIQUID_GLASS_AGSL = """([\s\S]*?)"""/.exec(rendererSource);
+    assert.ok(agslMatch, 'LIQUID_GLASS_AGSL shader source must exist');
+    const agsl = agslMatch[1];
+
+    // Valid AGSL only — no SkSL 'h' or 'f' float suffixes that crash Android RuntimeShader compilation
+    assert.doesNotMatch(
+      agsl,
+      /\b\d+(?:\.\d+)?[hf]\b/,
+      'AGSL source must NOT use SkSL half/float literal suffixes (h/f)',
+    );
+    // Honest compile diagnostics (no swallowed silent compile failures)
+    assert.match(
+      rendererSource,
+      /Log\.e\(LOG_TAG,\s*"AGSL RuntimeShader compilation failed/,
+      'Shader compilation failure must be logged loudly via Log.e',
+    );
+    assert.doesNotMatch(
+      rendererSource,
+      /recordingCanvas\.drawColor\(config\.fallbackColorArgb\)/,
+      'RenderNodes must NEVER fill fallbackColorArgb behind targetView (prevents dark #1A2230 perimeter fringe)',
+    );
+    assert.match(agsl, /uniform float4 uShapeParams;/, 'Shader must accept dynamic curvature & thickness uniforms');
+    assert.match(agsl, /float2 rawGrad = float2\(gx, gy\)/, 'Shader must compute smooth C1 finite-difference SDF normals');
+    assert.match(agsl, /fragCoord - lensNormal \* edgeShiftPx/, 'Shader must apply convex physical Snell inward sampling');
+    assert.match(agsl, /bezelReachDp/, 'Meniscus bevel must adapt cleanly across circles, pills, and cards');
+    assert.doesNotMatch(agsl, /corePull/, 'Central optical core must have zero displacement/pull');
+    assert.doesNotMatch(agsl, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
+    assert.match(agsl, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
+    assert.match(agsl, /bevelShadeCurve/, 'Bright backdrops must use soft beveled edge depth rather than a 1px dark ring');
   }
 
   // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)
@@ -885,8 +918,124 @@ async function runTests() {
     'NativeIslandBottomNav Android surface must use balanced tokens.island.androidSheen*',
   );
 
+  // ── 7. v2 Material System: Arbitrary Shapes, Optical Props & Capabilities ─
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
+  {
+    const caps = getLiquidGlassCapabilities();
+    assert.equal(caps.engineVersion, 2);
+    assert.equal(caps.agslRefractionSupported, true);
+    assert.equal(caps.shaderCompileError, null);
+
+    function HarnessShapes() {
+      const { targetRef, blurTargetRef, onTargetLayout } = useLiquidGlassBlurTarget();
+      return React.createElement(
+        'View',
+        null,
+        React.createElement(
+          WiezLiquidGlassBackdrop,
+          { targetRef, onLayout: onTargetLayout },
+          React.createElement('GridStage'),
+        ),
+        React.createElement(WiezLiquidGlass, {
+          mode: 'enhanced',
+          blurTarget: blurTargetRef,
+          borderRadius: tokens.radius.full,
+          initialSize: { width: 240, height: 52 },
+          refractionStrength: 1.55,
+          curvature: 0.75,
+          opticalThickness: 0.72,
+          blurRadius: 0,
+          fresnelIntensity: 1.2,
+          reflectionIntensity: 1.1,
+          tintAlpha: 0.04,
+          chromaticAberration: 0,
+          testID: 'shape-pill',
+        }),
+        React.createElement(WiezLiquidGlass, {
+          mode: 'enhanced',
+          blurTarget: blurTargetRef,
+          borderRadius: tokens.radius.xl,
+          initialSize: { width: 296, height: 104 },
+          curvature: 0.9,
+          opticalThickness: 0.85,
+          blurRadius: 6,
+          testID: 'shape-card',
+        }),
+      );
+    }
+
+    let tree;
+    await renderer.act(async () => {
+      tree = renderer.create(React.createElement(HarnessShapes), { createNodeMock });
+    });
+    const lenses = collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView');
+    assert.equal(lenses.length, 2, 'Both pill and rounded card must mount hardware lenses');
+    assert.equal(lenses[0].props.cornerRadius, 26, 'Pill borderRadius must clamp cleanly to height/2');
+    assert.equal(lenses[0].props.refractionStrength, 1.55);
+    assert.equal(lenses[0].props.curvature, 0.75);
+    assert.equal(lenses[0].props.opticalThickness, 0.72);
+    assert.equal(lenses[0].props.rimStrength, 1.2);
+    assert.equal(lenses[0].props.reflectionStrength, 1.1);
+    assert.equal(lenses[0].props.fallbackColor, 0, 'Lens fallbackColor must stay transparent (0)');
+    assert.equal(lenses[1].props.cornerRadius, 24, 'Card borderRadius must preserve 24dp rounding');
+    assert.equal(lenses[1].props.curvature, 0.9);
+    assert.equal(lenses[1].props.blurRadius, 6, 'Optional calibration blurRadius must forward cleanly');
+    await renderer.act(async () => tree.unmount());
+  }
+
+  // ── 8. Calibration Lab Gate & Route Isolation Checks ──────────────────────
+  const labGateSource = fs.readFileSync(
+    path.join(ROOT, 'src', 'features', 'dev', 'liquidGlassLabGate.ts'),
+    'utf8',
+  );
+  const labScreenSource = fs.readFileSync(
+    path.join(ROOT, 'app', 'dev', 'liquid-glass-lab.tsx'),
+    'utf8',
+  );
+  assert.match(labGateSource, /__DEV__ \|\| isWiezDebugEnabled\('nav'\)/);
+  assert.match(labScreenSource, /if \(!isLiquidGlassLabEnabled\(\)\)[\s\S]*?<Redirect href="\/" \/>/);
+
+  // Verify release gating logic in isolated sandbox with __DEV__ = false vs true
+  const vm = require('node:vm');
+  function evalLabGate(isDev, debugNavEnv) {
+    const diagTranspiled = ts.transpileModule(
+      fs.readFileSync(
+        path.join(ROOT, 'src', 'features', 'feed', 'utils', 'feedDiagnostics.ts'),
+        'utf8',
+      ),
+      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } },
+    ).outputText;
+    const gateTranspiled = ts.transpileModule(labGateSource, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    }).outputText;
+    const gateModule = { exports: {} };
+    const sandbox = {
+      __DEV__: isDev,
+      process: {
+        env: debugNavEnv !== undefined ? { EXPO_PUBLIC_DEBUG_NAV: debugNavEnv } : {},
+      },
+      module: gateModule,
+      exports: gateModule.exports,
+      require: (req) => {
+        if (req.endsWith('feedDiagnostics')) {
+          const m = { exports: {} };
+          vm.runInNewContext(diagTranspiled, { ...sandbox, module: m, exports: m.exports });
+          return m.exports;
+        }
+        throw new Error(`Unexpected import in labGate eval: ${req}`);
+      },
+    };
+    vm.runInNewContext(gateTranspiled, sandbox);
+    return gateModule.exports.isLiquidGlassLabEnabled();
+  }
+  assert.equal(evalLabGate(false, undefined), false, 'Lab gate MUST return false in production builds');
+  assert.equal(evalLabGate(false, '0'), false, 'Lab gate MUST return false when EXPO_PUBLIC_DEBUG_NAV=0');
+  assert.equal(evalLabGate(false, '1'), true, 'Lab gate opens in instrumented preview builds (EXPO_PUBLIC_DEBUG_NAV=1)');
+  assert.equal(evalLabGate(true, undefined), true, 'Lab gate opens in __DEV__ builds');
+
   console.log(
-    'PASS test-liquid-glass-phase1: Clear optical transmission envelopes, API 33+ AGSL refraction, API 31-32 RenderEffect blur, hairline rim, and Catalog integration verified.',
+    'PASS test-liquid-glass-phase1: Material-system optical envelopes, v2 AGSL shader invariants, arbitrary shapes, Lab gating, and Catalog integration verified.',
   );
 }
 

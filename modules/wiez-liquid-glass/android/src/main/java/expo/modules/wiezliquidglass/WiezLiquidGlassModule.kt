@@ -9,11 +9,19 @@ class WiezLiquidGlassModule : Module() {
     Name("WiezLiquidGlass")
 
     Constant("supportsRuntimeShader") {
-      Build.VERSION.SDK_INT >= 33
+      LiquidGlassShaderDiagnostics.supportsRuntimeShader()
     }
 
     Constant("supportsRenderEffectBlur") {
       Build.VERSION.SDK_INT >= 31
+    }
+
+    Constant("shaderCompileError") {
+      LiquidGlassShaderDiagnostics.lastCompileError()
+    }
+
+    Constant("engineVersion") {
+      2
     }
 
     View(WiezLiquidGlassBackdropView::class) {
@@ -36,7 +44,7 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("refractionStrength") { view: WiezLiquidGlassLensView, refractionStrength: Float? ->
-        view.setRefractionStrength(refractionStrength ?: 0.85f)
+        view.setRefractionStrength(refractionStrength ?: 0.88f)
       }
 
       Prop("chromaticAberration") { view: WiezLiquidGlassLensView, chromaticAberration: Float? ->
@@ -49,6 +57,14 @@ class WiezLiquidGlassModule : Module() {
 
       Prop("reflectionStrength") { view: WiezLiquidGlassLensView, reflectionStrength: Float? ->
         view.setReflectionStrength(reflectionStrength ?: 1.0f)
+      }
+
+      Prop("curvature") { view: WiezLiquidGlassLensView, curvature: Float? ->
+        view.setCurvature(curvature ?: 0.58f)
+      }
+
+      Prop("opticalThickness") { view: WiezLiquidGlassLensView, opticalThickness: Float? ->
+        view.setOpticalThickness(opticalThickness ?: 0.48f)
       }
 
       Prop("tintColor") { view: WiezLiquidGlassLensView, tintColor: Int? ->
