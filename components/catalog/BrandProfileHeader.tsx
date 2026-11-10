@@ -1186,9 +1186,9 @@ const styles = StyleSheet.create({
   },
   headerIconGlassGlyph: {
     textAlign: 'center',
-    textShadowColor: tokens.scrim(0.84),
+    textShadowColor: tokens.scrim(0.92),
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3.5,
+    textShadowRadius: 2.2,
   },
   /* `fontStyle` is legal on AppText; size/weight/colour are not — those come
      from the `smallBold` variant. The old inline 10px size was also below

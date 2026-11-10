@@ -3,32 +3,45 @@ import {
   Platform,
   StyleSheet,
   View,
+  findNodeHandle,
   type AccessibilityProps,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
-import { BlurTargetView, BlurView } from 'expo-blur';
+import { BlurView } from 'expo-blur';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Defs,
-  G,
   LinearGradient as SvgLinearGradient,
   Rect,
   Stop,
 } from 'react-native-svg';
 
+import {
+  getWiezLiquidGlassBackdropNativeView,
+  getWiezLiquidGlassLensNativeView,
+  isWiezLiquidGlassNativeAvailable,
+  supportsWiezLiquidGlassRenderEffectBlur,
+  supportsWiezLiquidGlassRefraction,
+  toAndroidColorInt,
+} from '@/modules/wiez-liquid-glass/src';
 import { tokens, type ThemeScheme } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 const ANDROID_HARDWARE_BLUR_MIN_API = 31;
-const REFLECTION_START = { x: 0.08, y: 0.0 } as const;
-const REFLECTION_END = { x: 0.88, y: 0.88 } as const;
-const REFLECTION_LOCATIONS = [0, 0.28, 0.62] as const;
+const ANDROID_AGSL_REFRACTION_MIN_API = 33;
+
+// Confine the static reflection highlight to a tight top-left outer crescent
+// so the central 66% of the glass lens remains clear and unobstructed.
+const REFLECTION_START = { x: 0.04, y: 0.0 } as const;
+const REFLECTION_END = { x: 0.62, y: 0.62 } as const;
+const REFLECTION_LOCATIONS = [0, 0.14, 0.34] as const;
+
 const DEPTH_START = { x: 0.5, y: 0.0 } as const;
 const DEPTH_END = { x: 0.5, y: 1.0 } as const;
-const DEPTH_LOCATIONS = [0, 0.2, 0.68, 1] as const;
+const DEPTH_LOCATIONS = [0, 0.25, 0.72, 1] as const;
 
 export type WiezLiquidGlassMode = 'lightweight' | 'enhanced';
 export type WiezLiquidGlassIntensityPreset = 'subtle' | 'regular' | 'prominent';
@@ -44,11 +57,12 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   children?: React.ReactNode;
   /**
    * Optical rendering path:
-   * - `lightweight`: pure multi-layer translucency, curved SVG specular rim lighting,
-   *   static surface reflection, and depth shading with zero native blur pass.
-   * - `enhanced`: layers Android 12+ (API 31+) hardware backdrop blur via
-   *   `dimezisBlurViewSdk31Plus` when `blurTarget` is supplied; gracefully falls
-   *   back to `lightweight` on API < 31 or when no target view is available.
+   * - `lightweight`: multi-layer sheer translucency, hairline directional SVG specular rim,
+   *   and outer-corner specular highlight with zero native backdrop capture pass.
+   * - `enhanced`: uses the local hardware Android `RenderNode` + `RenderEffect` + API 33+
+   *   AGSL optical lens pipeline when `blurTarget` is supplied (no Dimezis blue-noise stipple
+   *   or opaque neutral tint fills); gracefully falls back to API 31-32 clean blur or
+   *   `lightweight` on older Android devices or when no target is available.
    */
   mode?: WiezLiquidGlassMode;
   /** Visual density preset (`subtle` | `regular` | `prominent`) or normalized scalar `0..1`. */
@@ -59,11 +73,16 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   highlightIntensity?: number | false;
   /** Follow active WIEZ theme (`auto`) or lock to `light` / `dark` optical tuning. */
   tintMode?: WiezLiquidGlassTintMode;
-  /** Sibling/ancestor `BlurTargetView` ref paired with `WiezLiquidGlassBackdrop` on Android. */
+  /**
+   * Enables geometric perimeter meniscus refraction & subtle edge chromatic dispersion
+   * on supported hardware (Android API 33+ AGSL in `enhanced` mode). Defaults to `true`.
+   */
+  refraction?: boolean;
+  /** Sibling/ancestor backdrop ref paired with `WiezLiquidGlassBackdrop` on Android. */
   blurTarget?: React.RefObject<View | null>;
   /** Known control dimensions so curved rim geometry paints cleanly before async layout. */
   initialSize?: WiezLiquidGlassSize;
-  /** Optional pressed state illumination without heavy opaque fill swaps. */
+  /** Optional pressed state illumination without heavy opaque fill shifts. */
   pressed?: boolean;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
@@ -94,13 +113,19 @@ export function supportsEnhancedLiquidGlass(): boolean {
   return apiLevel !== null && apiLevel >= ANDROID_HARDWARE_BLUR_MIN_API;
 }
 
+export function supportsNativeLiquidGlassRefraction(): boolean {
+  if (Platform.OS !== 'android') return false;
+  const apiLevel = getAndroidApiLevel();
+  if (apiLevel === null || apiLevel < ANDROID_AGSL_REFRACTION_MIN_API) return false;
+  return supportsWiezLiquidGlassRefraction();
+}
+
 /**
  * Synchronizes a target View ref as an immutable ref-object snapshot once mounted.
  *
- * `expo-blur`'s BlurView checks `prevProps.blurTarget?.current !== props.blurTarget?.current`
- * inside `componentDidUpdate`; passing a mutated `useRef` fails reference equality when
- * the container identity stays the same. Exposing a fresh snapshot upon target attachment
- * guarantees BlurView resolves the native target tag deterministically.
+ * Exposing a fresh snapshot upon target attachment ensures sibling glass lenses
+ * resolve the native view handle deterministically on the initial synchronous commit
+ * pass without mounting stale opaque fallback frames.
  */
 export function useLiquidGlassBlurTarget() {
   const targetRef = React.useRef<View | null>(null);
@@ -131,8 +156,8 @@ export function useLiquidGlassBlurTarget() {
 }
 
 /**
- * Wraps background media behind Android Liquid Glass controls so hardware blur
- * samples only underlying imagery cleanly without capturing controls themselves.
+ * Wraps background media behind Android Liquid Glass controls so native optical
+ * lenses sample underlying banner artwork without capturing controls themselves.
  */
 export const WiezLiquidGlassBackdrop = React.memo(function WiezLiquidGlassBackdrop({
   targetRef,
@@ -140,11 +165,18 @@ export const WiezLiquidGlassBackdrop = React.memo(function WiezLiquidGlassBackdr
   children,
   ...rest
 }: WiezLiquidGlassBackdropProps) {
-  if (Platform.OS === 'android' && supportsEnhancedLiquidGlass()) {
+  const NativeBackdrop =
+    Platform.OS === 'android' &&
+    supportsEnhancedLiquidGlass() &&
+    isWiezLiquidGlassNativeAvailable()
+      ? getWiezLiquidGlassBackdropNativeView()
+      : null;
+
+  if (NativeBackdrop) {
     return (
-      <BlurTargetView ref={targetRef} collapsable={collapsable} {...rest}>
+      <NativeBackdrop ref={targetRef} collapsable={collapsable} {...rest}>
         {children}
-      </BlurTargetView>
+      </NativeBackdrop>
     );
   }
 
@@ -169,17 +201,39 @@ function resolveTransmissionColor(
 
   const normalized = clamp(intensity, 0, 1);
   if (scheme === 'dark') {
-    const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.08, 0.18] : [0.14, 0.27];
+    const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.03, 0.085] : [0.06, 0.14];
     const alpha = Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
     return tokens.liquidGlass.tintForScheme('dark', alpha);
   }
 
-  const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.03, 0.11] : [0.09, 0.19];
+  const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.02, 0.06] : [0.05, 0.12];
   const alpha = Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
   return tokens.liquidGlass.tintForScheme('light', alpha);
 }
 
-function resolveBlurIntensity(
+function resolveTintAlpha(scheme: ThemeScheme, intensity: WiezLiquidGlassIntensity): number {
+  const palette = tokens.liquidGlass[scheme];
+  if (typeof intensity === 'string') {
+    return palette.tintAlpha[intensity] ?? palette.tintAlpha.regular;
+  }
+  const normalized = clamp(intensity, 0, 1);
+  const [minAlpha, maxAlpha] = scheme === 'dark' ? [0.03, 0.085] : [0.02, 0.06];
+  return Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
+}
+
+function resolveOpticalBlurDp(
+  scheme: ThemeScheme,
+  intensity: WiezLiquidGlassIntensity,
+): number {
+  const palette = tokens.liquidGlass[scheme];
+  if (typeof intensity === 'string') {
+    return palette.opticalBlurDp[intensity] ?? palette.opticalBlurDp.regular;
+  }
+  const normalized = clamp(intensity, 0, 1);
+  return Math.round((0.85 + normalized * 0.9) * 100) / 100;
+}
+
+function resolveIosBlurIntensity(
   scheme: ThemeScheme,
   intensity: WiezLiquidGlassIntensity,
 ): number {
@@ -188,16 +242,27 @@ function resolveBlurIntensity(
     return palette.blurIntensity[intensity] ?? palette.blurIntensity.regular;
   }
   const normalized = clamp(intensity, 0, 1);
-  return Math.round(10 + normalized * 14);
+  return Math.round(8 + normalized * 8);
+}
+
+function resolveRefractionAmount(intensity: WiezLiquidGlassIntensity): number {
+  if (typeof intensity === 'string') {
+    if (intensity === 'subtle') return 0.65;
+    if (intensity === 'prominent') return 0.95;
+    return 0.85;
+  }
+  return Math.round((0.55 + clamp(intensity, 0, 1) * 0.45) * 100) / 100;
 }
 
 /**
  * Shared WIEZ Liquid Glass optical material primitive.
  *
- * Approximates curved optical glass using transparent transmission fills,
- * optional hardware-accelerated Android 12+ backdrop softening, directional
- * specular edge rim lighting, static surface reflection, and restrained
- * depth shading. Does not perform geometric background pixel displacement.
+ * Prioritizes clear background transmission and optical clarity across light and dark
+ * themes. On Android API 33+ in `enhanced` mode, performs a single-pass hardware
+ * RenderNode + micro-blur + AGSL edge meniscus refraction, edge dispersion, sheer tint,
+ * and hairline directional rim highlight. On Android API 31-32 provides clean
+ * noise-free RenderEffect blur paired with hairline SVG rim lighting, and on older API
+ * levels or `lightweight` mode degrades cleanly without opaque grey overlays or heavy rims.
  */
 export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   children,
@@ -206,6 +271,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   borderRadius = tokens.radius.full,
   highlightIntensity = 1,
   tintMode = 'auto',
+  refraction = true,
   blurTarget,
   initialSize,
   pressed = false,
@@ -257,38 +323,40 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   const surfaceHeight = explicitHeight > 0 ? explicitHeight : measuredSize.height;
 
   const hasBlurTarget = Boolean(blurTarget?.current);
-  const canUseEnhancedBlur =
+  const canUseEnhancedPlatform =
     mode === 'enhanced' &&
     supportsEnhancedLiquidGlass() &&
     (Platform.OS === 'ios' || hasBlurTarget);
 
-  // Android `ExpoBlurView` defaults `blurTargetId` to `undefined` on its first
-  // render and sets `BlurMethod.NONE` + an opaque fallback background if
-  // `blurMethod` mounts ahead of `blurTargetId`. Enabling the SDK 31+ blur
-  // method after mount ensures `ExpoBlurView` resets its host View to
-  // transparent and activates hardware blur cleanly.
-  const [androidBlurActivated, setAndroidBlurActivated] = React.useState(false);
+  const androidTargetHandle =
+    Platform.OS === 'android' && canUseEnhancedPlatform && blurTarget?.current
+      ? findNodeHandle(blurTarget.current)
+      : null;
 
-  React.useEffect(() => {
-    if (Platform.OS !== 'android' || !canUseEnhancedBlur) {
-      setAndroidBlurActivated(false);
-      return undefined;
-    }
-    setAndroidBlurActivated(true);
-    return () => {
-      setAndroidBlurActivated(false);
-    };
-  }, [canUseEnhancedBlur, blurTarget]);
+  const NativeLensView =
+    Platform.OS === 'android' &&
+    canUseEnhancedPlatform &&
+    androidTargetHandle != null &&
+    isWiezLiquidGlassNativeAvailable()
+      ? getWiezLiquidGlassLensNativeView()
+      : null;
 
-  const liveBlurActive =
-    Platform.OS === 'ios'
-      ? canUseEnhancedBlur
-      : Platform.OS === 'android'
-        ? canUseEnhancedBlur && androidBlurActivated
-        : false;
+  const androidNativeLensActive =
+    NativeLensView != null && supportsWiezLiquidGlassRenderEffectBlur();
+  const androidAgslActive = androidNativeLensActive && supportsNativeLiquidGlassRefraction();
+  const useIosNativeBlur = Platform.OS === 'ios' && canUseEnhancedPlatform;
 
-  const transmissionColor = resolveTransmissionColor(effectiveScheme, intensity, canUseEnhancedBlur);
-  const blurIntensityValue = resolveBlurIntensity(effectiveScheme, intensity);
+  const liveOpticalBackdropActive = androidNativeLensActive || useIosNativeBlur;
+
+  const transmissionColor = resolveTransmissionColor(
+    effectiveScheme,
+    intensity,
+    liveOpticalBackdropActive,
+  );
+  const tintAlphaValue = resolveTintAlpha(effectiveScheme, intensity);
+  const opticalBlurDp = resolveOpticalBlurDp(effectiveScheme, intensity);
+  const iosBlurIntensityValue = resolveIosBlurIntensity(effectiveScheme, intensity);
+  const refractionAmount = resolveRefractionAmount(intensity);
   const highlightScalar = highlightIntensity === false ? 0 : clamp(highlightIntensity, 0, 1);
 
   const clampedBorderRadius =
@@ -296,7 +364,16 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
       ? Math.min(Math.max(0, borderRadius), Math.min(surfaceWidth, surfaceHeight) / 2)
       : Math.max(0, borderRadius);
 
-  const canRenderRimSvg = highlightScalar > 0 && surfaceWidth > 6 && surfaceHeight > 6;
+  const fallbackCanvasColor = tokens.themes[effectiveScheme].colors.surfaceAlt;
+  const tintColorInt = toAndroidColorInt(palette.tintHex);
+  const fallbackColorInt = toAndroidColorInt(fallbackCanvasColor);
+
+  // When Android API 33+ AGSL is active, refraction + blur + sheer tint + rim + corner
+  // gloss all composite inside one hardware fragment shader pass; avoid stacking extra JS
+  // gradient/SVG layers on top. API 31-32, iOS, and lightweight render the JS rim stack.
+  const renderJsGlassOverlays = !androidAgslActive;
+  const canRenderRimSvg =
+    renderJsGlassOverlays && highlightScalar > 0 && surfaceWidth > 6 && surfaceHeight > 6;
 
   return (
     <View
@@ -310,27 +387,44 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
           ? {
               shadowColor: palette.shadowColor,
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.35,
+              shadowOpacity: 0.28,
               shadowRadius: 6,
             }
           : styles.androidNoShadowArtifact,
         style,
       ]}
     >
-      {/* Layer 2 — Optional native backdrop blur behind transmission tint */}
-      {canUseEnhancedBlur ? (
+      {/* Android API 31+ / 33+ native RenderNode optical lens */}
+      {androidNativeLensActive && NativeLensView ? (
+        <View
+          pointerEvents="none"
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          style={[StyleSheet.absoluteFill, { borderRadius: clampedBorderRadius }]}
+        >
+          <NativeLensView
+            targetViewId={androidTargetHandle ?? undefined}
+            cornerRadius={clampedBorderRadius}
+            blurRadius={opticalBlurDp}
+            refractionStrength={androidAgslActive && refraction ? refractionAmount : 0}
+            chromaticAberration={androidAgslActive && refraction ? 0.45 : 0}
+            rimStrength={highlightScalar}
+            reflectionStrength={highlightScalar}
+            tintColor={tintColorInt}
+            tintAlpha={tintAlphaValue}
+            fallbackColor={fallbackColorInt}
+            isDark={effectiveScheme === 'dark'}
+            pressed={pressed}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      ) : null}
+
+      {/* iOS native UIVisualEffectView backdrop blur */}
+      {useIosNativeBlur ? (
         <BlurView
-          blurTarget={Platform.OS === 'android' ? blurTarget : undefined}
-          blurMethod={
-            Platform.OS === 'android'
-              ? liveBlurActive
-                ? 'dimezisBlurViewSdk31Plus'
-                : 'none'
-              : undefined
-          }
           tint={palette.blurTint}
-          intensity={Platform.OS === 'android' && !liveBlurActive ? 0 : blurIntensityValue}
-          blurReductionFactor={palette.blurReductionFactor}
+          intensity={iosBlurIntensityValue}
           pointerEvents="none"
           accessible={false}
           importantForAccessibility="no-hide-descendants"
@@ -338,63 +432,67 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
         />
       ) : null}
 
-      {/* Layer 1 — Low-opacity optical transmission fill */}
-      <View
-        pointerEvents="none"
-        accessible={false}
-        importantForAccessibility="no-hide-descendants"
-        style={[
-          StyleSheet.absoluteFill,
-          { backgroundColor: transmissionColor, borderRadius: clampedBorderRadius },
-        ]}
-      />
-
-      {/* Layer 5 — Restrained internal meniscus depth shading */}
-      <ExpoLinearGradient
-        colors={palette.depthColors}
-        locations={DEPTH_LOCATIONS}
-        start={DEPTH_START}
-        end={DEPTH_END}
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { borderRadius: clampedBorderRadius }]}
-      />
-
-      {/* Layer 4 — Static asymmetric directional surface reflection */}
-      {highlightScalar > 0 ? (
-        <View
-          pointerEvents="none"
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          style={[
-            StyleSheet.absoluteFill,
-            { opacity: highlightScalar, borderRadius: clampedBorderRadius },
-          ]}
-        >
-          <ExpoLinearGradient
-            colors={palette.reflectionColors}
-            locations={REFLECTION_LOCATIONS}
-            start={REFLECTION_START}
-            end={REFLECTION_END}
+      {renderJsGlassOverlays ? (
+        <>
+          {/* Sheer optical transmission fill */}
+          <View
             pointerEvents="none"
-            style={StyleSheet.absoluteFill}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: transmissionColor, borderRadius: clampedBorderRadius },
+            ]}
           />
-        </View>
+
+          {/* Subtle internal surface balance (zero dark bottom mud) */}
+          <ExpoLinearGradient
+            colors={palette.depthColors}
+            locations={DEPTH_LOCATIONS}
+            start={DEPTH_START}
+            end={DEPTH_END}
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { borderRadius: clampedBorderRadius }]}
+          />
+
+          {/* Tight top-left outer crescent reflection highlight */}
+          {highlightScalar > 0 ? (
+            <View
+              pointerEvents="none"
+              accessible={false}
+              importantForAccessibility="no-hide-descendants"
+              style={[
+                StyleSheet.absoluteFill,
+                { opacity: highlightScalar, borderRadius: clampedBorderRadius },
+              ]}
+            >
+              <ExpoLinearGradient
+                colors={palette.reflectionColors}
+                locations={REFLECTION_LOCATIONS}
+                start={REFLECTION_START}
+                end={REFLECTION_END}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+            </View>
+          ) : null}
+
+          {/* Interactive press sheen without opaque fill jumps */}
+          {pressed ? (
+            <View
+              pointerEvents="none"
+              accessible={false}
+              importantForAccessibility="no-hide-descendants"
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: palette.pressedOverlay, borderRadius: clampedBorderRadius },
+              ]}
+            />
+          ) : null}
+        </>
       ) : null}
 
-      {/* Interactive press sheen — light catch without opaque fill shifts */}
-      {pressed ? (
-        <View
-          pointerEvents="none"
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: palette.pressedOverlay, borderRadius: clampedBorderRadius },
-          ]}
-        />
-      ) : null}
-
-      {/* Layer 3 — Curved directional specular rim lighting & Fresnel edge */}
+      {/* Hairline curved directional specular rim (single stroke, no metallic bezel) */}
       {canRenderRimSvg ? (
         <View
           pointerEvents="none"
@@ -426,36 +524,22 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
                 ))}
               </SvgLinearGradient>
             </Defs>
-            <G>
-              <Rect
-                x={0.5}
-                y={0.5}
-                width={surfaceWidth - 1}
-                height={surfaceHeight - 1}
-                rx={Math.max(0, clampedBorderRadius - 0.5)}
-                ry={Math.max(0, clampedBorderRadius - 0.5)}
-                fill="none"
-                stroke={palette.outerFresnelHex}
-                strokeOpacity={palette.outerFresnelOpacity * highlightScalar}
-                strokeWidth={1}
-              />
-              <Rect
-                x={1.45}
-                y={1.45}
-                width={surfaceWidth - 2.9}
-                height={surfaceHeight - 2.9}
-                rx={Math.max(0, clampedBorderRadius - 1.45)}
-                ry={Math.max(0, clampedBorderRadius - 1.45)}
-                fill="none"
-                stroke={`url(#${rimGradientId})`}
-                strokeWidth={1.35}
-              />
-            </G>
+            <Rect
+              x={0.5}
+              y={0.5}
+              width={surfaceWidth - 1}
+              height={surfaceHeight - 1}
+              rx={Math.max(0, clampedBorderRadius - 0.5)}
+              ry={Math.max(0, clampedBorderRadius - 0.5)}
+              fill="none"
+              stroke={`url(#${rimGradientId})`}
+              strokeWidth={0.85}
+            />
           </Svg>
         </View>
       ) : null}
 
-      {/* Layer 6 — Foreground icons, labels, and interactive children */}
+      {/* Foreground icons, labels, and interactive children */}
       <View style={[styles.content, contentStyle]}>
         {children}
       </View>

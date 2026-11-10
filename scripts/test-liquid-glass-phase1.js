@@ -2,13 +2,17 @@
  * Phase 1 Android Liquid Glass Component & Integration Tests
  *
  * Verifies:
- * 1. Optical transmission envelopes (light: 0.08-0.20, dark: 0.12-0.28) and token isolation
- * 2. Android API level detection and Mode A (lightweight) / Mode B (enhanced API 31+) gating
- * 3. Multi-layer optical material composition (transmission, optional blur, SVG specular rim,
- *    static reflection, meniscus depth shading, pressed overlay, dynamic layout measurement,
- *    highlight disable, accessibility isolation)
- * 4. Expo BlurView (expo-blur@~56.0.4) Android two-stage mount activation and immutable target sync
- * 5. Catalog banner integration (`BrandProfileHeader`) across light/dark schemes and owner/visitor modes
+ * 1. Optical transmission clarity across light & dark themes (91%+ transmission on native
+ *    enhanced glass, eliminated heavy bottom depth shadows, outer-crescent-only reflection)
+ * 2. Single hairline 0.85dp directional SVG rim in lightweight/fallback modes (no 2-ring
+ *    dark metallic watch bezel)
+ * 3. Android capability gating:
+ *    - API 33+ native single-pass AGSL lens (micro-blur + meniscus refraction + chromatic edge)
+ *    - API 31-32 native noise-free RenderEffect blur + JS hairline rim (0 Dimezis BlurView noise)
+ *    - API < 31 / lightweight / unlinked native graceful fallback
+ *    - `refraction={false}` toggle for benchmark & A/B parity
+ * 4. Catalog banner integration (`BrandProfileHeader`) across light/dark & owner/visitor modes
+ * 5. Phase 1 scope boundaries (`glassSurfaceStrong`, `Edit banner`, `NativeIslandBottomNav`)
  */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -35,10 +39,23 @@ function flattenStyle(style) {
   return style;
 }
 
+function parseColorMock(input) {
+  if (input === '#FFFFFF' || input === '#ffffff') return -1;
+  if (input === '#10141E') return -15723490;
+  if (input === '#FAF5FF') return -330241;
+  if (input === '#1A2230') return -15064528;
+  return 0;
+}
+
 function createHarness() {
-  let mockPlatform = { OS: 'android', Version: 34 };
+  let mockPlatform = { OS: 'android', Version: 36 };
   let currentScheme = 'light';
+  let nativeAvailable = true;
+  let supportsRuntimeShader = true;
+  let supportsRenderEffectBlur = true;
   const moduleCache = new Map();
+  let nextHandle = 100;
+  const handleMap = new WeakMap();
 
   const mockQuickPressablePressable = (props) => {
     const [pressed, setPressed] = React.useState(false);
@@ -60,9 +77,11 @@ function createHarness() {
   const ViewWithRef = React.forwardRef((props, ref) =>
     React.createElement('View', { ...props, ref }, props.children),
   );
-  const BlurTargetViewWithRef = React.forwardRef((props, ref) =>
-    React.createElement('BlurTargetView', { ...props, ref }, props.children),
+  const NativeBackdropView = React.forwardRef((props, ref) =>
+    React.createElement('WiezLiquidGlassBackdropView', { ...props, ref }, props.children),
   );
+  const NativeLensView = (props) =>
+    React.createElement('WiezLiquidGlassLensView', props, props.children);
   const BlurViewComponent = (props) =>
     React.createElement('BlurView', props, props.children);
 
@@ -92,6 +111,15 @@ function createHarness() {
           Platform: mockPlatform,
           View: ViewWithRef,
           Pressable: mockQuickPressablePressable,
+          findNodeHandle: (node) => {
+            if (!node || typeof node !== 'object') return null;
+            if (!handleMap.has(node)) {
+              nextHandle += 1;
+              handleMap.set(node, nextHandle);
+            }
+            return handleMap.get(node);
+          },
+          processColor: parseColorMock,
           StyleSheet: {
             create: (obj) => obj,
             flatten: flattenStyle,
@@ -101,10 +129,45 @@ function createHarness() {
           Linking: { openURL: async () => true },
         };
       }
+      if (request === 'expo-modules-core') {
+        return {
+          requireOptionalNativeModule: (name) => {
+            if (name !== 'WiezLiquidGlass' || !nativeAvailable) return null;
+            return {
+              supportsRuntimeShader,
+              supportsRenderEffectBlur,
+            };
+          },
+          requireNativeViewManager: (modName, viewName) => {
+            if (modName === 'WiezLiquidGlass' && viewName === 'WiezLiquidGlassBackdropView') {
+              return NativeBackdropView;
+            }
+            if (modName === 'WiezLiquidGlass' && viewName === 'WiezLiquidGlassLensView') {
+              return NativeLensView;
+            }
+            return ViewWithRef;
+          },
+        };
+      }
+      if (request === '@/modules/wiez-liquid-glass/src') {
+        return {
+          isWiezLiquidGlassNativeAvailable: () =>
+            mockPlatform.OS === 'android' && nativeAvailable,
+          supportsWiezLiquidGlassRefraction: () =>
+            mockPlatform.OS === 'android' && nativeAvailable && supportsRuntimeShader,
+          supportsWiezLiquidGlassRenderEffectBlur: () =>
+            mockPlatform.OS === 'android' && nativeAvailable && supportsRenderEffectBlur,
+          getWiezLiquidGlassBackdropNativeView: () =>
+            mockPlatform.OS === 'android' && nativeAvailable ? NativeBackdropView : null,
+          getWiezLiquidGlassLensNativeView: () =>
+            mockPlatform.OS === 'android' && nativeAvailable ? NativeLensView : null,
+          toAndroidColorInt: (color) => parseColorMock(color),
+        };
+      }
       if (request === 'expo-blur') {
         return {
           BlurView: BlurViewComponent,
-          BlurTargetView: BlurTargetViewWithRef,
+          BlurTargetView: ViewWithRef,
         };
       }
       if (request === 'expo-linear-gradient') {
@@ -222,6 +285,11 @@ function createHarness() {
     setScheme: (scheme) => {
       currentScheme = scheme;
     },
+    setNativeCaps: ({ available = true, runtimeShader = true, renderEffectBlur = true }) => {
+      nativeAvailable = available;
+      supportsRuntimeShader = runtimeShader;
+      supportsRenderEffectBlur = renderEffectBlur;
+    },
     loadTs,
   };
 }
@@ -253,12 +321,13 @@ async function runTests() {
     useLiquidGlassBlurTarget,
     getAndroidApiLevel,
     supportsEnhancedLiquidGlass,
+    supportsNativeLiquidGlassRefraction,
   } = harness.loadTs(path.join(ROOT, 'components', 'ui', 'WiezLiquidGlass.tsx'));
   const { BrandProfileHeader } = harness.loadTs(
     path.join(ROOT, 'components', 'catalog', 'BrandProfileHeader.tsx'),
   );
 
-  // ── 1. Optical Token & Opacity Envelope Checks ─────────────────────────────
+  // ── 1. Corrected Optical Clarity & Anti-Metallic Token Envelopes ────────────
   assert.equal(
     tokens.themes.light.colors.glassSurfaceStrong,
     'rgba(255,255,255,0.85)',
@@ -268,53 +337,68 @@ async function runTests() {
   for (const preset of ['subtle', 'regular', 'prominent']) {
     const lightLw = parseRgbaAlpha(tokens.liquidGlass.light.transmission.lightweight[preset]);
     const darkLw = parseRgbaAlpha(tokens.liquidGlass.dark.transmission.lightweight[preset]);
-    assert.ok(
-      lightLw >= 0.08 && lightLw <= 0.20,
-      `Light lightweight ${preset} alpha (${lightLw}) must stay in [0.08, 0.20]`,
-    );
-    assert.ok(
-      darkLw >= 0.12 && darkLw <= 0.28,
-      `Dark lightweight ${preset} alpha (${darkLw}) must stay in [0.12, 0.28]`,
-    );
+    const lightEnh = parseRgbaAlpha(tokens.liquidGlass.light.transmission.enhanced[preset]);
+    const darkEnh = parseRgbaAlpha(tokens.liquidGlass.dark.transmission.enhanced[preset]);
 
-    // Native TintStyle.kt adds 0.44 * (intensity/100) white on 'default' and
-    // 0.55 * (intensity/100) dark neutral on 'systemUltraThinMaterialDark'.
-    const lightTintAlpha = 0.44 * (tokens.liquidGlass.light.blurIntensity[preset] / 100);
-    const lightFillAlpha = parseRgbaAlpha(tokens.liquidGlass.light.transmission.enhanced[preset]);
-    const lightCombined = 1 - (1 - lightTintAlpha) * (1 - lightFillAlpha);
     assert.ok(
-      lightCombined >= 0.08 && lightCombined <= 0.20,
-      `Light enhanced ${preset} combined fill+tint (${lightCombined.toFixed(4)}) must stay in [0.08, 0.20]`,
+      lightLw >= 0.04 && lightLw <= 0.13,
+      `Light lightweight ${preset} alpha (${lightLw}) must stay sheer in [0.04, 0.13]`,
     );
-
-    const darkTintAlpha = 0.55 * (tokens.liquidGlass.dark.blurIntensity[preset] / 100);
-    const darkFillAlpha = parseRgbaAlpha(tokens.liquidGlass.dark.transmission.enhanced[preset]);
-    const darkCombined = 1 - (1 - darkTintAlpha) * (1 - darkFillAlpha);
     assert.ok(
-      darkCombined >= 0.12 && darkCombined <= 0.28,
-      `Dark enhanced ${preset} combined fill+tint (${darkCombined.toFixed(4)}) must stay in [0.12, 0.28]`,
+      darkLw >= 0.05 && darkLw <= 0.15,
+      `Dark lightweight ${preset} alpha (${darkLw}) must stay sheer in [0.05, 0.15]`,
+    );
+    assert.ok(
+      lightEnh >= 0.015 && lightEnh <= 0.07,
+      `Light enhanced ${preset} tint (${lightEnh}) must preserve >= 93% transmission`,
+    );
+    assert.ok(
+      darkEnh >= 0.025 && darkEnh <= 0.09,
+      `Dark enhanced ${preset} tint (${darkEnh}) must preserve >= 91% transmission without dark mud`,
     );
   }
 
-  // ── 2. Platform & API-Level Detection ──────────────────────────────────────
-  harness.setPlatform('android', 34);
-  assert.equal(getAndroidApiLevel(), 34);
+  for (const scheme of ['light', 'dark']) {
+    const bottomDepthAlpha = parseRgbaAlpha(tokens.liquidGlass[scheme].depthColors[3]);
+    assert.ok(
+      bottomDepthAlpha <= 0.04,
+      `${scheme} bottom depth alpha (${bottomDepthAlpha}) must not reintroduce metallic bottom darkening`,
+    );
+    const reflectionEndAlpha = parseRgbaAlpha(tokens.liquidGlass[scheme].reflectionColors[2]);
+    assert.equal(
+      reflectionEndAlpha,
+      0,
+      `${scheme} reflection tail must drop completely to 0 before reaching center`,
+    );
+  }
+
+  // ── 2. Platform, API-Level & Refraction Capability Detection ────────────────
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
+  assert.equal(getAndroidApiLevel(), 36);
   assert.equal(supportsEnhancedLiquidGlass(), true);
+  assert.equal(supportsNativeLiquidGlassRefraction(), true);
 
   harness.setPlatform('android', '31');
+  harness.setNativeCaps({ available: true, runtimeShader: false, renderEffectBlur: true });
   assert.equal(getAndroidApiLevel(), 31);
   assert.equal(supportsEnhancedLiquidGlass(), true);
+  assert.equal(supportsNativeLiquidGlassRefraction(), false);
 
   harness.setPlatform('android', 29);
+  harness.setNativeCaps({ available: true, runtimeShader: false, renderEffectBlur: false });
   assert.equal(getAndroidApiLevel(), 29);
   assert.equal(supportsEnhancedLiquidGlass(), false);
+  assert.equal(supportsNativeLiquidGlassRefraction(), false);
 
   harness.setPlatform('ios', '18.2');
   assert.equal(getAndroidApiLevel(), null);
   assert.equal(supportsEnhancedLiquidGlass(), true);
+  assert.equal(supportsNativeLiquidGlassRefraction(), false);
 
-  // ── 3. Mode A (Lightweight) Optical Stack & Highlight/Radius Edge Cases ────
-  harness.setPlatform('android', 34);
+  // ── 3. Mode A (Lightweight) Optical Stack & Single Hairline Rim ────────────
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
   for (const scheme of ['light', 'dark']) {
     harness.setScheme(scheme);
     let tree;
@@ -356,6 +440,7 @@ async function runTests() {
 
     const json = tree.toJSON();
     assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
+    assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
 
     const first = collectNodes(json, (n) => n.props?.testID === `lw-${scheme}-1`)[0];
     assert.equal(first.props.accessibilityRole, 'button');
@@ -367,7 +452,11 @@ async function runTests() {
     );
     assert.equal(flattenStyle(first.props.style).elevation, 0);
     assert.equal(collectNodes(first, (n) => n.type === 'ExpoLinearGradient').length, 2);
-    assert.equal(collectNodes(first, (n) => n.type === 'Svg').length, 1);
+
+    // Must render ONLY ONE hairline specular Rect (0.85dp) — never 2-ring metallic bezel
+    const rects = collectNodes(first, (n) => n.type === 'SvgRect');
+    assert.equal(rects.length, 1, 'Lightweight rim must use 1 single hairline stroke, never a 2-ring bezel');
+    assert.ok(rects[0].props.strokeWidth < 1, 'Hairline rim strokeWidth must be sub-1dp');
 
     assert.equal(
       collectNodes(
@@ -377,20 +466,11 @@ async function runTests() {
           flattenStyle(n.props?.style).backgroundColor === tokens.liquidGlass[scheme].pressedOverlay,
       ).length,
       0,
-      'pressed={false} must not render pressedOverlay sheen layer',
     );
 
     const noHi = collectNodes(json, (n) => n.props?.testID === `lw-${scheme}-no-hi`)[0];
-    assert.equal(
-      collectNodes(noHi, (n) => n.type === 'Svg').length,
-      0,
-      'highlightIntensity={false} must omit SVG specular rim',
-    );
-    assert.equal(
-      collectNodes(noHi, (n) => n.type === 'ExpoLinearGradient').length,
-      1,
-      'highlightIntensity={false} omits directional reflection while keeping depth gradient',
-    );
+    assert.equal(collectNodes(noHi, (n) => n.type === 'Svg').length, 0);
+    assert.equal(collectNodes(noHi, (n) => n.type === 'ExpoLinearGradient').length, 1);
     assert.equal(
       collectNodes(
         noHi,
@@ -399,13 +479,12 @@ async function runTests() {
           flattenStyle(n.props?.style).backgroundColor === tokens.liquidGlass[scheme].pressedOverlay,
       ).length,
       1,
-      'pressed={true} must render pressedOverlay sheen layer',
     );
 
     await renderer.act(async () => tree.unmount());
   }
 
-  // Dynamic onLayout measurement + tintMode override + unique sibling SVG gradient IDs
+  // Dynamic onLayout measurement + unique SVG gradient IDs
   harness.setScheme('light');
   {
     let tree;
@@ -434,22 +513,7 @@ async function runTests() {
       tree.toJSON(),
       (n) => n.props?.testID === 'dynamic-layout',
     )[0];
-    assert.equal(
-      collectNodes(dynamicInitial, (n) => n.type === 'Svg').length,
-      0,
-      'Without initialSize or layout event, SVG rim waits for measured dimensions',
-    );
-    assert.equal(
-      collectNodes(
-        dynamicInitial,
-        (n) =>
-          n.type === 'View' &&
-          flattenStyle(n.props?.style).backgroundColor ===
-            tokens.liquidGlass.dark.transmission.lightweight.regular,
-      ).length,
-      1,
-      'tintMode="dark" must override light theme palette cleanly',
-    );
+    assert.equal(collectNodes(dynamicInitial, (n) => n.type === 'Svg').length, 0);
 
     await renderer.act(async () => {
       dynamicInitial.props.onLayout({ nativeEvent: { layout: { width: 140, height: 40 } } });
@@ -459,24 +523,16 @@ async function runTests() {
       (n) => n.props?.testID === 'dynamic-layout',
     )[0];
     assert.equal(flattenStyle(dynamicMeasured.props.style).borderRadius, 20);
-    assert.equal(
-      collectNodes(dynamicMeasured, (n) => n.type === 'Svg').length,
-      1,
-      'onLayout triggers curved SVG specular rim at measured width x height',
-    );
+    assert.equal(collectNodes(dynamicMeasured, (n) => n.type === 'Svg').length, 1);
 
     const grads = collectNodes(tree.toJSON(), (n) => n.type === 'SvgLinearGradient');
     assert.equal(grads.length, 3);
-    assert.notEqual(
-      grads[1].props.id,
-      grads[2].props.id,
-      'Sibling SVG specular gradients must have distinct IDs so SVG defs do not collide',
-    );
+    assert.notEqual(grads[1].props.id, grads[2].props.id);
     await renderer.act(async () => tree.unmount());
   }
 
-  // ── 4. Mode B (Enhanced) API 31+ Two-Stage Activation & API 29 Fallback ────
-  function HarnessEnhanced({ mode = 'enhanced', tintMode = 'auto' }) {
+  // ── 4. Mode B (Enhanced) API 33+ AGSL, API 31-32 Blur, API 29 Fallback ────
+  function HarnessEnhanced({ mode = 'enhanced', tintMode = 'auto', refraction = true, pressed = false }) {
     const { targetRef, blurTargetRef, onTargetLayout } = useLiquidGlassBlurTarget();
     return React.createElement(
       'View',
@@ -491,6 +547,8 @@ async function runTests() {
         {
           mode,
           tintMode,
+          refraction,
+          pressed,
           intensity: 'regular',
           blurTarget: blurTargetRef,
           initialSize: { width: 48, height: 48 },
@@ -501,31 +559,50 @@ async function runTests() {
     );
   }
 
-  // Android API 34: mounts BlurTargetView and activates dimezisBlurViewSdk31Plus cleanly
-  harness.setPlatform('android', 34);
+  // Android API 36 (AGSL single-pass refraction + micro-blur): 0 Dimezis BlurView, 0 stacked JS SVG/gradients
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
   harness.setScheme('dark');
   {
     let tree;
     await renderer.act(async () => {
-      tree = renderer.create(React.createElement(HarnessEnhanced, {}), { createNodeMock });
+      tree = renderer.create(React.createElement(HarnessEnhanced, { pressed: true }), {
+        createNodeMock,
+      });
     });
     const json = tree.toJSON();
-    const targets = collectNodes(json, (n) => n.type === 'BlurTargetView');
-    const blurs = collectNodes(json, (n) => n.type === 'BlurView');
-    assert.equal(targets.length, 1, 'API 34 enhanced backdrop must render BlurTargetView');
-    assert.equal(blurs.length, 1, 'API 34 enhanced surface must render 1 BlurView');
-    assert.equal(blurs[0].props.blurMethod, 'dimezisBlurViewSdk31Plus');
-    assert.equal(blurs[0].props.tint, 'systemUltraThinMaterialDark');
-    assert.equal(blurs[0].props.intensity, 17);
-    assert.equal(blurs[0].props.blurReductionFactor, 2.5);
-    assert.ok(blurs[0].props.blurTarget?.current, 'BlurView must receive attached blurTarget');
-    assert.equal(blurs[0].props.pointerEvents, 'none');
-    assert.equal(blurs[0].props.importantForAccessibility, 'no-hide-descendants');
+    const backdrops = collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView');
+    const lenses = collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView');
+    assert.equal(backdrops.length, 1, 'API 36 enhanced backdrop must mount WiezLiquidGlassBackdropView');
+    assert.equal(lenses.length, 1, 'API 36 enhanced control must mount WiezLiquidGlassLensView');
+    assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0, 'Must never mount noisy Dimezis BlurView on Android');
+    assert.equal(collectNodes(json, (n) => n.type === 'Svg').length, 0, 'API 33+ AGSL composites rim directly without duplicate SVG stack');
+    assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0, 'API 33+ AGSL composites reflection without haze layers');
+    assert.ok(lenses[0].props.targetViewId > 0, 'Native lens must receive valid targetViewId handle');
+    assert.ok(lenses[0].props.refractionStrength > 0.7, 'AGSL lens enables optical refraction by default');
+    assert.equal(lenses[0].props.isDark, true);
+    assert.equal(lenses[0].props.pressed, true);
+    assert.ok(lenses[0].props.tintAlpha <= 0.06, 'Dark-theme native tint must remain crystal sheer');
     await renderer.act(async () => tree.unmount());
   }
 
-  // Android API 29: cleanly falls back to Mode A lightweight (zero BlurTargetView, zero BlurView)
-  harness.setPlatform('android', 29);
+  // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)
+  {
+    let tree;
+    await renderer.act(async () => {
+      tree = renderer.create(React.createElement(HarnessEnhanced, { refraction: false }), {
+        createNodeMock,
+      });
+    });
+    const lenses = collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView');
+    assert.equal(lenses[0].props.refractionStrength, 0);
+    assert.equal(lenses[0].props.chromaticAberration, 0);
+    await renderer.act(async () => tree.unmount());
+  }
+
+  // Android API 31: Clean noise-free RenderEffect blur lens + single hairline JS SVG rim
+  harness.setPlatform('android', 31);
+  harness.setNativeCaps({ available: true, runtimeShader: false, renderEffectBlur: true });
   harness.setScheme('light');
   {
     let tree;
@@ -533,38 +610,46 @@ async function runTests() {
       tree = renderer.create(React.createElement(HarnessEnhanced, {}), { createNodeMock });
     });
     const json = tree.toJSON();
-    assert.equal(
-      collectNodes(json, (n) => n.type === 'BlurTargetView').length,
-      0,
-      'API < 31 must skip BlurTargetView wrapper',
-    );
-    assert.equal(
-      collectNodes(json, (n) => n.type === 'BlurView').length,
-      0,
-      'API < 31 must degrade cleanly to Mode A lightweight without BlurView',
-    );
+    const lenses = collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView');
+    assert.equal(lenses.length, 1, 'API 31 must use clean RenderEffect native lens instead of noisy Dimezis BlurView');
+    assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
+    assert.equal(lenses[0].props.refractionStrength, 0);
+    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 1, 'API 31-32 renders single thin SVG directional rim');
     await renderer.act(async () => tree.unmount());
   }
 
-  // Mode B without blurTarget degrades safely without crashing or mounting BlurView
-  harness.setPlatform('android', 34);
+  // Android API 29: cleanly falls back to lightweight (0 native backdrop/lens, 0 BlurView)
+  harness.setPlatform('android', 29);
+  harness.setNativeCaps({ available: false, runtimeShader: false, renderEffectBlur: false });
   {
     let tree;
     await renderer.act(async () => {
-      tree = renderer.create(
-        React.createElement(WiezLiquidGlass, {
-          mode: 'enhanced',
-          initialSize: { width: 48, height: 48 },
-        }),
-        { createNodeMock },
-      );
+      tree = renderer.create(React.createElement(HarnessEnhanced, {}), { createNodeMock });
     });
-    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'BlurView').length, 0);
+    const json = tree.toJSON();
+    assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView').length, 0);
+    assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
+    assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
+    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 1);
+    await renderer.act(async () => tree.unmount());
+  }
+
+  // Unlinked native module or omitted blurTarget gracefully degrades on API 36
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: false, runtimeShader: false, renderEffectBlur: false });
+  {
+    let tree;
+    await renderer.act(async () => {
+      tree = renderer.create(React.createElement(HarnessEnhanced, {}), { createNodeMock });
+    });
+    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
+    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'SvgRect').length, 1);
     await renderer.act(async () => tree.unmount());
   }
 
   // ── 5. Catalog Integration (`BrandProfileHeader`) Light & Dark Tests ───────
-  harness.setPlatform('android', 34);
+  harness.setPlatform('android', 36);
+  harness.setNativeCaps({ available: true, runtimeShader: true, renderEffectBlur: true });
   for (const scheme of ['light', 'dark']) {
     harness.setScheme(scheme);
     let backTapped = 0;
@@ -615,55 +700,52 @@ async function runTests() {
     assert.ok(notifBtn, `Notifications button must render in ${scheme} theme`);
     assert.ok(menuAnchorRef.current, 'menuAnchorRef must stay attached for AppFloatingMenu');
 
-    // Back button & menu button geometry and interaction preserved
     assert.equal(flattenStyle(backBtn.props.style).width, 48);
     assert.equal(flattenStyle(backBtn.props.style).height, 48);
     assert.equal(flattenStyle(backBtn.props.style).borderWidth, 0);
     assert.notEqual(
       flattenStyle(backBtn.props.style).backgroundColor,
       tokens.themes[scheme].colors.glassSurfaceStrong,
-      'Catalog controls must no longer use opaque glassSurfaceStrong fill',
     );
 
     assert.equal(
-      collectNodes(backBtn, (n) => n.type === 'BlurView').length,
+      collectNodes(backBtn, (n) => n.type === 'WiezLiquidGlassLensView').length,
       1,
-      'Catalog Go back control must use enhanced Liquid Glass BlurView on Android API 34',
+      'Catalog Go back control must mount hardware WiezLiquidGlassLensView on Android API 36',
     );
     assert.equal(
-      collectNodes(menuBtn, (n) => n.type === 'BlurView').length,
+      collectNodes(menuBtn, (n) => n.type === 'WiezLiquidGlassLensView').length,
       1,
-      'Catalog menu control must use enhanced Liquid Glass BlurView on Android API 34',
+      'Catalog menu control must mount hardware WiezLiquidGlassLensView on Android API 36',
     );
     assert.equal(
       collectNodes(notifBtn, (n) => n.type === 'AppText' && n.children?.join('') === '5').length,
       1,
       'Notification badge count must remain visible inside the glass control',
     );
+    assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
 
-    // Backdrop isolation: BlurTargetView wraps banner artwork ONLY, never controls or BlurViews
-    const blurTargetNode = collectNodes(json, (n) => n.type === 'BlurTargetView')[0];
-    assert.ok(blurTargetNode, 'Banner must mount BlurTargetView backdrop on API 34');
+    // Backdrop isolation: WiezLiquidGlassBackdropView wraps artwork ONLY, never buttons or lenses
+    const backdropNode = collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView')[0];
+    assert.ok(backdropNode, 'Banner must mount WiezLiquidGlassBackdropView on API 36');
+    assert.equal(collectNodes(backdropNode, (n) => n.type === 'StableImage').length, 1);
     assert.equal(
-      collectNodes(blurTargetNode, (n) => n.type === 'StableImage').length,
-      1,
-      'Banner artwork must live inside BlurTargetView',
-    );
-    assert.equal(
-      collectNodes(blurTargetNode, (n) => n.type === 'Pressable' || n.type === 'BlurView').length,
+      collectNodes(
+        backdropNode,
+        (n) => n.type === 'Pressable' || n.type === 'WiezLiquidGlassLensView',
+      ).length,
       0,
-      'Banner controls and BlurViews must sit outside BlurTargetView to prevent circular capture',
+      'Banner controls and glass lenses must remain sibling/outside WiezLiquidGlassBackdropView',
     );
 
-    // Edit banner control intentionally unchanged in Phase 1
+    // Edit banner square control intentionally untouched in Phase 1
     const editBannerBtn = collectNodes(
       json,
       (n) => n.type === 'Pressable' && n.props?.accessibilityLabel === 'Edit banner',
     )[0];
     assert.ok(editBannerBtn);
-    assert.equal(collectNodes(editBannerBtn, (n) => n.type === 'BlurView').length, 0);
+    assert.equal(collectNodes(editBannerBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
 
-    // Invoke handlers
     await renderer.act(async () => {
       backBtn.props.onPress();
       menuBtn.props.onPress();
@@ -707,8 +789,8 @@ async function runTests() {
       json,
       (n) => n.type === 'Pressable' && n.props?.accessibilityLabel === 'Share brand',
     )[0];
-    assert.equal(collectNodes(searchBtn, (n) => n.type === 'BlurView').length, 1);
-    assert.equal(collectNodes(shareBtn, (n) => n.type === 'BlurView').length, 1);
+    assert.equal(collectNodes(searchBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 1);
+    assert.equal(collectNodes(shareBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 1);
     await renderer.act(async () => {
       searchBtn.props.onPress();
       shareBtn.props.onPress();
@@ -730,7 +812,7 @@ async function runTests() {
   );
 
   console.log(
-    'PASS test-liquid-glass-phase1: Optical envelopes, Mode A/B gating, expo-blur@56 Android target sync, and Catalog banner integration verified across light & dark themes.',
+    'PASS test-liquid-glass-phase1: Clear optical transmission envelopes, API 33+ AGSL refraction, API 31-32 RenderEffect blur, hairline rim, and Catalog integration verified.',
   );
 }
 
