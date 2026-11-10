@@ -408,7 +408,16 @@ export function routeForNotification(
       if (productId) {
         return { pathname: '/studio', params: { routeKey: 'editProduct', productId } } as unknown as Href;
       }
-      return { pathname: '/catalog', params: { tab: 'Collections', visibility: 'Public' } } as Href;
+      // The shelf the design now sits on — Private if it was set private —
+      // with the card itself blinking (owner, Nov 2026).
+      return {
+        pathname: '/catalog',
+        params: {
+          tab: 'Collections',
+          visibility: payload.isPrivate === true ? 'Private' : 'Public',
+          ...(designId ? { highlightDesign: designId } : {}),
+        },
+      } as Href;
     } else {
       if (productId) {
         return { pathname: '/studio', params: { routeKey: 'editProduct', productId } } as unknown as Href;

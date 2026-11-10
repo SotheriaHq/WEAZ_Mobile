@@ -102,7 +102,27 @@ assert.match(routing, /CONTENT_REVIEW_LIVE_TYPES = new Set\(\['CONTENT_REVIEW_AP
   assert.doesNotMatch(liveBranch, /\/products\/\[productId\]/, 'an approved product does not open the shopper product page');
   assert.doesNotMatch(liveBranch, /routeForDesignTarget/, 'an approved design does not open the design viewer');
   assert.match(liveBranch, /routeKey: 'editProduct', productId/, 'an approved product opens in the Studio editor');
-  assert.match(liveBranch, /tab: 'Collections', visibility: 'Public'/, "an approved design opens the catalogue's Public shelf");
+  // The shelf the design now sits on (Private if set private), with the card
+  // itself highlighted (owner, Nov 2026).
+  assert.match(liveBranch, /tab: 'Collections',/, 'an approved design opens the content tab');
+  assert.match(liveBranch, /visibility: payload\.isPrivate === true \? 'Private' : 'Public'/, 'on its Public or Private shelf');
+  assert.match(liveBranch, /highlightDesign: designId/, 'naming the card to highlight');
+}
+
+// The highlighted card: ringed, scrolled into view, gone on touch or leaving.
+{
+  const catalog = read('app/(tabs)/catalog/index.tsx');
+  assert.match(catalog, /highlightDesign\?: string \| string\[\];/, 'the catalogue reads the highlight param');
+  assert.match(catalog, /router\.setParams\(\{ highlightDesign: undefined \} as never\)/, 'the param is consumed');
+  assert.match(catalog, /onTouchStart=\{highlightedDesignId \? clearHighlight : undefined\}/, 'a touch ends the highlight');
+  assert.match(catalog, /useFocusEffect\(useCallback\(\(\) => \(\) => setHighlightedDesignId\(null\), \[\]\)\)/, 'leaving ends the highlight');
+  assert.match(catalog, /highlightedId=\{highlightedDesignId\}/, 'the grid is told which card');
+  const grid = read('components/catalog/CollectionsGrid.tsx');
+  assert.match(grid, /\{highlightedId === item\.id \? <HighlightRing \/> : null\}/, 'a sibling ring, so the card never remounts');
+  assert.match(grid, /scrollToKey=\{highlightedId\}/, 'the capped grid scrolls to the card');
+  const ring = read('components/catalog/HighlightRing.tsx');
+  assert.match(ring, /pointerEvents="none"/, 'the ring never takes a touch');
+  assert.match(ring, /useReducedMotion\(\)/, 'Reduce Motion holds it steady');
 }
 assert.match(routing, /pathname: '\/designs\/\[designId\]\/edit', params: \{ designId \}/, 'designs open in the composer');
 assert.match(routing, /routeKey: 'editProduct', productId/, 'products open in the Studio product editor');
@@ -124,10 +144,22 @@ assert.match(notifications, /<AppText variant="notification" italic accessibilit
 assert.match(notifications, /variant="notificationStrong" italic/, 'the actor is italic too');
 assert.match(notifications, /variant="notification" tone="primary" italic/, 'titles are italic');
 // The count lives on the header action, not as a floating badge.
-assert.match(notifications, /title=\{`Mark all as read · /, 'count on the Mark all action');
+// The number is the system colour, bold, on light and dark (owner, Nov 2026:
+// "the notification count too on light theme is not the system color").
+assert.match(
+  notifications,
+  /Mark all as read ·\{' '\}\s*<AppText variant="captionBold" tone="primary">\s*\{unreadCount > 99 \? '99\+' : unreadCount\}/,
+  'count on the Mark all action, in the system colour',
+);
 assert.doesNotMatch(notifications, /unreadPill|headerActions/, 'no separate badge or action row');
 // Unread rows are tinted edge to edge; no inset list padding.
-assert.match(notifications, /backgroundColor: unread \? theme\.colors\.surface : 'transparent'/, 'the tint marks unread');
+// On light, `surface` is the page's own white, so unread takes the soft brand
+// tint there (owner, Nov 2026: "unread bg indicator seems off on light theme").
+assert.match(
+  notifications,
+  /backgroundColor: unread \? \(scheme === 'dark' \? theme\.colors\.surface : theme\.colors\.primarySoft\) : 'transparent'/,
+  'the tint marks unread on both themes',
+);
 assert.doesNotMatch(notifications, /\n {2}content: \{[^}]*paddingHorizontal/, 'the list has no side inset');
 assert.doesNotMatch(notifications, /<AppText key=\{key\} variant="bodyBold"/, 'no bold runs in the sentence');
 

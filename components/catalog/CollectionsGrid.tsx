@@ -13,6 +13,7 @@ import {
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { CollectionCardSkeleton } from './CollectionCard';
 import { InlineCardGrid, shouldCapGridHeight } from './InlineCardGrid';
+import { HighlightRing } from './HighlightRing';
 import { CatalogEntityCard } from './CatalogEntityCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
@@ -48,6 +49,8 @@ interface CollectionsGridProps {
   initialRenderCount?: number;
   batchRenderCount?: number;
   renderKey?: string;
+  /** The card a notification pointed at: ringed, and scrolled into view. */
+  highlightedId?: string | null;
 }
 
 const GRID_LAYOUT = {
@@ -86,6 +89,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   initialRenderCount = 6,
   batchRenderCount = 6,
   renderKey,
+  highlightedId = null,
 }: CollectionsGridProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
@@ -152,10 +156,13 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
             isSaved={Boolean(savedById?.[item.id])}
             saveBusy={Boolean(saveBusyById?.[item.id])}
           />
+          {/* A sibling after the card, never a wrapper: clearing it must not
+              remount the card. */}
+          {highlightedId === item.id ? <HighlightRing /> : null}
         </View>
       );
     },
-    [isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts, impliedStatus],
+    [isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts, impliedStatus, highlightedId],
   );
   const keyOfCollection = useCallback((item: CollectionDto) => item.id, []);
 
@@ -203,6 +210,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
       rowGap={rowGap}
       paddingVertical={GRID_LAYOUT.verticalPadding}
       accessibilityLabel={`${uniqueCollections.length} designs, scroll for more`}
+      scrollToKey={highlightedId}
     />
   );
 });
