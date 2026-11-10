@@ -103,19 +103,19 @@ half4 main(float2 fragCoord) {
   float gradMag = length(rawGrad);
   float2 lensNormal = gradMag > 0.0001 ? (rawGrad / max(gradMag, 1.0)) : float2(0.0, 0.0);
 
-  // Compact adaptive meniscus shoulder width across small controls, elongated pills, and cards.
-  // Keeps >= 60% center diameter undisturbed so underlying typography and foreground icons stay crystal clear.
-  float bezelReachDp = mix(6.8, 19.5, thickness) * mix(0.86, 1.14, curvature);
-  float bezelWidth = min(minHalf * mix(0.28, 0.54, thickness), bezelReachDp * density);
+  // Balanced adaptive meniscus shoulder across small controls, elongated pills, and cards.
+  // Keeps >= 52% center diameter clear while giving curved rims genuine optical lensing volume.
+  float bezelReachDp = mix(8.6, 22.5, thickness) * mix(0.88, 1.18, curvature);
+  float bezelWidth = min(minHalf * mix(0.34, 0.58, thickness), bezelReachDp * density);
   bezelWidth = max(bezelWidth, density * 4.5);
 
   float edgeT = clamp(1.0 - inward / bezelWidth, 0.0, 1.0);
   // C2-continuous Hermite-integrated smooth-ramp meniscus profile:
   // Integral of non-negative slope ramp s(t) = (1-w)*smoothstep(0,1,t) + w*smoothstep(0,rampEnd,t).
-  // Guarantees meniscus(0)=0, meniscus'(0)=0, meniscus''(0)=0 (zero inner plateau kink) and
-  // continuous curvature across rampEnd while accelerating naturally toward the outer edge.
-  float rampEnd = mix(0.90, 0.46, curvature);
-  float domeWeight = mix(0.16, 0.74, curvature);
+  // Lower rampEnd spreads displacement cleanly across the shoulder so curves wrap naturally without
+  // pinching at the final 2px or creating an inner plateau seam.
+  float rampEnd = mix(0.84, 0.33, curvature);
+  float domeWeight = mix(0.38, 0.89, curvature);
   float rampU = clamp(edgeT / rampEnd, 0.0, 1.0);
   float hA = (edgeT * edgeT * edgeT) * (1.0 - 0.5 * edgeT);
   float hB = rampEnd * ((rampU * rampU * rampU) * (1.0 - 0.5 * rampU)) + max(edgeT - rampEnd, 0.0);
@@ -124,11 +124,11 @@ half4 main(float2 fragCoord) {
   float peakNormSlope = 1.0 / max(totalArea, 0.25);
 
   // Restrained physical convex Snell refraction with strict monotonic Jacobian guarantee:
-  // d(u_sample)/du >= 1 - maxSlope >= 0.32 > 0 across all controls, pills, and cards.
-  // Keeps Calibrated peak compression <= 1.82x (readable bent typography, zero shredded strokes or dark edge smears).
-  float maxSlope = clamp(refractStr * 0.50, 0.0, 0.68);
+  // d(u_sample)/du >= 1 - maxSlope >= 0.28 > 0 across all controls, pills, and cards.
+  // Yields ~4.2-6.5dp visible edge bending at Calibrated (maxSlope ~0.55) without stroke shredding.
+  float maxSlope = clamp(refractStr * 0.54, 0.0, 0.72);
   float physicalCapPx = (bezelWidth * maxSlope) / max(peakNormSlope, 1.0);
-  float desiredShiftPx = (3.6 + thickness * 4.8) * density * refractStr;
+  float desiredShiftPx = (5.0 + thickness * 6.8) * density * refractStr;
   float maxShiftPx = min(desiredShiftPx, physicalCapPx);
   float edgeShiftPx = maxShiftPx * meniscus;
   float2 displaced = fragCoord - lensNormal * edgeShiftPx;
@@ -162,10 +162,11 @@ half4 main(float2 fragCoord) {
 
   float bgLuma = clamp(dot(rgb, float3(0.299, 0.587, 0.114)), 0.0, 1.0);
   float brightBg = smoothstep(0.50, 0.92, bgLuma);
+  float veryBrightBg = smoothstep(0.76, 0.98, bgLuma);
 
   float userTintAlpha = clamp(uTintColor.a, 0.0, 0.60);
   float smoothEdgeT = smoothstep(0.0, 1.0, edgeT);
-  float meniscusTint = meniscus * (isDark > 0.5 ? 0.012 : 0.010);
+  float meniscusTint = meniscus * (isDark > 0.5 ? 0.011 : 0.008);
   float effectiveTintAlpha = clamp(userTintAlpha * (0.40 + 0.60 * smoothEdgeT) + meniscusTint, 0.0, 0.60);
   rgb = mix(rgb, uTintColor.rgb, effectiveTintAlpha);
   if (pressed > 0.5) {
@@ -176,42 +177,52 @@ half4 main(float2 fragCoord) {
   float facing = clamp(dot(lensNormal, lightDir), -1.0, 1.0);
   float pressBoost = 1.0 + pressed * 0.22;
 
-  // Compact neutral achromatic optical lip depth (~1.9dp taper) - eliminates cool blue-lavender lower crescent haze.
-  float bevelShadeAlpha = 0.0;
+  // Compact neutral achromatic glass-edge thickness + subtle inboard optical depth on bright surfaces.
+  float totalShade = 0.0;
   if (rimStr > 0.01) {
-    float bevelNorm = clamp(1.0 - inward / max(density * 1.9, 3.4), 0.0, 1.0);
-    float bevelShadeCurve = bevelNorm * bevelNorm;
-    float dirShade = mix(0.55, 0.82, clamp(0.50 - facing * 0.35, 0.0, 1.0));
-    float darkFloor = isDark > 0.5 ? 0.012 : 0.016;
-    float shadeStrength = mix(darkFloor, 0.068, brightBg) * dirShade * min(rimStr, 1.0);
-    bevelShadeAlpha = bevelShadeCurve * shadeStrength;
-    rgb = mix(rgb, float3(0.06, 0.06, 0.065), bevelShadeAlpha);
+    float bevelNorm = clamp(1.0 - inward / max(density * 2.4, 3.8), 0.0, 1.0);
+    float bevelShadeCurve = bevelNorm > 0.0001 ? pow(bevelNorm, 1.85) : 0.0;
+    float dirShade = mix(0.45, 0.88, clamp(0.50 - facing * 0.42, 0.0, 1.0));
+    float darkFloor = isDark > 0.5 ? 0.014 : 0.018;
+    float shadeStrength = mix(darkFloor, 0.098, brightBg) * dirShade * min(rimStr, 1.0);
+    float bevelShadeAlpha = bevelShadeCurve * shadeStrength;
+    float tInboard = clamp((inward / density - 0.5) / 2.6, 0.0, 1.0);
+    float inboardBell = 4.0 * tInboard * (1.0 - tInboard);
+    float inboardShadow = (inboardBell * inboardBell) * veryBrightBg * 0.036 * min(rimStr, 1.0);
+    totalShade = clamp(bevelShadeAlpha + inboardShadow, 0.0, 0.22);
+    rgb = mix(rgb, float3(0.055, 0.055, 0.06), totalShade);
   }
 
-  // Crisp focused Silica Fresnel rim (~1.65dp crest) with restrained bottom bounce.
+  // Crisp focused Silica Fresnel filament (~1.45dp) + delicate bottom-right exit caustic.
   float rimIn = smoothstep(0.0, max(density * 0.35, 0.7), inward);
-  float rimOut = 1.0 - smoothstep(max(density * 0.35, 0.7), max(density * 1.65, 2.8), inward);
+  float rimOut = 1.0 - smoothstep(max(density * 0.35, 0.7), max(density * 1.45, 2.5), inward);
   float rimEnvelope = rimOut * (0.56 + 0.44 * rimIn);
 
-  float topLeftArc = facing > 0.0001 ? pow(facing, 1.7) : 0.0;
-  float bottomRightCaustic = facing < -0.0001 ? pow(-facing, 2.25) : 0.0;
-  float floorRim = mix(isDark > 0.5 ? 0.065 : 0.055, 0.015, brightBg);
+  float topLeftArc = facing > 0.0001 ? pow(facing, 2.15) : 0.0;
+  float bottomRightCaustic = facing < -0.0001 ? pow(-facing, 2.90) : 0.0;
+  float floorRim = mix(isDark > 0.5 ? 0.070 : 0.055, 0.015, brightBg);
   float rimWhite = clamp(
-    (floorRim + topLeftArc * (isDark > 0.5 ? 0.52 : 0.56) + bottomRightCaustic * (isDark > 0.5 ? 0.18 : 0.20)) * rimStr * pressBoost,
+    (floorRim + topLeftArc * (isDark > 0.5 ? 0.74 : 0.76) + bottomRightCaustic * (isDark > 0.5 ? 0.32 : 0.34)) * rimStr * pressBoost,
     0.0,
-    0.66
+    0.84
   );
-  float rimAlpha = rimEnvelope * rimWhite * mix(1.0, 0.74, brightBg);
+  float rimAlpha = rimEnvelope * rimWhite * mix(1.0, 0.80, brightBg);
   rgb = mix(rgb, float3(1.0, 1.0, 1.0), rimAlpha);
 
-  // Restrained specular sheen strictly along outer top-left meniscus shoulder.
+  // Tight anisotropic curved-glass specular reflection + subtle opposite caustic catchlight (zero plastic wash).
   float innerRimMask = smoothstep(0.0, max(density * 0.38, 0.7), inward);
-  float glossBand = (1.0 - smoothstep(density * 0.7, max(bezelWidth * 0.50, density * 4.2), inward)) * innerRimMask;
-  float glossDir = facing > 0.0001 ? pow(facing, 2.35) : 0.0;
-  float glossAlpha = clamp(glossBand * glossDir * (isDark > 0.5 ? 0.15 : 0.17) * reflStr * mix(1.0, 0.58, brightBg), 0.0, 0.22);
+  float glossBand = (1.0 - smoothstep(density * 0.65, max(bezelWidth * 0.36, density * 3.8), inward)) * innerRimMask;
+  float glossDir = facing > 0.0001 ? pow(facing, 2.65) : 0.0;
+  float glossSecDir = facing < -0.0001 ? pow(-facing, 3.80) : 0.0;
+  float glossBrightKeep = mix(1.0, 0.72, brightBg);
+  float glossAlpha = clamp(
+    glossBand * (glossDir * (isDark > 0.5 ? 0.27 : 0.28) + glossSecDir * 0.11) * reflStr * glossBrightKeep,
+    0.0,
+    0.34
+  );
   rgb = mix(rgb, float3(1.0, 1.0, 1.0), glossAlpha);
 
-  float glassOverlayAlpha = clamp(effectiveTintAlpha + bevelShadeAlpha + rimAlpha + glossAlpha, 0.0, 1.0);
+  float glassOverlayAlpha = clamp(effectiveTintAlpha + totalShade + rimAlpha + glossAlpha, 0.0, 1.0);
   float outAlpha = contentAlpha >= 0.995
     ? 1.0
     : clamp(contentAlpha + (1.0 - contentAlpha) * glassOverlayAlpha, 0.0, 1.0);

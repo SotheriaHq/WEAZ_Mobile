@@ -44,8 +44,8 @@ const DEPTH_START = { x: 0.5, y: 0.0 } as const;
 const DEPTH_END = { x: 0.5, y: 1.0 } as const;
 const DEPTH_LOCATIONS = [0, 0.25, 0.72, 1] as const;
 
-const DEFAULT_CURVATURE = 0.58;
-const DEFAULT_OPTICAL_THICKNESS = 0.42;
+const DEFAULT_CURVATURE = 0.66;
+const DEFAULT_OPTICAL_THICKNESS = 0.55;
 
 export type WiezLiquidGlassMode = 'lightweight' | 'enhanced';
 export type WiezLiquidGlassIntensityPreset = 'subtle' | 'regular' | 'prominent';
@@ -84,9 +84,9 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   refraction?: boolean;
   /** Override displacement amplitude scalar (`0..2`). Defaults from `intensity`. */
   refractionStrength?: number;
-  /** Override meniscus shoulder dome curve (`0..1`: crisp lip -> curved dome). Defaults to `0.58`. */
+  /** Override meniscus shoulder dome curve (`0..1`: crisp lip -> curved dome). Defaults to `0.66`. */
   curvature?: number;
-  /** Override optical bezel thickness/reach (`0..1`). Defaults to `0.42`. */
+  /** Override optical bezel thickness/reach (`0..1`). Defaults to `0.55`. */
   opticalThickness?: number;
   /** Override optional Gaussian scatter blur radius in dp (`0..24`). Defaults to `0` on AGSL. */
   blurRadius?: number;
@@ -300,11 +300,11 @@ function resolveRefractionAmount(
     return clamp(refractionStrengthOverride, 0, 2);
   }
   if (typeof intensity === 'string') {
-    if (intensity === 'subtle') return 0.65;
-    if (intensity === 'prominent') return 1.1;
-    return 0.9;
+    if (intensity === 'subtle') return 0.74;
+    if (intensity === 'prominent') return 1.2;
+    return 1.02;
   }
-  return Math.round((0.55 + clamp(intensity, 0, 1) * 0.55) * 100) / 100;
+  return Math.round((0.65 + clamp(intensity, 0, 1) * 0.6) * 100) / 100;
 }
 
 /**

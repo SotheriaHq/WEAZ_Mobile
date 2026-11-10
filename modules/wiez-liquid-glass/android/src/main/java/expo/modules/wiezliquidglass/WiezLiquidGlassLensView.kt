@@ -41,12 +41,12 @@ class WiezLiquidGlassLensView(
 
   private var cornerRadiusDp: Float = 999f
   private var blurRadiusDp: Float = 0f
-  private var refractionStrength: Float = 0.90f
+  private var refractionStrength: Float = 1.02f
   private var chromaticAberration: Float = 0f
   private var rimStrength: Float = 1.0f
   private var reflectionStrength: Float = 1.0f
-  private var curvature: Float = 0.58f
-  private var opticalThickness: Float = 0.42f
+  private var curvature: Float = 0.66f
+  private var opticalThickness: Float = 0.55f
   private var tintColorArgb: Int = Color.WHITE
   private var tintAlpha: Float = 0.02f
   private var isDark: Boolean = false
@@ -149,14 +149,14 @@ class WiezLiquidGlassLensView(
   }
 
   fun setCurvature(value: Float) {
-    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0.58f
+    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0.66f
     if (clamped == curvature) return
     curvature = clamped
     needsEffectUpdate = true
   }
 
   fun setOpticalThickness(value: Float) {
-    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0.42f
+    val clamped = if (value.isFinite()) min(1f, max(0f, value)) else 0.55f
     if (clamped == opticalThickness) return
     opticalThickness = clamped
     needsEffectUpdate = true

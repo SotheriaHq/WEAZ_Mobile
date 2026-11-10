@@ -616,7 +616,12 @@ async function runTests() {
     assert.equal(collectNodes(json, (n) => n.type === 'Svg').length, 0, 'API 33+ AGSL composites rim directly without duplicate SVG stack');
     assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0, 'API 33+ AGSL composites reflection without haze layers');
     assert.ok(lenses[0].props.targetViewId > 0, 'Native lens must receive valid targetViewId handle');
-    assert.ok(lenses[0].props.refractionStrength > 0.7, 'AGSL lens enables optical refraction by default');
+    assert.ok(
+      lenses[0].props.refractionStrength >= 1.0 && lenses[0].props.refractionStrength <= 1.15,
+      'Optical Balance v4 regular intensity must calibrate refractionStrength around 1.02',
+    );
+    assert.equal(lenses[0].props.curvature, 0.66, 'Optical Balance v4 default curvature must be 0.66');
+    assert.equal(lenses[0].props.opticalThickness, 0.55, 'Optical Balance v4 default opticalThickness must be 0.55');
     assert.equal(lenses[0].props.blurRadius, 0, 'API 33+ lens must have 0dp center Gaussian blur');
     assert.equal(lenses[0].props.chromaticAberration, 0, 'Chromatic aberration must stay disabled (0)');
     assert.equal(lenses[0].props.isDark, true);
@@ -670,11 +675,15 @@ async function runTests() {
     assert.match(agsl, /bezelReachDp/, 'Meniscus bevel must adapt cleanly across circles, pills, and cards');
     assert.match(agsl, /float rampEnd = mix\(/, 'Shader must use C2 Hermite-integrated smooth-ramp meniscus profile');
     assert.match(agsl, /float peakNormSlope = 1\.0 \/ max\(totalArea,\s*0\.25\)/, 'Shader must compute peak normalized meniscus slope for Jacobian clamping');
-    assert.match(agsl, /float maxSlope = clamp\(refractStr \* 0\.50,\s*0\.0,\s*0\.68\)/, 'Shader must enforce restrained monotonic Jacobian slope bound <= 0.68');
+    assert.match(agsl, /float maxSlope = clamp\(refractStr \* 0\.54,\s*0\.0,\s*0\.72\)/, 'Shader must enforce restrained monotonic Jacobian slope bound <= 0.72');
     assert.match(agsl, /float physicalCapPx = \(bezelWidth \* maxSlope\) \/ max\(peakNormSlope,\s*1\.0\)/, 'Shader must cap edge shift against bezelWidth and peakNormSlope to prevent caustic folding and text twisting');
     assert.match(agsl, /float smoothEdgeT = smoothstep\(0\.0,\s*1\.0,\s*edgeT\)/, 'Optical tint transition must smoothstep cleanly from flat core to rim');
     assert.doesNotMatch(agsl, /float3\(0\.16,\s*0\.19,\s*0\.30\)/, 'Optical bevel shading must stay neutral achromatic instead of blue-lavender indigo');
-    assert.match(agsl, /rgb = mix\(rgb,\s*float3\(0\.06,\s*0\.06,\s*0\.065\),\s*bevelShadeAlpha\)/, 'Bright backdrops must use compact neutral charcoal optical lip depth');
+    assert.match(agsl, /veryBrightBg/, 'Shader must isolate very bright backgrounds for subtle inboard optical edge definition');
+    assert.match(agsl, /inboardShadow/, 'Shader must compute smooth inboard optical shadow on bright grounds without harsh strokes');
+    assert.match(agsl, /totalShade/, 'Shader must blend bounded neutral bevel and inboard shade');
+    assert.match(agsl, /rgb = mix\(rgb,\s*float3\(0\.055,\s*0\.055,\s*0\.06\),\s*totalShade\)/, 'Bright backdrops must use compact neutral charcoal optical lip depth');
+    assert.match(agsl, /glossSecDir/, 'Shader must include delicate secondary opposite meniscus catchlight without plastic sheet wash');
     assert.doesNotMatch(agsl, /corePull/, 'Central optical core must have zero displacement/pull');
     assert.doesNotMatch(agsl, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
     assert.match(agsl, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
@@ -685,6 +694,21 @@ async function runTests() {
       '#141416',
       'Dark-theme liquid glass tint must stay neutral charcoal (#141416) without indigo/lavender bias',
     );
+
+    const lensViewSource = fs.readFileSync(
+      path.join(ROOT, 'modules', 'wiez-liquid-glass', 'android', 'src', 'main', 'java', 'expo', 'modules', 'wiezliquidglass', 'WiezLiquidGlassLensView.kt'),
+      'utf8',
+    );
+    const moduleSource = fs.readFileSync(
+      path.join(ROOT, 'modules', 'wiez-liquid-glass', 'android', 'src', 'main', 'java', 'expo', 'modules', 'wiezliquidglass', 'WiezLiquidGlassModule.kt'),
+      'utf8',
+    );
+    assert.match(lensViewSource, /refractionStrength:\s*Float\s*=\s*1\.02f/, 'Kotlin LensView default refractionStrength must match TS v4 (1.02f)');
+    assert.match(lensViewSource, /curvature:\s*Float\s*=\s*0\.66f/, 'Kotlin LensView default curvature must match TS v4 (0.66f)');
+    assert.match(lensViewSource, /opticalThickness:\s*Float\s*=\s*0\.55f/, 'Kotlin LensView default opticalThickness must match TS v4 (0.55f)');
+    assert.match(moduleSource, /refractionStrength\s*\?:\s*1\.02f/, 'Kotlin Module prop fallback refractionStrength must match TS v4 (1.02f)');
+    assert.match(moduleSource, /curvature\s*\?:\s*0\.66f/, 'Kotlin Module prop fallback curvature must match TS v4 (0.66f)');
+    assert.match(moduleSource, /opticalThickness\s*\?:\s*0\.55f/, 'Kotlin Module prop fallback opticalThickness must match TS v4 (0.55f)');
   }
 
   // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)
