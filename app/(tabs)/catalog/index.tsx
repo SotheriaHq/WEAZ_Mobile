@@ -465,11 +465,14 @@ export default function CatalogScreen() {
     tab: routeTabParam,
     visibility: routeVisibilityParam,
     productId: routeProductIdParam,
+    highlightDesign: routeHighlightDesignParam,
   } = useLocalSearchParams<{
     brandId?: string | string[];
     tab?: string | string[];
     visibility?: string | string[];
     productId?: string | string[];
+    /** A notification's design: ringed on its shelf until the brand interacts. */
+    highlightDesign?: string | string[];
   }>();
   /*
     `/catalog` is the owner's root. A `brandId` search param left over from
@@ -526,6 +529,9 @@ export default function CatalogScreen() {
   const routeTab = Array.isArray(routeTabParam) ? routeTabParam[0] : routeTabParam;
   const routeVisibility = Array.isArray(routeVisibilityParam) ? routeVisibilityParam[0] : routeVisibilityParam;
   const routeProductId = Array.isArray(routeProductIdParam) ? routeProductIdParam[0] : routeProductIdParam;
+  const routeHighlightDesign = Array.isArray(routeHighlightDesignParam)
+    ? routeHighlightDesignParam[0]
+    : routeHighlightDesignParam;
   const normalizeTab = (value?: string): TabType => {
     const key = String(value ?? '').trim().toLowerCase();
     if (key === 'shop' || key === 'store') return 'Shop';
@@ -612,6 +618,41 @@ export default function CatalogScreen() {
   const activeTabRef = useRef(visualActiveTab);
   const visibilityFilterRef = useRef(visibilityFilter);
   const hasInitialScrolledRef = useRef(false);
+
+  /*
+    The card a notification pointed at (owner, Nov 2026).
+
+    "Your design was approved" lands here on the Public (or Private) shelf;
+    the brand should SEE which card the notice was about, not just a shelf.
+    The card blinks (HighlightRing) and is scrolled into view — the page to
+    the tabs, and the capped grid to the card's row — until the brand
+    touches the screen or leaves the Catalogue. The param is consumed so a
+    later visit does not light it up again.
+  */
+  const [highlightedDesignId, setHighlightedDesignId] = useState<string | null>(null);
+  const [tabsY, setTabsY] = useState<number | null>(null);
+  useEffect(() => {
+    if (!routeHighlightDesign) return;
+    setHighlightedDesignId(routeHighlightDesign);
+    // The notice decides where the page sits, not the last saved position.
+    hasRestoredScrollRef.current = true;
+    router.setParams({ highlightDesign: undefined } as never);
+  }, [routeHighlightDesign]);
+  useEffect(() => {
+    if (!highlightedDesignId || tabsY === null) return;
+    const frame = requestAnimationFrame(() => {
+      outerScrollRef.current?.scrollTo({ y: Math.max(0, tabsY - tokens.spacing.sm), animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [highlightedDesignId, tabsY]);
+  const clearHighlight = useCallback(() => {
+    setHighlightedDesignId((current) => (current === null ? current : null));
+  }, []);
+  const handleTabsLayout = useCallback((event: LayoutChangeEvent) => {
+    const y = Math.round(event.nativeEvent.layout.y);
+    setTabsY((current) => (current === y ? current : y));
+  }, []);
+  useFocusEffect(useCallback(() => () => setHighlightedDesignId(null), []));
 
   useEffect(() => {
     activeTabRef.current = visualActiveTab;
@@ -2425,6 +2466,8 @@ export default function CatalogScreen() {
         onScroll={handleOuterScroll}
         onScrollEndDrag={handleOuterScrollSettled}
         onMomentumScrollEnd={handleOuterScrollSettled}
+        // Any touch on the page ends a notification's highlight.
+        onTouchStart={highlightedDesignId ? clearHighlight : undefined}
         onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
         refreshControl={
           <RefreshControl
@@ -2517,7 +2560,10 @@ export default function CatalogScreen() {
         ) : null}
 
         {/* Tabs */}
-        <View style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+        <View
+          onLayout={handleTabsLayout}
+          style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+        >
           <Tabs
             tabs={tabs}
             activeTab={visualActiveTab}
@@ -2632,6 +2678,7 @@ export default function CatalogScreen() {
                 initialRenderCount={6}
                 batchRenderCount={6}
                 renderKey={dataTabKey}
+                highlightedId={highlightedDesignId}
                 emptyComponent={
                   activeListError ? (
                     <View>

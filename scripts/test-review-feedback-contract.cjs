@@ -102,7 +102,27 @@ assert.match(routing, /CONTENT_REVIEW_LIVE_TYPES = new Set\(\['CONTENT_REVIEW_AP
   assert.doesNotMatch(liveBranch, /\/products\/\[productId\]/, 'an approved product does not open the shopper product page');
   assert.doesNotMatch(liveBranch, /routeForDesignTarget/, 'an approved design does not open the design viewer');
   assert.match(liveBranch, /routeKey: 'editProduct', productId/, 'an approved product opens in the Studio editor');
-  assert.match(liveBranch, /tab: 'Collections', visibility: 'Public'/, "an approved design opens the catalogue's Public shelf");
+  // The shelf the design now sits on (Private if set private), with the card
+  // itself highlighted (owner, Nov 2026).
+  assert.match(liveBranch, /tab: 'Collections',/, 'an approved design opens the content tab');
+  assert.match(liveBranch, /visibility: payload\.isPrivate === true \? 'Private' : 'Public'/, 'on its Public or Private shelf');
+  assert.match(liveBranch, /highlightDesign: designId/, 'naming the card to highlight');
+}
+
+// The highlighted card: ringed, scrolled into view, gone on touch or leaving.
+{
+  const catalog = read('app/(tabs)/catalog/index.tsx');
+  assert.match(catalog, /highlightDesign\?: string \| string\[\];/, 'the catalogue reads the highlight param');
+  assert.match(catalog, /router\.setParams\(\{ highlightDesign: undefined \} as never\)/, 'the param is consumed');
+  assert.match(catalog, /onTouchStart=\{highlightedDesignId \? clearHighlight : undefined\}/, 'a touch ends the highlight');
+  assert.match(catalog, /useFocusEffect\(useCallback\(\(\) => \(\) => setHighlightedDesignId\(null\), \[\]\)\)/, 'leaving ends the highlight');
+  assert.match(catalog, /highlightedId=\{highlightedDesignId\}/, 'the grid is told which card');
+  const grid = read('components/catalog/CollectionsGrid.tsx');
+  assert.match(grid, /\{highlightedId === item\.id \? <HighlightRing \/> : null\}/, 'a sibling ring, so the card never remounts');
+  assert.match(grid, /scrollToKey=\{highlightedId\}/, 'the capped grid scrolls to the card');
+  const ring = read('components/catalog/HighlightRing.tsx');
+  assert.match(ring, /pointerEvents="none"/, 'the ring never takes a touch');
+  assert.match(ring, /useReducedMotion\(\)/, 'Reduce Motion holds it steady');
 }
 assert.match(routing, /pathname: '\/designs\/\[designId\]\/edit', params: \{ designId \}/, 'designs open in the composer');
 assert.match(routing, /routeKey: 'editProduct', productId/, 'products open in the Studio product editor');
