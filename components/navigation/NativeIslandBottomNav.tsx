@@ -8,6 +8,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import {
   GestureDetector,
   useCompetingGestures,
@@ -502,6 +503,10 @@ const FixedDockButton = React.memo(
 // shadow and milky tint are unchanged on both platforms.
 const USE_LIVE_BLUR = Platform.OS === 'ios';
 
+const ISLAND_SHEEN_LOCATIONS = [0, 0.45, 1] as const;
+const ISLAND_SHEEN_START = { x: 0.5, y: 0 } as const;
+const ISLAND_SHEEN_END = { x: 0.5, y: 1 } as const;
+
 const IslandGlass = React.memo(function IslandGlass({
   scheme,
   theme,
@@ -509,8 +514,10 @@ const IslandGlass = React.memo(function IslandGlass({
   scheme: ReturnType<typeof useTheme>['scheme'];
   theme: ReturnType<typeof useTheme>['theme'];
 }) {
-  // Android (no live blur): bump the fill opacity so the bar still reads as a
-  // solid frosted panel rather than a flat translucent sheet.
+  // Android (no live blur): render a balanced translucent vertical sheen (~58-76%
+  // alpha) with zero border so background imagery passes through cleanly without
+  // heavy whitewash in light mode or opaque dark slab in dark mode, while
+  // preserving icon and label contrast across bright and dark cards.
   const fillColor = USE_LIVE_BLUR
     ? scheme === 'dark'
       ? tokens.island.blurDark
@@ -519,29 +526,49 @@ const IslandGlass = React.memo(function IslandGlass({
       ? tokens.island.solidDark
       : tokens.island.solidLight;
 
+  const androidSheenColors =
+    scheme === 'dark' ? tokens.island.androidSheenDark : tokens.island.androidSheenLight;
+
   return (
     <>
       {USE_LIVE_BLUR ? (
-        <BlurView
-          tint={scheme === 'dark' ? 'dark' : 'light'}
-          // Strong intensity so the island reads as bold frosted glass (iOS only).
-          intensity={scheme === 'dark' ? 90 : 80}
-          style={[StyleSheet.absoluteFill, styles.navBlur]}
+        <>
+          <BlurView
+            tint={scheme === 'dark' ? 'dark' : 'light'}
+            // Strong intensity so the island reads as bold frosted glass (iOS only).
+            intensity={scheme === 'dark' ? 90 : 80}
+            style={[StyleSheet.absoluteFill, styles.navBlur]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              styles.navGlassFill,
+              {
+                backgroundColor: fillColor,
+                borderColor: theme.colors.glassBorder,
+                borderRadius: NATIVE_ISLAND_NAV.radius,
+              },
+            ]}
+          />
+        </>
+      ) : (
+        <ExpoLinearGradient
+          colors={androidSheenColors}
+          locations={ISLAND_SHEEN_LOCATIONS}
+          start={ISLAND_SHEEN_START}
+          end={ISLAND_SHEEN_END}
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            styles.navGlassFill,
+            {
+              borderColor: theme.colors.glassBorder,
+              borderRadius: NATIVE_ISLAND_NAV.radius,
+            },
+          ]}
         />
-      ) : null}
-      {/* Specular rim removed to eliminate top border artifact */}
-      <View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          styles.navGlassFill,
-          {
-            backgroundColor: fillColor,
-            borderColor: theme.colors.glassBorder,
-            borderRadius: NATIVE_ISLAND_NAV.radius,
-          },
-        ]}
-      />
+      )}
     </>
   );
 });
@@ -800,7 +827,7 @@ function NativeIslandBottomNavImpl({
             shadowColor: scheme === 'dark' ? tokens.island.shadowDark : tokens.island.shadowLight,
             shadowOpacity: scheme === 'dark' ? 0.85 : 0.22,
             shadowRadius: 36,
-            elevation: 20,
+            elevation: Platform.OS === 'android' ? (scheme === 'dark' ? 10 : 6) : 20,
           },
         ]}
       >

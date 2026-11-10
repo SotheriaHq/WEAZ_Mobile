@@ -32,7 +32,7 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("blurRadius") { view: WiezLiquidGlassLensView, blurRadius: Float? ->
-        view.setBlurRadius(blurRadius ?: 1.2f)
+        view.setBlurRadius(blurRadius ?: 0f)
       }
 
       Prop("refractionStrength") { view: WiezLiquidGlassLensView, refractionStrength: Float? ->
@@ -40,7 +40,7 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("chromaticAberration") { view: WiezLiquidGlassLensView, chromaticAberration: Float? ->
-        view.setChromaticAberration(chromaticAberration ?: 0.45f)
+        view.setChromaticAberration(chromaticAberration ?: 0f)
       }
 
       Prop("rimStrength") { view: WiezLiquidGlassLensView, rimStrength: Float? ->
@@ -56,7 +56,7 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("tintAlpha") { view: WiezLiquidGlassLensView, tintAlpha: Float? ->
-        view.setTintAlpha(tintAlpha ?: 0.035f)
+        view.setTintAlpha(tintAlpha ?: 0.02f)
       }
 
       Prop("fallbackColor") { view: WiezLiquidGlassLensView, fallbackColor: Int? ->

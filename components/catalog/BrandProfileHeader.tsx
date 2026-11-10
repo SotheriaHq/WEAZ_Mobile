@@ -7,6 +7,7 @@ import {
   useLiquidGlassBlurTarget,
 } from '@/components/ui/WiezLiquidGlass';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -209,11 +210,47 @@ function HeaderIconButton({
             style={styles.headerIconGlassSurface}
             contentStyle={styles.headerIconGlassContent}
           >
-            {/* `tone`, not a colour override: AppText owns colour, while subtle
-                text halo keeps high-contrast legibility across bright/dark banners. */}
-            <AppText variant="bodyReadable" tone="inverse" style={styles.headerIconGlassGlyph}>
-              {value}
-            </AppText>
+            {value === '⋯' ? (
+              <Svg
+                width={22}
+                height={10}
+                viewBox="0 0 22 10"
+                accessible={false}
+                importantForAccessibility="no"
+                pointerEvents="none"
+              >
+                <Circle
+                  cx={4.5}
+                  cy={5}
+                  r={2}
+                  fill={tokens.liquidGlass.menuGlyphFill}
+                  stroke={tokens.liquidGlass.menuGlyphStroke}
+                  strokeWidth={1.15}
+                />
+                <Circle
+                  cx={11}
+                  cy={5}
+                  r={2}
+                  fill={tokens.liquidGlass.menuGlyphFill}
+                  stroke={tokens.liquidGlass.menuGlyphStroke}
+                  strokeWidth={1.15}
+                />
+                <Circle
+                  cx={17.5}
+                  cy={5}
+                  r={2}
+                  fill={tokens.liquidGlass.menuGlyphFill}
+                  stroke={tokens.liquidGlass.menuGlyphStroke}
+                  strokeWidth={1.15}
+                />
+              </Svg>
+            ) : (
+              /* `tone`, not a colour override: AppText owns colour, while subtle
+                  text halo keeps high-contrast legibility across bright/dark banners. */
+              <AppText variant="bodyReadable" tone="inverse" style={styles.headerIconGlassGlyph}>
+                {value}
+              </AppText>
+            )}
             {badge}
           </WiezLiquidGlass>
         )
@@ -1186,9 +1223,9 @@ const styles = StyleSheet.create({
   },
   headerIconGlassGlyph: {
     textAlign: 'center',
-    textShadowColor: tokens.scrim(0.92),
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2.2,
+    textShadowColor: tokens.scrim(0.38),
+    textShadowOffset: { width: 0, height: 0.5 },
+    textShadowRadius: 1.5,
   },
   /* `fontStyle` is legal on AppText; size/weight/colour are not — those come
      from the `smallBold` variant. The old inline 10px size was also below

@@ -219,7 +219,7 @@ export const tokens = {
         // `navActiveSurface` at 0.9: the island behind it is frosted WHITE, so
         // the chip needs most of its weight to separate, and the remaining
         // tenth is what lets the blur through and keeps it glass.
-        navActiveGlass: 'rgba(228,210,250,0.90)',
+        navActiveGlass: 'rgba(228,210,250,0.72)',
         // Roughly a 3% purple over white at the top, clearing to plain surface.
         surfaceTintGradient: [
           '#ffffff',
@@ -483,8 +483,18 @@ export const tokens = {
   island: {
     blurDark: 'rgba(10,12,20,0.58)',
     blurLight: 'rgba(255,255,255,0.66)',
-    solidDark: 'rgba(14,16,24,0.92)',
-    solidLight: 'rgba(250,250,252,0.94)',
+    solidDark: 'rgba(12,14,22,0.62)',
+    androidSheenDark: [
+      'rgba(28,32,46,0.70)',
+      'rgba(12,14,22,0.58)',
+      'rgba(8,10,16,0.72)',
+    ] as readonly [string, string, string],
+    solidLight: 'rgba(248,250,255,0.64)',
+    androidSheenLight: [
+      'rgba(255,255,255,0.76)',
+      'rgba(248,250,255,0.60)',
+      'rgba(245,247,252,0.72)',
+    ] as readonly [string, string, string],
     shadowDark: '#000000',
     shadowLight: 'rgba(15, 23, 42, 0.14)',
     specularRimDark: 'transparent',
@@ -497,38 +507,41 @@ export const tokens = {
    * Clear optical Liquid Glass material tokens for media overlays and glass controls.
    *
    * Tuned separately from opaque frosted chrome (`glassSurfaceStrong` / `island`)
-   * so background photography transmits with 90%+ optical clarity in both light
-   * and dark schemes without metallic bezels, charcoal dimming, or milky haze.
+   * so background photography transmits with 94%+ center optical clarity, zero
+   * center blur, zero chromatic fringing, and subtle luminance-aware Fresnel
+   * edges across both light and dark themes.
    */
   liquidGlass: {
+    menuGlyphFill: '#FFFFFF',
+    menuGlyphStroke: 'rgba(15,20,30,0.82)',
     light: {
       transmission: {
         lightweight: {
-          subtle: 'rgba(255,255,255,0.05)',
-          regular: 'rgba(255,255,255,0.08)',
-          prominent: 'rgba(255,255,255,0.12)',
+          subtle: 'rgba(255,255,255,0.045)',
+          regular: 'rgba(255,255,255,0.07)',
+          prominent: 'rgba(255,255,255,0.10)',
         },
         enhanced: {
-          subtle: 'rgba(255,255,255,0.02)',
-          regular: 'rgba(255,255,255,0.035)',
-          prominent: 'rgba(255,255,255,0.06)',
+          subtle: 'rgba(255,255,255,0.015)',
+          regular: 'rgba(255,255,255,0.02)',
+          prominent: 'rgba(255,255,255,0.04)',
         },
       },
       tintHex: '#FFFFFF',
       tintAlpha: {
-        subtle: 0.02,
-        regular: 0.035,
-        prominent: 0.06,
+        subtle: 0.015,
+        regular: 0.02,
+        prominent: 0.04,
       },
       opticalBlurDp: {
-        subtle: 0.85,
-        regular: 1.2,
-        prominent: 1.75,
+        subtle: 0,
+        regular: 0,
+        prominent: 0,
       },
       pressedOverlay: 'rgba(255,255,255,0.12)',
       outerFresnelHex: '#0F141E',
-      outerFresnelOpacity: 0.06,
-      outerFresnelStroke: 'rgba(15,20,30,0.06)',
+      outerFresnelOpacity: 0.16,
+      outerFresnelStroke: 'rgba(15,20,30,0.16)',
       specularHex: '#FFFFFF',
       rimStops: [
         { offset: '0%', opacity: 0.56 },
@@ -538,15 +551,15 @@ export const tokens = {
         { offset: '100%', opacity: 0.30 },
       ] as const,
       reflectionColors: [
-        'rgba(255,255,255,0.20)',
-        'rgba(255,255,255,0.04)',
+        'rgba(255,255,255,0.18)',
+        'rgba(255,255,255,0.03)',
         'rgba(255,255,255,0)',
       ] as readonly [string, string, string],
       depthColors: [
-        'rgba(255,255,255,0.03)',
+        'rgba(255,255,255,0.02)',
         'rgba(15,20,30,0)',
         'rgba(15,20,30,0)',
-        'rgba(15,20,30,0.02)',
+        'rgba(15,20,30,0.015)',
       ] as readonly [string, string, string, string],
       shadowColor: 'rgba(15,20,30,0.14)',
       blurTint: 'default' as const,
@@ -560,31 +573,31 @@ export const tokens = {
     dark: {
       transmission: {
         lightweight: {
-          subtle: 'rgba(15,20,30,0.06)',
-          regular: 'rgba(15,20,30,0.10)',
-          prominent: 'rgba(15,20,30,0.14)',
+          subtle: 'rgba(15,20,30,0.05)',
+          regular: 'rgba(15,20,30,0.085)',
+          prominent: 'rgba(15,20,30,0.12)',
         },
         enhanced: {
-          subtle: 'rgba(15,20,30,0.03)',
-          regular: 'rgba(15,20,30,0.055)',
-          prominent: 'rgba(15,20,30,0.085)',
+          subtle: 'rgba(15,20,30,0.02)',
+          regular: 'rgba(15,20,30,0.03)',
+          prominent: 'rgba(15,20,30,0.055)',
         },
       },
       tintHex: '#10141E',
       tintAlpha: {
-        subtle: 0.03,
-        regular: 0.055,
-        prominent: 0.085,
+        subtle: 0.02,
+        regular: 0.03,
+        prominent: 0.055,
       },
       opticalBlurDp: {
-        subtle: 0.85,
-        regular: 1.2,
-        prominent: 1.75,
+        subtle: 0,
+        regular: 0,
+        prominent: 0,
       },
       pressedOverlay: 'rgba(255,255,255,0.11)',
       outerFresnelHex: '#FFFFFF',
-      outerFresnelOpacity: 0.08,
-      outerFresnelStroke: 'rgba(255,255,255,0.08)',
+      outerFresnelOpacity: 0.14,
+      outerFresnelStroke: 'rgba(255,255,255,0.14)',
       specularHex: '#FFFFFF',
       rimStops: [
         { offset: '0%', opacity: 0.48 },
@@ -594,15 +607,15 @@ export const tokens = {
         { offset: '100%', opacity: 0.24 },
       ] as const,
       reflectionColors: [
-        'rgba(255,255,255,0.15)',
-        'rgba(255,255,255,0.03)',
+        'rgba(255,255,255,0.14)',
+        'rgba(255,255,255,0.02)',
         'rgba(255,255,255,0)',
       ] as readonly [string, string, string],
       depthColors: [
         'rgba(255,255,255,0.02)',
         'rgba(15,20,30,0)',
         'rgba(15,20,30,0)',
-        'rgba(0,0,0,0.03)',
+        'rgba(0,0,0,0.025)',
       ] as readonly [string, string, string, string],
       shadowColor: 'rgba(0,0,0,0.28)',
       blurTint: 'systemUltraThinMaterialDark' as const,

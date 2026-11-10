@@ -83,15 +83,16 @@ half4 main(float2 fragCoord) {
   float centerFade = smoothstep(0.0, max(min(halfSize.x, halfSize.y) * 0.14, 1.0), radialLen);
   normal *= centerFade;
 
+  // Restrict curved meniscus strictly to the outer ~33% perimeter so the
+  // central ~67% window stays 1:1 undistorted and optically crystal clear.
   float inward = max(0.0, -sdf);
   float minHalf = min(halfSize.x, halfSize.y);
-  float bezelWidth = clamp(minHalf * 0.44, density * 8.0, density * 22.0);
+  float bezelWidth = clamp(minHalf * 0.33, density * 5.0, density * 14.0);
   float edgeT = clamp(1.0 - inward / max(bezelWidth, 1.0), 0.0, 1.0);
-  float meniscus = edgeT > 0.0 ? pow(edgeT, 1.85) : 0.0;
+  float meniscus = edgeT > 0.0 ? pow(edgeT, 2.2) : 0.0;
 
-  float edgeShiftPx = min(bezelWidth * 0.62, density * 6.0) * refractStr * meniscus;
-  float2 corePull = (-p / max(minHalf, 1.0)) * (density * 1.45 * refractStr * (1.0 - meniscus * 0.65));
-  float2 displaced = fragCoord + normal * edgeShiftPx + corePull;
+  float edgeShiftPx = min(bezelWidth * 0.64, density * 5.4) * refractStr * meniscus;
+  float2 displaced = fragCoord + normal * edgeShiftPx;
 
   float2 posG = clampSample(displaced);
   float disp = chromaPx * refractStr * meniscus;
@@ -110,33 +111,41 @@ half4 main(float2 fragCoord) {
   half alpha = max(baseColor.a, 0.001h);
   half3 rgb = clamp(baseColor.rgb / alpha, half3(0.0h), half3(1.0h));
 
-  half effectiveTintAlpha = half(uTintColor.a);
-  rgb = mix(rgb, half3(uTintColor.rgb), clamp(effectiveTintAlpha, 0.0h, 0.25h));
+  // Sampled background luminance keeps perimeter crisp over white banners without dark fill
+  float bgLuma = clamp(float(dot(rgb, half3(0.299h, 0.587h, 0.114h))), 0.0, 1.0);
+  float brightBg = smoothstep(0.55, 0.94, bgLuma);
+
+  half effectiveTintAlpha = clamp(half(uTintColor.a), 0.0h, 0.18h) + half(edgeT * 0.015);
+  rgb = mix(rgb, half3(uTintColor.rgb), effectiveTintAlpha);
   if (pressed > 0.5) {
-    rgb = mix(rgb, half3(1.0h, 1.0h, 1.0h), 0.09h);
+    rgb = mix(rgb, half3(1.0h, 1.0h, 1.0h), 0.08h);
   }
 
   float2 lightDir = float2(-0.622, -0.783);
   float facing = dot(normal, lightDir);
 
-  float rimPx = max(density * 1.05, 1.5);
+  float rimPx = max(density * 0.95, 1.4);
   float rimMask = 1.0 - smoothstep(0.0, rimPx, inward);
-  float topLeftArc = facing > 0.0 ? pow(facing, 1.55) : 0.0;
-  float bottomRightCaustic = facing < 0.0 ? pow(-facing, 2.35) * 0.44 : 0.0;
-  float floorRim = isDark > 0.5 ? 0.05 : 0.06;
+  float topLeftArc = facing > 0.0 ? pow(facing, 1.85) : 0.0;
+  float bottomRightCaustic = facing < 0.0 ? pow(-facing, 2.55) * 0.38 : 0.0;
+  float floorRim = isDark > 0.5 ? 0.03 : 0.035;
   float pressBoost = 1.0 + pressed * 0.22;
-  float rimWhite = clamp((floorRim + topLeftArc * (isDark > 0.5 ? 0.46 : 0.56) + bottomRightCaustic * 0.42) * rimStr * pressBoost, 0.0, 0.72);
-  rgb = mix(rgb, half3(1.0h, 1.0h, 1.0h), half(rimMask * rimWhite));
+  float rimWhite = clamp((floorRim + topLeftArc * (isDark > 0.5 ? 0.44 : 0.52) + bottomRightCaustic * 0.36) * rimStr * pressBoost, 0.0, 0.68);
+  float whiteRimAtten = mix(1.0, 0.62, brightBg);
+  rgb = mix(rgb, half3(1.0h, 1.0h, 1.0h), half(rimMask * rimWhite * whiteRimAtten));
 
-  if (isDark < 0.5 && rimStr > 0.01) {
-    float outerEdgeMask = 1.0 - smoothstep(0.0, max(density * 0.55, 0.8), inward);
-    rgb = mix(rgb, half3(0.06h, 0.08h, 0.12h), half(outerEdgeMask * 0.065 * min(rimStr, 1.0)));
+  if (rimStr > 0.01) {
+    float outerEdgeMask = 1.0 - smoothstep(0.0, max(density * 0.72, 1.1), inward);
+    float outerOpacity = mix(0.085, 0.19, brightBg) * min(rimStr, 1.0);
+    rgb = mix(rgb, half3(0.07h, 0.09h, 0.15h), half(outerEdgeMask * outerOpacity));
   }
 
-  float glossBand = 1.0 - smoothstep(density * 0.9, density * 8.2, inward);
-  float glossDir = facing > 0.0 ? pow(facing, 2.8) : 0.0;
-  float glossAlpha = glossBand * glossDir * (isDark > 0.5 ? 0.14 : 0.185) * reflStr;
-  rgb = mix(rgb, half3(1.0h, 1.0h, 1.0h), half(clamp(glossAlpha, 0.0, 0.28)));
+  // Confined rim gloss strictly on the outer bevel, leaving central 80%+ optically untouched
+  float innerRimMask = smoothstep(0.0, max(density * 0.35, 0.6), inward);
+  float glossBand = (1.0 - smoothstep(density * 0.65, density * 4.2, inward)) * innerRimMask;
+  float glossDir = facing > 0.0 ? pow(facing, 3.0) : 0.0;
+  float glossAlpha = glossBand * glossDir * (isDark > 0.5 ? 0.11 : 0.135) * reflStr * mix(1.0, 0.45, brightBg);
+  rgb = mix(rgb, half3(1.0h, 1.0h, 1.0h), half(clamp(glossAlpha, 0.0, 0.20)));
 
   return half4(clamp(rgb, half3(0.0h), half3(1.0h)), 1.0h);
 }

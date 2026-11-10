@@ -184,6 +184,7 @@ function createHarness() {
           G: (props) => React.createElement('SvgG', props, props.children),
           LinearGradient: (props) =>
             React.createElement('SvgLinearGradient', props, props.children),
+          Circle: (props) => React.createElement('SvgCircle', props, props.children),
           Rect: (props) => React.createElement('SvgRect', props, props.children),
           Stop: (props) => React.createElement('SvgStop', props, props.children),
         };
@@ -353,8 +354,34 @@ async function runTests() {
       `Light enhanced ${preset} tint (${lightEnh}) must preserve >= 93% transmission`,
     );
     assert.ok(
-      darkEnh >= 0.025 && darkEnh <= 0.09,
+      darkEnh >= 0.02 && darkEnh <= 0.09,
       `Dark enhanced ${preset} tint (${darkEnh}) must preserve >= 91% transmission without dark mud`,
+    );
+    assert.equal(
+      tokens.liquidGlass.light.opticalBlurDp[preset],
+      0,
+      `Light opticalBlurDp.${preset} must stay 0 for crystal-clear center transmission`,
+    );
+    assert.equal(
+      tokens.liquidGlass.dark.opticalBlurDp[preset],
+      0,
+      `Dark opticalBlurDp.${preset} must stay 0 for crystal-clear center transmission`,
+    );
+  }
+
+  // Menu three-dot glyph contrast envelope & Android Island balanced sheen
+  assert.equal(tokens.liquidGlass.menuGlyphFill, '#FFFFFF');
+  assert.ok(
+    parseRgbaAlpha(tokens.liquidGlass.menuGlyphStroke) >= 0.75,
+    'Three-dot glyph outer contrast stroke must stay legible over white banners',
+  );
+  for (const sheenKey of ['androidSheenLight', 'androidSheenDark']) {
+    const stops = tokens.island[sheenKey];
+    assert.equal(stops.length, 3, `${sheenKey} must have 3 vertical sheen stops`);
+    const midAlpha = parseRgbaAlpha(stops[1]);
+    assert.ok(
+      midAlpha >= 0.55 && midAlpha <= 0.65,
+      `${sheenKey} center stop (${midAlpha}) must preserve open background visibility while protecting label contrast`,
     );
   }
 
@@ -580,10 +607,36 @@ async function runTests() {
     assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0, 'API 33+ AGSL composites reflection without haze layers');
     assert.ok(lenses[0].props.targetViewId > 0, 'Native lens must receive valid targetViewId handle');
     assert.ok(lenses[0].props.refractionStrength > 0.7, 'AGSL lens enables optical refraction by default');
+    assert.equal(lenses[0].props.blurRadius, 0, 'API 33+ lens must have 0dp center Gaussian blur');
+    assert.equal(lenses[0].props.chromaticAberration, 0, 'Chromatic aberration must stay disabled (0)');
     assert.equal(lenses[0].props.isDark, true);
     assert.equal(lenses[0].props.pressed, true);
     assert.ok(lenses[0].props.tintAlpha <= 0.06, 'Dark-theme native tint must remain crystal sheer');
     await renderer.act(async () => tree.unmount());
+  }
+
+  // Verify Kotlin/AGSL optical shader invariants (0.33 outer meniscus, C1 pow(edgeT,2.2), brightBg Fresnel)
+  {
+    const rendererSource = fs.readFileSync(
+      path.join(
+        ROOT,
+        'modules',
+        'wiez-liquid-glass',
+        'android',
+        'src',
+        'main',
+        'java',
+        'expo',
+        'modules',
+        'wiezliquidglass',
+        'LiquidGlassRenderers.kt',
+      ),
+      'utf8',
+    );
+    assert.match(rendererSource, /minHalf \* 0\.33/, 'Meniscus width must remain confined to ~33% perimeter');
+    assert.match(rendererSource, /pow\(edgeT,\s*2\.2\)/, 'Meniscus transition must use smooth pow(edgeT, 2.2) curve');
+    assert.doesNotMatch(rendererSource, /corePull/, 'Central optical core must have zero displacement/pull');
+    assert.match(rendererSource, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
   }
 
   // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)
@@ -718,6 +771,14 @@ async function runTests() {
       1,
       'Catalog menu control must mount hardware WiezLiquidGlassLensView on Android API 36',
     );
+    const menuDots = collectNodes(menuBtn, (n) => n.type === 'SvgCircle');
+    assert.equal(
+      menuDots.length,
+      3,
+      `Catalog three-dot menu icon must render 3 outlined vector dots for bright/dark banner contrast in ${scheme} theme`,
+    );
+    assert.equal(menuDots[0].props.fill, tokens.liquidGlass.menuGlyphFill);
+    assert.equal(menuDots[0].props.stroke, tokens.liquidGlass.menuGlyphStroke);
     assert.equal(
       collectNodes(notifBtn, (n) => n.type === 'AppText' && n.children?.join('') === '5').length,
       1,
@@ -791,6 +852,7 @@ async function runTests() {
     )[0];
     assert.equal(collectNodes(searchBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 1);
     assert.equal(collectNodes(shareBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 1);
+    assert.equal(collectNodes(shareBtn, (n) => n.type === 'SvgCircle').length, 3);
     await renderer.act(async () => {
       searchBtn.props.onPress();
       shareBtn.props.onPress();
@@ -800,7 +862,7 @@ async function runTests() {
     await renderer.act(async () => tree.unmount());
   }
 
-  // ── 6. Phase 1 Boundary: NativeIslandBottomNav untouched ───────────────────
+  // ── 6. Phase 1 Boundary: NativeIslandBottomNav stays free of backdrop-capture migration ──
   const islandSource = fs.readFileSync(
     path.join(ROOT, 'components', 'navigation', 'NativeIslandBottomNav.tsx'),
     'utf8',
@@ -809,6 +871,16 @@ async function runTests() {
     islandSource,
     /const USE_LIVE_BLUR = Platform\.OS === 'ios';/,
     'Phase 1 must not migrate NativeIslandBottomNav or alter its USE_LIVE_BLUR gate',
+  );
+  assert.doesNotMatch(
+    islandSource,
+    /WiezLiquidGlass/,
+    'NativeIslandBottomNav must NOT migrate to full-screen backdrop capture or WiezLiquidGlass in this scoped pass',
+  );
+  assert.match(
+    islandSource,
+    /androidSheenDark/,
+    'NativeIslandBottomNav Android surface must use balanced tokens.island.androidSheen*',
   );
 
   console.log(

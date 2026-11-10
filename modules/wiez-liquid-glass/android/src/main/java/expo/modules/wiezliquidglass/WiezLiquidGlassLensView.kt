@@ -20,9 +20,9 @@ import kotlin.math.min
 /**
  * Hardware-accelerated Android optical Liquid Glass surface.
  *
- * - API 33+: Noise-free micro blur (RenderEffect) + AGSL RuntimeShader edge refraction,
- *   chromatic edge dispersion, sheer tint, and directional specular rim lighting.
- * - API 31-32: Noise-free RenderEffect blur over an offscreen RenderNode (no stipple grain
+ * - API 33+: Crisp zero-center-blur AGSL RuntimeShader lens with localized outer-meniscus
+ *   refraction (~33% perimeter), sheer optical tint, and luminance-aware Fresnel rim lighting.
+ * - API 31-32: Clean RenderEffect lens over an offscreen RenderNode (no stipple grain
  *   or opaque TintStyle grey fill), paired with JS SVG specular rim lighting.
  * - Idle frames replay the cached GPU RenderNode without re-recording the backdrop tree;
  *   re-capture occurs only when backdrop visuals invalidate or relative geometry shifts.
@@ -38,13 +38,13 @@ class WiezLiquidGlassLensView(
   private var registeredBackdropRef: WeakReference<WiezLiquidGlassBackdropView>? = null
 
   private var cornerRadiusDp: Float = 999f
-  private var blurRadiusDp: Float = 1.2f
+  private var blurRadiusDp: Float = 0f
   private var refractionStrength: Float = 0.85f
-  private var chromaticAberration: Float = 0.45f
+  private var chromaticAberration: Float = 0f
   private var rimStrength: Float = 1.0f
   private var reflectionStrength: Float = 1.0f
   private var tintColorArgb: Int = Color.WHITE
-  private var tintAlpha: Float = 0.035f
+  private var tintAlpha: Float = 0.02f
   private var fallbackColorArgb: Int = Color.TRANSPARENT
   private var isDark: Boolean = false
   private var pressedState: Boolean = false

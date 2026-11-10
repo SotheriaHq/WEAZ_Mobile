@@ -201,12 +201,12 @@ function resolveTransmissionColor(
 
   const normalized = clamp(intensity, 0, 1);
   if (scheme === 'dark') {
-    const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.03, 0.085] : [0.06, 0.14];
+    const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.025, 0.06] : [0.06, 0.14];
     const alpha = Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
     return tokens.liquidGlass.tintForScheme('dark', alpha);
   }
 
-  const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.02, 0.06] : [0.05, 0.12];
+  const [minAlpha, maxAlpha] = liveBlurEnabled ? [0.015, 0.04] : [0.05, 0.12];
   const alpha = Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
   return tokens.liquidGlass.tintForScheme('light', alpha);
 }
@@ -217,7 +217,7 @@ function resolveTintAlpha(scheme: ThemeScheme, intensity: WiezLiquidGlassIntensi
     return palette.tintAlpha[intensity] ?? palette.tintAlpha.regular;
   }
   const normalized = clamp(intensity, 0, 1);
-  const [minAlpha, maxAlpha] = scheme === 'dark' ? [0.03, 0.085] : [0.02, 0.06];
+  const [minAlpha, maxAlpha] = scheme === 'dark' ? [0.025, 0.06] : [0.015, 0.04];
   return Math.round((minAlpha + (maxAlpha - minAlpha) * normalized) * 1000) / 1000;
 }
 
@@ -229,8 +229,7 @@ function resolveOpticalBlurDp(
   if (typeof intensity === 'string') {
     return palette.opticalBlurDp[intensity] ?? palette.opticalBlurDp.regular;
   }
-  const normalized = clamp(intensity, 0, 1);
-  return Math.round((0.85 + normalized * 0.9) * 100) / 100;
+  return 0;
 }
 
 function resolveIosBlurIntensity(
@@ -257,12 +256,12 @@ function resolveRefractionAmount(intensity: WiezLiquidGlassIntensity): number {
 /**
  * Shared WIEZ Liquid Glass optical material primitive.
  *
- * Prioritizes clear background transmission and optical clarity across light and dark
+ * Prioritizes optically clear background transmission across light and dark
  * themes. On Android API 33+ in `enhanced` mode, performs a single-pass hardware
- * RenderNode + micro-blur + AGSL edge meniscus refraction, edge dispersion, sheer tint,
- * and hairline directional rim highlight. On Android API 31-32 provides clean
- * noise-free RenderEffect blur paired with hairline SVG rim lighting, and on older API
- * levels or `lightweight` mode degrades cleanly without opaque grey overlays or heavy rims.
+ * RenderNode + AGSL localized outer-meniscus refraction (~33% perimeter), 0dp center
+ * blur, zero chromatic aberration, sheer tint, and luminance-aware Fresnel edge lighting.
+ * On Android API 31-32 provides clean RenderEffect pass paired with hairline SVG rim lighting,
+ * and on older API levels or `lightweight` mode degrades cleanly without opaque grey overlays.
  */
 export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   children,
@@ -405,9 +404,9 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
           <NativeLensView
             targetViewId={androidTargetHandle ?? undefined}
             cornerRadius={clampedBorderRadius}
-            blurRadius={opticalBlurDp}
+            blurRadius={androidAgslActive ? 0 : opticalBlurDp}
             refractionStrength={androidAgslActive && refraction ? refractionAmount : 0}
-            chromaticAberration={androidAgslActive && refraction ? 0.45 : 0}
+            chromaticAberration={0}
             rimStrength={highlightScalar}
             reflectionStrength={highlightScalar}
             tintColor={tintColorInt}
