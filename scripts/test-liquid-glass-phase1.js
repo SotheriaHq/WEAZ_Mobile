@@ -615,7 +615,7 @@ async function runTests() {
     await renderer.act(async () => tree.unmount());
   }
 
-  // Verify Kotlin/AGSL optical shader invariants (0.33 outer meniscus, C1 pow(edgeT,2.2), brightBg Fresnel)
+  // Verify Kotlin/AGSL optical shader invariants (0.33 outer meniscus, C1 pow(edgeT,1.50), brightBg Fresnel, no wireframe outerEdgeMask)
   {
     const rendererSource = fs.readFileSync(
       path.join(
@@ -634,9 +634,11 @@ async function runTests() {
       'utf8',
     );
     assert.match(rendererSource, /minHalf \* 0\.33/, 'Meniscus width must remain confined to ~33% perimeter');
-    assert.match(rendererSource, /pow\(edgeT,\s*2\.2\)/, 'Meniscus transition must use smooth pow(edgeT, 2.2) curve');
+    assert.match(rendererSource, /pow\(edgeT,\s*1\.50\)/, 'Meniscus transition must use smooth pow(edgeT, 1.50) curve');
     assert.doesNotMatch(rendererSource, /corePull/, 'Central optical core must have zero displacement/pull');
+    assert.doesNotMatch(rendererSource, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
     assert.match(rendererSource, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
+    assert.match(rendererSource, /bevelShadeCurve/, 'Bright backdrops must use soft beveled edge depth rather than a 1px dark ring');
   }
 
   // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)
