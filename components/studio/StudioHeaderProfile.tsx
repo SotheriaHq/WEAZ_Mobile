@@ -12,7 +12,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { drillDownPush } from '@/src/utils/mobileNavigation';
-import { canReadPayouts, getActiveBrandId, isBrandOwner } from '@/src/auth/brandAccess';
+import { getActiveBrandId } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -112,8 +112,6 @@ export function StudioProfileMenu({
   onOpenProfile,
   onOpenNotifications,
   onOpenOrders,
-  onOpenFinance,
-  onOpenStaff,
   onOpenHelp,
   onSignOut,
 }: {
@@ -125,8 +123,6 @@ export function StudioProfileMenu({
   onOpenProfile: () => void;
   onOpenNotifications: () => void;
   onOpenOrders: () => void;
-  onOpenFinance: () => void;
-  onOpenStaff: () => void;
   onOpenHelp: () => void;
   onSignOut: () => void;
 }) {
@@ -149,10 +145,13 @@ export function StudioProfileMenu({
   // `getProfileMenuWidth`.
   const menuWidth = getProfileMenuWidth(width);
   const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
-  const activeBrandId = getActiveBrandId(user);
-  const owner = isBrandOwner(user, activeBrandId);
-  const payoutsReadable = canReadPayouts(user, activeBrandId);
-
+  /*
+    Account destinations only. A link the Studio island already carries is not
+    repeated here (owner, Nov 2026: "the staff link should be removed. any link
+    already on the studio island should not have to be repeated on the
+    dropdown"), so Finance — an island chip — and Staff are gone. "My Orders"
+    stays: it is the brand's own purchases, not the Studio's Orders chip.
+  */
   const items: StudioMenuItem[] = [
     {
       key: 'profile',
@@ -172,26 +171,6 @@ export function StudioProfileMenu({
       label: 'My Orders',
       onPress: onOpenOrders,
     },
-    ...(payoutsReadable
-      ? [
-          {
-            key: 'finance',
-            emoji: '💰',
-            label: 'Finance',
-            onPress: onOpenFinance,
-          },
-        ]
-      : []),
-    ...(owner
-      ? [
-          {
-            key: 'staff',
-            emoji: '👥',
-            label: 'Staff',
-            onPress: onOpenStaff,
-          },
-        ]
-      : []),
     {
       key: 'help',
       emoji: '🆘',
@@ -300,11 +279,9 @@ export function StudioProfileMenu({
  * The destinations behind this menu are the same wherever it is opened from, so
  * they live here rather than being re-declared per screen — that duplication is
  * how Finance and Staff ended up with no menu at all. A screen that needs
- * different behaviour for one entry (the WebView keeps Staff in-place, to avoid
- * tearing down its warm session) overrides just that one.
+ * different behaviour for one entry overrides just that one.
  */
 export function useStudioProfileMenu(overrides?: {
-  onOpenStaff?: () => void;
   onOpenSearch?: () => void;
 }) {
   const { user, signOut } = useAuth();
@@ -329,21 +306,6 @@ export function useStudioProfileMenu(overrides?: {
     setVisible(false);
     drillDownPush('/orders' as any);
   }, []);
-
-  const openFinance = useCallback(() => {
-    setVisible(false);
-    drillDownPush('/studio/finance' as any);
-  }, []);
-
-  const overrideStaff = overrides?.onOpenStaff;
-  const openStaff = useCallback(() => {
-    setVisible(false);
-    if (overrideStaff) {
-      overrideStaff();
-      return;
-    }
-    drillDownPush({ pathname: '/studio', params: { routeKey: 'staff' } } as any);
-  }, [overrideStaff]);
 
   const overrideSearch = overrides?.onOpenSearch;
   const openSearch = useCallback(() => {
@@ -376,8 +338,6 @@ export function useStudioProfileMenu(overrides?: {
     openProfile,
     openNotifications,
     openOrders,
-    openFinance,
-    openStaff,
     openHelp,
     handleSignOut,
   };

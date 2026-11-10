@@ -111,10 +111,12 @@ function main() {
     /KeyboardAwareFormScroll/,
     'composer form must use the design-system keyboard-aware scroll owner',
   );
-  assert.match(
+  // The actions end the form instead of riding a pinned footer, so they never
+  // sit on a typed field and draw no band under themselves (owner, Nov 2026).
+  assert.doesNotMatch(
     composer,
     /KeyboardStickyFooter/,
-    'composer sticky actions must lift with the keyboard',
+    'composer actions are part of the form, not a pinned footer',
   );
   assert.match(
     composer,

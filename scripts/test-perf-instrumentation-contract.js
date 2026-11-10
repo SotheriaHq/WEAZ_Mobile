@@ -272,9 +272,18 @@ check(
   // then indicator and screen" latency (2026-10-19).
   'hidden tabs are never suspended (no react-freeze, no display:none teardown)',
   !/from 'react-freeze'/.test(freezeSource) &&
-    /export function freezeHiddenTabLayout\(\{ children \}: TabLayoutArgs\) \{\s*return children;/.test(
+    !/Suspense|display:\s*'none'/.test(freezeSource.slice(freezeSource.indexOf('import type React'))) &&
+    /export function freezeHiddenTabLayout\(\{ children \}: TabLayoutArgs\) \{\s*return <ThemeDeferredWhileHidden>\{children\}<\/ThemeDeferredWhileHidden>;/.test(
       freezeSource,
     ),
+);
+check(
+  // Owner, Nov 2026: "the theme change is still not instant". Every mounted
+  // tab repainted before the visible screen could; now hidden tabs follow.
+  'a theme change repaints the screen on display first; hidden tabs follow deferred',
+  /<DeferredThemeScope deferred=\{!focused\}>/.test(freezeSource) &&
+    /React\.useDeferredValue\(parent\)/.test(read('src/theme/ThemeProvider.tsx')) &&
+    !/React\.startTransition\(\(\) => \{\s*setModeState/.test(read('src/theme/ThemeProvider.tsx')),
 );
 check(
   'the Studio stack does not freeze the WebView under Finance/Staff',

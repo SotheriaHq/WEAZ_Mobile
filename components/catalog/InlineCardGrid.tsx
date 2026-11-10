@@ -1,6 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, View, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
 
+import { tokens } from '@/src/styles/tokens';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
+
 /**
  * A two-column card grid whose height stops growing.
  *
@@ -55,6 +58,31 @@ export function cappedGridHeight(args: {
   return Math.round(cardHeight * visibleRows + rowGap * Math.floor(visibleRows) + paddingVertical);
 }
 
+/**
+ * The capped area must fit in the part of the screen nothing floats over.
+ *
+ * Two and a half rows of full-size cards is about 850pt — nearly the whole
+ * phone. So while scrolling inside the grid its bottom row sat under the
+ * floating island, and the last cards could only be seen by scrolling the
+ * page out of the grid (owner, Nov 2026: "i had to extra scroll out of it to
+ * see the complete part of the bottom cards"). The area is now never taller
+ * than the space between the status bar and the island, so with the grid in
+ * view its last row clears the island.
+ */
+export function fitGridHeightToViewport(args: {
+  height: number;
+  windowHeight: number;
+  topInset: number;
+  bottomClearance: number;
+  margin: number;
+}): number {
+  const { height, windowHeight, topInset, bottomClearance, margin } = args;
+  const available = Math.round(windowHeight - topInset - bottomClearance - margin);
+  // A degenerate window (zero before layout) must not collapse the grid.
+  if (available <= 0) return height;
+  return Math.min(height, available);
+}
+
 export function InlineCardGrid<T>({
   items,
   keyOf,
@@ -70,6 +98,7 @@ export function InlineCardGrid<T>({
   accessibilityLabel,
 }: InlineCardGridProps<T>) {
   const capped = shouldCapGridHeight(items.length, inlineAfter);
+  const { windowHeight, insets, standardScreenBottomPadding } = useScreenChrome();
   const [cardHeight, setCardHeight] = useState<number | null>(null);
   const onFirstCardLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.round(event.nativeEvent.layout.height);
@@ -100,11 +129,17 @@ export function InlineCardGrid<T>({
     );
   }
 
-  const height = cappedGridHeight({
-    cardHeight: cardHeight ?? estimatedCardHeight ?? Math.round(gridCardWidth * 1.6),
-    rowGap,
-    visibleRows,
-    paddingVertical,
+  const height = fitGridHeightToViewport({
+    height: cappedGridHeight({
+      cardHeight: cardHeight ?? estimatedCardHeight ?? Math.round(gridCardWidth * 1.6),
+      rowGap,
+      visibleRows,
+      paddingVertical,
+    }),
+    windowHeight,
+    topInset: insets.top,
+    bottomClearance: standardScreenBottomPadding,
+    margin: tokens.spacing.lg,
   });
 
   return (

@@ -2347,7 +2347,7 @@ export default function CatalogScreen() {
                 key: 'store-setup',
                 icon: '🏗️',
                 title: 'Set up store',
-                onPress: () => drillDownPush({ pathname: '/studio', params: { routeKey: 'essentials' } } as any),
+                onPress: () => drillDownPush({ pathname: '/studio', params: { routeKey: 'essentials', from: 'catalog' } } as any),
               }
             : { key: 'store', icon: '🛍️', title: 'Store', onPress: () => drillDownPush('/studio' as any) };
 
@@ -2668,7 +2668,7 @@ export default function CatalogScreen() {
               <StoreSetupRequiredNotice
                 emailVerified={userEmailVerified !== false}
                 onStartSetup={() =>
-                  drillDownPush({ pathname: '/studio', params: { routeKey: 'essentials' } } as any)
+                  drillDownPush({ pathname: '/studio', params: { routeKey: 'essentials', from: 'catalog' } } as any)
                 }
               />
             ) : shouldMountShopTab && containerWidth > 0 && targetBrandId ? (

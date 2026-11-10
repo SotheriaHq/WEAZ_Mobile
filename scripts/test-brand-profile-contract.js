@@ -486,6 +486,16 @@ async function main() {
     'the held profile must still be gated, or another brand leaks across a param change',
   );
 
+  // One "Pending", not two (owner, Nov 2026: "two buttons or links under the
+  // location that reads pending"): a store held for verification and a
+  // verification under review are the same fact.
+  const pendingBadgeSource = fs.readFileSync(path.join(repoRoot, 'components', 'catalog', 'ProfileBadge.tsx'), 'utf8');
+  assert.match(
+    pendingBadgeSource,
+    /if \(storeStatus && !badges\.some\(\(badge\) => badge\.variant === storeStatus\.variant\)\) \{\s*badges\.push\(storeStatus\);/,
+    'the store status badge is not pushed when that variant is already there',
+  );
+
   console.log('Brand profile contract tests passed.');
 }
 
