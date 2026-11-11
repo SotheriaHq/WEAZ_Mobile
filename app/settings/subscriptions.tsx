@@ -34,6 +34,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { tokens } from '@/src/styles/tokens';
 import { LEGAL_PAGE_VERSION } from '@/src/legal/legalDocuments';
+import { getLegalVersions } from '@/src/api/LegalApi';
+import { planNotice, type PlanNotice } from '@/src/features/subscriptions/planNotice';
 import { env } from '@/src/config/env';
 import { subscriptionQuoteRemainingMs } from '@/src/api/subscriptionQuote';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
@@ -178,6 +180,22 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
     enabled: owner,
   });
 
+  /*
+    Consent names, and checkout sends, the Payment Policy version the server
+    enforces (as signup and card checkout already do), so an app built before
+    a policy update can still subscribe. The bundled version is the fallback.
+  */
+  const legalVersions = useQuery({
+    queryKey: ['legal-versions'],
+    queryFn: () => getLegalVersions(),
+    enabled: owner,
+    staleTime: 5 * 60_000,
+  });
+  const paymentLegalVersion =
+    legalVersions.data?.documents.find(
+      (document) => document.key === 'PAYMENT_POLICY',
+    )?.version ?? LEGAL_PAGE_VERSION;
+
   const [tab, setTab] = useState<
     'plans' | 'payments' | 'history' | 'cards' | 'preferences'
   >('plans');
@@ -309,6 +327,35 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
   }
 
   const subscription = billing.data?.subscription;
+  const notice = planNotice(
+    subscription,
+    billing.data?.tiers ?? [],
+    tierName,
+    // Days are counted on the server's clock, not the device's.
+    billing.data?.serverNow ? Date.parse(billing.data.serverNow) : undefined,
+  );
+
+  /*
+    "See plans" lands on the tier list. Its position is known once the Plans
+    tab has laid out, so coming from another tab waits for that layout.
+  */
+  const scrollRef = useRef<ScrollView>(null);
+  const tiersY = useRef<number | null>(null);
+  const scrollToTiersOnLayout = useRef(false);
+  const scrollToTiers = (y: number) =>
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, y - tokens.spacing.lg),
+      animated: true,
+    });
+  function showPlans() {
+    if (tab === 'plans' && tiersY.current !== null) {
+      scrollToTiers(tiersY.current);
+      return;
+    }
+    scrollToTiersOnLayout.current = true;
+    setTab('plans');
+    setCursors([undefined]);
+  }
 
   return (
     <SafeAreaView
@@ -325,6 +372,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
         }
       />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
@@ -405,6 +453,11 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                 <AppText>Unable to load billing.</AppText>
                 <Button title="Retry" onPress={() => void billing.refetch()} />
               </Card>
+            ) : null}
+
+            {/* Plan ending, lapsed or shrinking: on every tab, never a surprise. */}
+            {notice ? (
+              <PlanNoticeBanner notice={notice} onAction={showPlans} />
             ) : null}
 
             {/* Seller Verification Required Banner if unverified */}
@@ -576,7 +629,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                               if (
                                 await confirmed(
                                   'Stop renewal?',
-                                  'Your current paid period is not refunded. Access lasts until its end; existing captured orders continue.',
+                                  `Your current paid period is not refunded. Your ${tierName(subscription.tierKey)} plan stays until ${date(subscription.currentPeriodEnd)}; then your brand moves to the free plan: 1 active custom order at a time. Orders already active continue. You can subscribe again once it ends.`,
                                   'Stop renewal',
                                   true,
                                 )
@@ -641,7 +694,18 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                 )}
 
                 {/* Available Tier Cards (ITEM 25) */}
-                <AppText variant="h3" style={{ marginTop: tokens.spacing.md }}>
+                <AppText
+                  variant="h3"
+                  style={{ marginTop: tokens.spacing.md }}
+                  onLayout={(event) => {
+                    const y = event.nativeEvent.layout.y;
+                    tiersY.current = y;
+                    if (scrollToTiersOnLayout.current) {
+                      scrollToTiersOnLayout.current = false;
+                      scrollToTiers(y);
+                    }
+                  }}
+                >
                   Available Studio Tiers
                 </AppText>
 
@@ -889,7 +953,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       <AppText variant="caption">
                         {consent ? '☑' : '☐'} I authorize recurring monthly
                         charges and accept the Terms, Seller Terms and Payment
-                        Policy ({LEGAL_PAGE_VERSION}).
+                        Policy ({paymentLegalVersion}).
                       </AppText>
                     </Pressable>
 
@@ -941,6 +1005,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                                 env.webAppUrl,
                               ).toString(),
                               cardId || undefined,
+                              paymentLegalVersion,
                             );
                             if (!mounted.current) return;
                             setPreview(null);
@@ -1144,7 +1209,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       style={styles.checkbox}
                     >
                       <AppText variant="caption">
-                        {cardConsent ? '☑' : '☐'} Authorize this saved card for future monthly renewals ({LEGAL_PAGE_VERSION}).
+                        {cardConsent ? '☑' : '☐'} Authorize this saved card for future monthly renewals ({paymentLegalVersion}).
                       </AppText>
                     </Pressable>
                     <Button
@@ -1154,7 +1219,11 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       disabled={!cardConsent || busy}
                       onPress={() =>
                         void run(async () => {
-                          await SubscriptionApi.changeCard(brandId!, cardId);
+                          await SubscriptionApi.changeCard(
+                            brandId!,
+                            cardId,
+                            paymentLegalVersion,
+                          );
                           toast.success('Renewal card updated.');
                         })
                       }
@@ -1212,8 +1281,56 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
   );
 }
 
+function PlanNoticeBanner({
+  notice,
+  onAction,
+}: {
+  notice: PlanNotice;
+  onAction: () => void;
+}) {
+  const { theme } = useTheme();
+  const warning = notice.tone === 'warning';
+  return (
+    <View
+      accessibilityRole={warning ? 'alert' : 'summary'}
+      accessibilityLiveRegion="polite"
+      style={[
+        styles.planNotice,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: warning ? theme.colors.warning : theme.colors.primary,
+        },
+      ]}
+    >
+      <AppText variant="bodyBold">{notice.title}</AppText>
+      <AppText variant="captionRegular" tone="secondary">
+        {notice.body}
+      </AppText>
+      <View style={styles.planNoticeActions}>
+        <Button
+          title={notice.actionLabel}
+          size="sm"
+          variant="outline"
+          onPress={onAction}
+        />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  planNotice: {
+    gap: tokens.spacing.sm,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 2,
+    padding: tokens.spacing.md,
+  },
+  planNoticeActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
   // A bare Rule 37 section: heading, then content; no card around it.
   section: { gap: tokens.spacing.md },
   content: {

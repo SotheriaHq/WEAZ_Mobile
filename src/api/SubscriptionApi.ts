@@ -81,6 +81,8 @@ export const SubscriptionApi = {
         amountNgn: number;
         authorizationUrl?: string;
       }>;
+      /** The server's clock when this was read. */
+      serverNow?: string;
     }>(root(id)),
   preview: async (id: string, tierKey: string) => {
     const started = performance.now();
@@ -93,6 +95,8 @@ export const SubscriptionApi = {
     quote: SubscriptionPreview,
     callbackUrl: string,
     savedCardId?: string,
+    /** The Payment Policy version the owner just agreed to, as the server names it. */
+    legalVersion: string = LEGAL_PAGE_VERSION,
   ) => {
     assertSubscriptionQuoteFresh(quote, id);
     return post<SubscriptionPayment>(`${root(id)}/checkout`, {
@@ -102,7 +106,7 @@ export const SubscriptionApi = {
       callbackUrl,
       savedCardId,
       recurringConsent: true,
-      legalVersion: LEGAL_PAGE_VERSION,
+      legalVersion,
     });
   },
   cancel: (id: string) => post(`${root(id)}/cancel-renewal`),
@@ -114,11 +118,15 @@ export const SubscriptionApi = {
       { kind, cursor },
     ),
   cards: (id: string) => get<SubscriptionCard[]>(`${root(id)}/payment-methods`),
-  changeCard: (id: string, savedCardId: string) =>
+  changeCard: (
+    id: string,
+    savedCardId: string,
+    legalVersion: string = LEGAL_PAGE_VERSION,
+  ) =>
     post(`${root(id)}/payment-method`, {
       savedCardId,
       recurringConsent: true,
-      legalVersion: LEGAL_PAGE_VERSION,
+      legalVersion,
     }),
   renameCard: (id: string, nickname: string) =>
     apiClient.patch(`/payment/saved-cards/${id}`, { nickname }),

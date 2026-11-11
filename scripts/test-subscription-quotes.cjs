@@ -43,6 +43,14 @@ test('checkout sends the exact quote identifier, amount and recurring consent', 
   assert.equal(f.requests[1].body.recurringConsent, true);
   assert.equal(f.requests[1].body.legalVersion, 'fixture-legal-version');
 });
+test('checkout and card change send the policy version the owner agreed to', async () => {
+  const f = fixture(), quote = await f.api.preview('brand-a', 'THREAD');
+  await f.api.checkout('brand-a', 'THREAD', quote, 'https://example.invalid/billing', undefined, 'server-legal-version');
+  await f.api.changeCard('brand-a', 'card-a', 'server-legal-version');
+  assert.equal(f.requests[1].body.legalVersion, 'server-legal-version');
+  assert.equal(f.requests[2].body.legalVersion, 'server-legal-version');
+  assert.equal(f.requests[2].body.recurringConsent, true);
+});
 test('an expired quote never sends a checkout HTTP request', async () => {
   const f = fixture(), quote = await f.api.preview('brand-a', 'THREAD');
   f.clock.now = quote.validUntilMonotonicMs;
