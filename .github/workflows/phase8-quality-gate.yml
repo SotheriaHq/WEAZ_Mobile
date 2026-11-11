@@ -176,3 +176,6 @@ jobs:
       # native rules (bounded heartbeat, inline strips) still run.
       - name: Market presentation contract
         run: npm run test:market-presentation-contract
+
+      - name: Studio access and Settings destination state matrix
+        run: npm run test:studio-access

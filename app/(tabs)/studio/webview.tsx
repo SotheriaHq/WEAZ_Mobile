@@ -32,6 +32,7 @@ import {
   getActiveBrandId,
   hasActiveBrandMembership,
   isBrandOwner,
+  isBrandAccount,
 } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import { markStudioOpened } from '@/src/features/studio/studioWarmEntry';
@@ -54,6 +55,7 @@ import {
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useBrandCommerceAccess } from '@/src/hooks/useBrandCommerceAccess';
 import { useQueryClient } from '@tanstack/react-query';
+import { resolveStudioSetupAccess } from '@/src/features/studio/studioAccessPolicy';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
@@ -358,6 +360,7 @@ export default function StudioWebViewScreen() {
   const insets = useSafeAreaInsets();
   const { standardScreenBottomPadding } = useScreenChrome();
   const webViewRef = useRef<WebView>(null);
+  const deferredProfileSetupRef = useRef<{ scope: string; message: NativeMessage } | null>(null);
   const phoneVerification = useRef<{ controller: AbortController; requestId: string; parentSessionId: string } | null>(null);
   useEffect(() => () => phoneVerification.current?.controller.abort(), []);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -422,7 +425,7 @@ export default function StudioWebViewScreen() {
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const hasBrandWorkspace = hasActiveBrandMembership(user);
-  const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
+  const isStudioEligible = isBrandAccount(user) && hasBrandWorkspace;
   // False while the tab shell has warmed Studio in the background.
   const isFocused = useIsFocused();
   const isFocusedRef = useRef(isFocused);
@@ -438,6 +441,8 @@ export default function StudioWebViewScreen() {
   const queryClient = useQueryClient();
   const commerce = useBrandCommerceAccess();
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
+  const setupCompleteRef = useRef(storeSetupComplete);
+  setupCompleteRef.current = storeSetupComplete;
   // One nudge per visit. The redirect below re-runs the effect, and without this
   // the toast would stack on every pass.
   const setupRedirectNotifiedRef = useRef(false);
@@ -457,6 +462,7 @@ export default function StudioWebViewScreen() {
     phoneVerification.current?.controller.abort();
     sessionEstablishedRef.current = false;
     documentStudioScopeRef.current = null;
+    deferredProfileSetupRef.current = null;
     lastInjectedRouteRef.current = null;
     pendingRouteRef.current = null;
     setWebUrl(null); setCanGoBack(false); setLoadState('booting');
@@ -581,7 +587,7 @@ export default function StudioWebViewScreen() {
 
   const navigateStudioInPlace = useCallback(
     (route: StudioRouteKey, params?: { productId?: string; orderId?: string }) => {
-      if (!webViewRef.current) return false;
+      if (!webViewRef.current || resolveStudioSetupAccess(route, setupCompleteRef.current) !== 'allow') return false;
       try {
         const path = buildStudioPath(route, params);
         const signature = getStudioRouteSignature(route, params);
@@ -703,16 +709,21 @@ export default function StudioWebViewScreen() {
       }
 
       try {
-        const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
+        // Establish the web session through the allowlisted Studio entry, then
+        // navigate to settings inside the authenticated SPA.
+        const settingsEntry = ['storeProfile', 'privateDesignAccess', 'payoutSettings'].includes(resolvedRouteKey);
+        const entryRoute = settingsEntry ? 'overview' : resolvedRouteKey;
+        if (settingsEntry) pendingRouteRef.current = { routeKey: resolvedRouteKey };
+        const intendedPath = buildStudioPath(entryRoute, { productId, orderId });
         const handoff = await StudioApi.createHandoff(intendedPath);
         if (!mounted || currentStudioScopeRef.current !== studioScope || getApiSecurityIdentity() !== nativeIdentity) return;
         documentStudioScopeRef.current = studioScope;
         sessionEstablishedRef.current = true;
         sessionBootedForRef.current = sessionOwnerNowRef.current;
-        lastInjectedRouteRef.current = getStudioRouteSignature(resolvedRouteKey, { productId, orderId });
+        lastInjectedRouteRef.current = getStudioRouteSignature(entryRoute, { productId, orderId });
         setWebUrl(
           buildStudioWebUrl({
-            routeKey: resolvedRouteKey,
+            routeKey: entryRoute,
             params: { productId, orderId },
             handoffCode: handoff.code,
             theme: schemeRef.current,
@@ -1118,6 +1129,11 @@ export default function StudioWebViewScreen() {
           setLoadState('error');
           break;
         case 'PROFILE_SETUP_REQUIRED':
+          if (!isFocusedRef.current) {
+            deferredProfileSetupRef.current = { scope: studioScope, message };
+            break;
+          }
+          deferredProfileSetupRef.current = null;
           /**
            * The gate itself is right: Studio needs a description, at least one
            * tag and a location before it can open (`isBrandProfileComplete`).
@@ -1238,6 +1254,14 @@ export default function StudioWebViewScreen() {
     [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast, trustedOrigins,
       actorId, activeBrandId, studioScope, nativeIdentity],
   );
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const deferred = deferredProfileSetupRef.current;
+    deferredProfileSetupRef.current = null;
+    if (!deferred || deferred.scope !== studioScope) return;
+    handleMessage({ nativeEvent: { data: JSON.stringify(deferred.message) } } as WebViewMessageEvent);
+  }, [isFocused, studioScope, handleMessage]);
 
   const openSearch = useCallback(() => {
     if (loadState === 'ready' && webViewRef.current) {

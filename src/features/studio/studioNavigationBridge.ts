@@ -85,6 +85,7 @@ function singleSegmentAfter(pathname: string, prefix: string): string | null {
 
 function isAllowedStudioRoute(url: URL): boolean {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
+  if (pathname === '/settings/collections') return true;
   if (pathname === '/studio') {
     const tab = url.searchParams.get('tab');
     // finance is native-owned; do not keep it inside the Studio WebView.
@@ -100,7 +101,7 @@ function isAllowedStudioRoute(url: URL): boolean {
   // reachable on mobile without a separate native screen.
   if (pathname === '/settings') {
     const tab = url.searchParams.get('tab');
-    if (tab && tab.startsWith('store-')) return true;
+    if (tab && (tab.startsWith('store-') || tab === 'billing')) return true;
   }
 
   if (STATIC_STUDIO_PATHS.has(pathname)) return true;
