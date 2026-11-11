@@ -47,6 +47,7 @@ export type BrandHeaderContactItem = {
 const BANNER_EDIT_CONTROL_CLEARANCE =
   tokens.spacing.lg + 34 + tokens.spacing.sm;
 const HEADER_ICON_GLASS_SIZE = { width: 48, height: 48 } as const;
+const BANNER_EDIT_GLASS_SIZE = { width: 34, height: 34 } as const;
 
 export type BrandProfileHeaderProps = {
   brandName: string;
@@ -404,15 +405,27 @@ function BannerHeader({
             disabled={bannerLoading}
             style={({ pressed }) => [
               styles.bannerEditButton,
-              { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
               (pressed || bannerLoading) && styles.pressedControl,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Edit banner"
           >
-            <AppText variant="captionBold" tone="default">
-              {bannerLoading ? '…' : '✎'}
-            </AppText>
+            {({ pressed }) => (
+              <WiezLiquidGlass
+                mode="enhanced"
+                intensity="regular"
+                borderRadius={tokens.radius.md}
+                blurTarget={blurTargetRef}
+                initialSize={BANNER_EDIT_GLASS_SIZE}
+                pressed={pressed || bannerLoading}
+                style={styles.headerIconGlassSurface}
+                contentStyle={styles.headerIconGlassContent}
+              >
+                <AppText variant="captionBold" tone="inverse" style={styles.headerIconGlassGlyph}>
+                  {bannerLoading ? '…' : '✎'}
+                </AppText>
+              </WiezLiquidGlass>
+            )}
           </Pressable>
         </View>
       ) : null}
@@ -1299,9 +1312,11 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: tokens.radius.md,
-    borderWidth: 2,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   // The seal carries its own shape and colour; this is only the tap target.
   storeStatusBadge: {

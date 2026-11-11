@@ -23,7 +23,6 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -36,6 +35,7 @@ import CollectionCommentsSheet, { getCommentsSheetHeight } from '@/components/ca
 import ReviewsTab from '@/components/reviews/ReviewsTab';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
 import {
   MobileStoreApi,
@@ -129,6 +129,7 @@ const ACTION_KIND_SHARE = 'share';
  * back the strip it was eating.
  */
 const COLLAPSED_SHEET_HEIGHT = 40;
+const IN_BAG_PILL_GLASS_SIZE = { width: 152, height: 30 } as const;
 /** dp/ms past which a release counts as a fling rather than a position. */
 const SHEET_FLING_VELOCITY = 0.4;
 /** Emoji-only dock actions — the sheet is chrome over media, not a toolbar. */
@@ -1390,21 +1391,16 @@ export function MarketCommerceViewer({
           style={[
             styles.sheetSurface,
             sheetSurfaceAnimatedStyle,
-            { borderColor: theme.colors.glassBorder },
           ]}
         >
-          <BlurView
-            intensity={Math.max(28, Math.round(theme.colors.glassBlur))}
-            tint={scheme === 'dark' ? 'dark' : 'light'}
+          <WiezLiquidGlass
+            mode="lightweight"
+            intensity="prominent"
+            tintAlpha={scheme === 'dark' ? 0.56 : 0.6}
+            highlightIntensity={0.85}
+            borderRadius={tokens.radius.xl}
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
-          />
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: theme.colors.glassSurfaceStrong },
-            ]}
           />
         </Animated.View>
 
@@ -1789,19 +1785,21 @@ export function MarketCommerceViewer({
       ) : null}
 
       {bagStatus?.standard.inBag || bagStatus?.custom.alreadyBagged ? (
-        <View
-          style={[
-            styles.inBagPill,
-            {
-              top: topChromeBaseline,
-              backgroundColor: theme.colors.glassSurfaceStrong,
-              borderColor: theme.colors.glassBorder,
-            },
-          ]}
+        <WiezLiquidGlass
+          mode="lightweight"
+          intensity="prominent"
+          tintMode="dark"
+          tintAlpha={0.36}
+          borderRadius={tokens.radius.full}
+          initialSize={IN_BAG_PILL_GLASS_SIZE}
           pointerEvents="none"
+          style={[styles.inBagPill, { top: topChromeBaseline }]}
+          contentStyle={styles.inBagPillContent}
         >
-          <AppText variant="captionBold" tone="default">Already in My Bag</AppText>
-        </View>
+          <AppText variant="captionBold" tone="inverse" style={styles.dockGlyphText}>
+            Already in My Bag
+          </AppText>
+        </WiezLiquidGlass>
       ) : null}
 
       {/* Tap-outside-to-collapse. Only mounted while the sheet is open, so it
@@ -1940,8 +1938,11 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     minHeight: 30,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
+  },
+  inBagPillContent: {
     paddingHorizontal: tokens.spacing.md,
+    minHeight: 30,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2013,14 +2014,14 @@ const styles = StyleSheet.create({
   // handle and body (see `sheetSurfaceAnimatedStyle`).
   sheetSurface: {
     ...StyleSheet.absoluteFill,
-    // The blur is a child, so the surface has to clip it or it paints square
-    // corners over the rounded sheet.
+    // The glass layer is a child, so the surface has to clip it or it paints
+    // square corners over the rounded sheet.
     overflow: 'hidden',
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
     borderBottomLeftRadius: tokens.radius.lg,
     borderBottomRightRadius: tokens.radius.lg,
-    borderWidth: 2,
+    borderWidth: 0,
   },
   sheetHandleWrap: {
     height: COLLAPSED_SHEET_HEIGHT,

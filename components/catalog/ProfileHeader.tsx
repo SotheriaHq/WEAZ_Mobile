@@ -6,6 +6,11 @@ import { Button, type ButtonVariant } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { Skeleton, SkeletonAvatar } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import {
+  WiezLiquidGlass,
+  WiezLiquidGlassBackdrop,
+  useLiquidGlassBlurTarget,
+} from '@/components/ui/WiezLiquidGlass';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -51,6 +56,11 @@ const PROFILE_LAYOUT = {
   overlayLift: tokens.spacing.xl,
   descriptionPreviewLength: 150,
 };
+
+const HERO_CONTROL_GLASS_SIZE = {
+  width: PROFILE_LAYOUT.heroControlSize,
+  height: PROFILE_LAYOUT.heroControlSize,
+} as const;
 
 type ProfileActionItem = {
   key: string;
@@ -159,23 +169,33 @@ function ProfileHero({
   bannerUri?: string | null;
   onBannerError: () => void;
 }) {
-  const { theme } = useTheme();
+  const {
+    targetRef: bannerBlurTargetRef,
+    blurTargetRef,
+    onTargetLayout: handleBannerBackdropLayout,
+  } = useLiquidGlassBlurTarget();
 
   return (
     <View style={[styles.bannerContainer, { height: bannerHeight }]}>
-      {showBannerImage && bannerUri ? (
-        <Animated.View style={[styles.flexFill, { opacity: bannerLoading ? pulseAnim : 1 }]}>
-          <StableImage
-            uri={bannerUri}
-            containerStyle={styles.bannerImage}
-            imageStyle={styles.bannerImage}
-            onError={onBannerError}
-            fallback={<BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />}
-          />
-        </Animated.View>
-      ) : (
-        <BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />
-      )}
+      <WiezLiquidGlassBackdrop
+        targetRef={bannerBlurTargetRef}
+        onLayout={handleBannerBackdropLayout}
+        style={styles.flexFill}
+      >
+        {showBannerImage && bannerUri ? (
+          <Animated.View style={[styles.flexFill, { opacity: bannerLoading ? pulseAnim : 1 }]}>
+            <StableImage
+              uri={bannerUri}
+              containerStyle={styles.bannerImage}
+              imageStyle={styles.bannerImage}
+              onError={onBannerError}
+              fallback={<BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />}
+            />
+          </Animated.View>
+        ) : (
+          <BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />
+        )}
+      </WiezLiquidGlassBackdrop>
 
       <View style={styles.topLeftNavContainer}>
         {onBack ? (
@@ -183,15 +203,27 @@ function ProfileHero({
             onPress={onBack}
             style={({ pressed }) => [
               styles.heroControl,
-              { backgroundColor: theme.colors.glassSurfaceStrong },
               pressed ? styles.pressed : null,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <AppText variant="subtitle" tone="inverse">
-              {'<'}
-            </AppText>
+            {({ pressed }) => (
+              <WiezLiquidGlass
+                mode="enhanced"
+                intensity="regular"
+                borderRadius={tokens.radius.full}
+                blurTarget={blurTargetRef}
+                initialSize={HERO_CONTROL_GLASS_SIZE}
+                pressed={pressed}
+                style={styles.heroControlGlass}
+                contentStyle={styles.heroControlGlass}
+              >
+                <AppText variant="subtitle" tone="inverse" style={styles.heroControlGlyph}>
+                  {'<'}
+                </AppText>
+              </WiezLiquidGlass>
+            )}
           </Pressable>
         ) : null}
       </View>
@@ -610,9 +642,21 @@ const styles = StyleSheet.create({
     width: PROFILE_LAYOUT.heroControlSize,
     height: PROFILE_LAYOUT.heroControlSize,
     borderRadius: tokens.radius.full,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  heroControlGlass: {
+    width: '100%',
+    height: '100%',
+  },
+  heroControlGlyph: {
+    textAlign: 'center',
+    textShadowColor: tokens.scrim(0.55),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   contentShell: {
     paddingHorizontal: tokens.spacing.lg,

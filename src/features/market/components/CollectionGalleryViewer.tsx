@@ -19,6 +19,11 @@ import { AppText } from '@/components/ui/AppText';
 import { BackLink } from '@/components/ui/InlineNavLink';
 import { Button } from '@/components/ui/Button';
 import { StableImage } from '@/components/ui/StableImage';
+import {
+  WiezLiquidGlass,
+  WiezLiquidGlassBackdrop,
+  useLiquidGlassBlurTarget,
+} from '@/components/ui/WiezLiquidGlass';
 import { MobileStoreApi, type CollectionBagStatus } from '@/src/api/StoreApi';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { BAG_IT_EMOJI } from '@/src/constants/bagging';
@@ -55,6 +60,8 @@ const logGalleryTiming = (event: string, startedAt: number, context: Record<stri
 };
 
 const statusBarContrast = (value: 'light' | 'dark') => (value === 'dark' ? 'light' : 'dark');
+const BACK_BUTTON_GLASS_SIZE = { width: 46, height: 46 } as const;
+const COUNT_PILL_GLASS_SIZE = { width: 64, height: 34 } as const;
 
 function buildGalleryMedia(status: CollectionBagStatus | null): GalleryMedia[] {
   if (!status) return [];
@@ -138,6 +145,11 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
   const { theme, scheme } = useTheme();
   const chrome = useScreenChrome();
   const { width, height } = useWindowDimensions();
+  const {
+    targetRef: galleryBlurTargetRef,
+    blurTargetRef,
+    onTargetLayout: handleGalleryBackdropLayout,
+  } = useLiquidGlassBlurTarget();
   const listRef = useRef<FlatList<GalleryMedia> | null>(null);
   const [status, setStatus] = useState<CollectionBagStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -235,36 +247,68 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
   return (
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <StatusBar style="light" />
-      <FlatList
-        ref={listRef}
-        data={media}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleMomentumEnd}
-        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-      />
+      <WiezLiquidGlassBackdrop
+        targetRef={galleryBlurTargetRef}
+        onLayout={handleGalleryBackdropLayout}
+        style={styles.backdropLayer}
+      >
+        <FlatList
+          ref={listRef}
+          data={media}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={handleMomentumEnd}
+          getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+        />
 
-      <LinearGradient
-        pointerEvents="none"
-        colors={[theme.colors.backdropStrong, theme.colors.backdrop, 'transparent']}
-        style={[styles.topGradient, { height: chrome.insets.top + 144 }]}
-      />
+        <LinearGradient
+          pointerEvents="none"
+          colors={[theme.colors.backdropStrong, theme.colors.backdrop, 'transparent']}
+          style={[styles.topGradient, { height: chrome.insets.top + 144 }]}
+        />
+      </WiezLiquidGlassBackdrop>
 
       <View style={[styles.topBar, { top: chrome.insets.top + tokens.spacing.md }]}>
         <Pressable
           onPress={goBack}
-          style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Back to collection"
         >
-          <AppText variant="subtitle">{String.fromCodePoint(0x2039)}</AppText>
+          {({ pressed }) => (
+            <WiezLiquidGlass
+              mode="enhanced"
+              intensity="regular"
+              borderRadius={tokens.radius.full}
+              blurTarget={blurTargetRef}
+              initialSize={BACK_BUTTON_GLASS_SIZE}
+              pressed={pressed}
+              style={styles.iconButtonGlass}
+              contentStyle={styles.iconButtonGlass}
+            >
+              <AppText variant="subtitle" tone="inverse" style={styles.topBarGlyph}>
+                {String.fromCodePoint(0x2039)}
+              </AppText>
+            </WiezLiquidGlass>
+          )}
         </Pressable>
-        <View style={[styles.countPill, { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }]}>
-          <AppText variant="captionBold">{activeIndex + 1} / {media.length}</AppText>
-        </View>
+        <WiezLiquidGlass
+          mode="enhanced"
+          intensity="regular"
+          borderRadius={tokens.radius.full}
+          blurTarget={blurTargetRef}
+          initialSize={COUNT_PILL_GLASS_SIZE}
+          pointerEvents="none"
+          style={styles.countPill}
+          contentStyle={styles.countPillContent}
+        >
+          <AppText variant="captionBold" tone="inverse" style={styles.topBarGlyph}>
+            {activeIndex + 1} / {media.length}
+          </AppText>
+        </WiezLiquidGlass>
       </View>
 
       <View style={[styles.overlay, { bottom: chrome.immersiveOverlayBottomClearance + tokens.spacing.md }]}>
@@ -296,6 +340,9 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  backdropLayer: {
     flex: 1,
   },
   slide: {
@@ -331,17 +378,33 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  iconButtonGlass: {
+    width: '100%',
+    height: '100%',
   },
   countPill: {
     minHeight: 34,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countPillContent: {
+    minHeight: 34,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  topBarGlyph: {
+    textShadowColor: tokens.scrim(0.55),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   overlay: {
     position: 'absolute',
