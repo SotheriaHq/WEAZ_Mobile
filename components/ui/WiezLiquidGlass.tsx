@@ -177,12 +177,19 @@ export function useLiquidGlassBlurTarget() {
     setAttachedTarget((current) => (current === node ? current : node));
   }, []);
 
+  // Keep `attachedTarget` synchronized across conditional backdrop mounts/unmounts
+  // (e.g., loading -> content transitions in viewers) while bailing out with zero
+  // extra renders whenever `targetRef.current` is unchanged.
   React.useLayoutEffect(() => {
     syncTarget();
-    return () => {
+  });
+
+  React.useEffect(
+    () => () => {
       setAttachedTarget(null);
-    };
-  }, [syncTarget]);
+    },
+    [],
+  );
 
   const blurTargetRef = React.useMemo<React.RefObject<View | null>>(
     () => ({ current: attachedTarget }),
