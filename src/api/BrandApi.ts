@@ -1616,11 +1616,12 @@ export const brandApi = {
    * reads as "not set up" would lock a live brand out of its own store. The
    * caller decides what an unknown status means; it must not be told a lie.
    */
-  async getStoreStatus(): Promise<{ hasStore: boolean; storeId: string | null; isSetupComplete: boolean }> {
+  async getStoreStatus(): Promise<{ hasStore: boolean; storeId: string | null; brandId: string | null; isSetupComplete: boolean }> {
     const response = await apiClient.get('/store/status');
     const data = unwrapData<any>(response.data);
     if (typeof data?.isSetupComplete !== 'boolean') throw new Error('Store setup status is incomplete. Please retry.');
     return {
+      brandId: typeof data?.brandId === 'string' ? data.brandId : null,
       hasStore: data?.hasStore ?? false,
       storeId: data?.storeId ?? null,
       isSetupComplete: data.isSetupComplete,

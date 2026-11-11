@@ -35,13 +35,15 @@ export function useStoreSetupStatus(): StoreSetupStatus {
   const isBrand = isBrandAccount(user);
   const enabled = status === 'authenticated' && isBrand;
 
+  const brandId = getActiveBrandId(user);
   const query = useQuery({
-    queryKey: queryKeys.store.status(user?.id, getActiveBrandId(user)),
+    queryKey: queryKeys.store.status(user?.id, brandId),
     queryFn: async () => {
       const data = await brandApi.getStoreStatus();
-      if (!data || typeof data.isSetupComplete !== 'boolean') throw new Error('Store setup status is incomplete. Please retry.');
+      if (!data || (brandId && data.brandId !== brandId) || typeof data.isSetupComplete !== 'boolean') throw new Error('Store setup status is incomplete. Please retry.');
       return data;
     },
+    select: data => brandId && data.brandId !== brandId ? undefined : data,
     enabled,
     staleTime: STORE_STATUS_STALE_TIME_MS,
   });
@@ -54,7 +56,7 @@ export function useStoreSetupStatus(): StoreSetupStatus {
   return {
     isSetupComplete: query.data ? query.data.isSetupComplete : null,
     isLoading: query.isPending,
-    isError: query.isError,
+    isError: query.isError || (!query.isPending && !query.data),
     retry: () => { void query.refetch(); },
   };
 }
