@@ -165,3 +165,8 @@ jobs:
       # native rules (bounded heartbeat, inline strips) still run.
       - name: Market presentation contract
         run: npm run test:market-presentation-contract
+
+      - name: Liquid Glass Phase 1 and Phase 3 contracts
+        run: |
+          npm run test:liquid-glass-phase1
+          npm run test:liquid-glass-phase3

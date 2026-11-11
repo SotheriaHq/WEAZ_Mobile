@@ -12,7 +12,7 @@
  *    - API < 31 / lightweight / unlinked native graceful fallback
  *    - `refraction={false}` toggle for benchmark & A/B parity
  * 4. Catalog banner integration (`BrandProfileHeader`) across light/dark & owner/visitor modes
- * 5. Phase 1 scope boundaries (`glassSurfaceStrong`, `Edit banner`, `NativeIslandBottomNav`)
+ * 5. Scope transition boundaries (`Edit banner` & Android `NativeIslandBottomNav` graduated in Phase 3 without altering `USE_LIVE_BLUR`)
  */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -785,6 +785,7 @@ async function runTests() {
     let backTapped = 0;
     let menuTapped = 0;
     let notificationsTapped = 0;
+    let editBannerTapped = 0;
     const menuAnchorRef = React.createRef();
 
     let tree;
@@ -805,7 +806,9 @@ async function runTests() {
             menuTapped += 1;
           },
           menuAnchorRef,
-          onEditBanner: () => undefined,
+          onEditBanner: () => {
+            editBannerTapped += 1;
+          },
         }),
         { createNodeMock },
       );
@@ -876,22 +879,24 @@ async function runTests() {
       'Banner controls and glass lenses must remain sibling/outside WiezLiquidGlassBackdropView',
     );
 
-    // Edit banner square control intentionally untouched in Phase 1
+    // Edit banner square control graduated in Phase 3 to enhanced Liquid Glass
     const editBannerBtn = collectNodes(
       json,
       (n) => n.type === 'Pressable' && n.props?.accessibilityLabel === 'Edit banner',
     )[0];
     assert.ok(editBannerBtn);
-    assert.equal(collectNodes(editBannerBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
+    assert.equal(collectNodes(editBannerBtn, (n) => n.type === 'WiezLiquidGlassLensView').length, 1);
 
     await renderer.act(async () => {
       backBtn.props.onPress();
       menuBtn.props.onPress();
       notifBtn.props.onPress();
+      editBannerBtn.props.onPress();
     });
     assert.equal(backTapped, 1);
     assert.equal(menuTapped, 1);
     assert.equal(notificationsTapped, 1);
+    assert.equal(editBannerTapped, 1);
 
     await renderer.act(async () => tree.unmount());
   }
@@ -939,7 +944,7 @@ async function runTests() {
     await renderer.act(async () => tree.unmount());
   }
 
-  // ── 6. Phase 1 Boundary: NativeIslandBottomNav stays free of backdrop-capture migration ──
+  // ── 6. NativeIslandBottomNav keeps USE_LIVE_BLUR gate and uses lightweight Android glass ──
   const islandSource = fs.readFileSync(
     path.join(ROOT, 'components', 'navigation', 'NativeIslandBottomNav.tsx'),
     'utf8',
@@ -947,17 +952,22 @@ async function runTests() {
   assert.match(
     islandSource,
     /const USE_LIVE_BLUR = Platform\.OS === 'ios';/,
-    'Phase 1 must not migrate NativeIslandBottomNav or alter its USE_LIVE_BLUR gate',
-  );
-  assert.doesNotMatch(
-    islandSource,
-    /WiezLiquidGlass/,
-    'NativeIslandBottomNav must NOT migrate to full-screen backdrop capture or WiezLiquidGlass in this scoped pass',
+    'NativeIslandBottomNav must preserve its USE_LIVE_BLUR platform gate',
   );
   assert.match(
     islandSource,
-    /androidSheenDark/,
-    'NativeIslandBottomNav Android surface must use balanced tokens.island.androidSheen*',
+    /WiezLiquidGlass/,
+    'NativeIslandBottomNav Android surface must use shared lightweight WiezLiquidGlass',
+  );
+  assert.doesNotMatch(
+    islandSource,
+    /WiezLiquidGlassBackdrop|mode="enhanced"/,
+    'NativeIslandBottomNav must NOT migrate to per-frame backdrop capture on Android',
+  );
+  assert.doesNotMatch(
+    islandSource,
+    /androidSheenDark|ExpoLinearGradient/,
+    'NativeIslandBottomNav Android surface must replace static LinearGradient sheen with WiezLiquidGlass',
   );
 
   // ── 7. v2 Material System: Arbitrary Shapes, Optical Props & Capabilities ─

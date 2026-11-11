@@ -84,6 +84,8 @@ jobs:
           node scripts/test-perf-instrumentation-contract.js
           node scripts/test-clipping-and-market-chrome-contract.js
           node scripts/check-perf-regressions.cjs
+          node scripts/test-liquid-glass-phase1.js
+          node scripts/test-liquid-glass-phase3.js
 
       # Android push goes through Firebase Cloud Messaging, so the APK needs
       # google-services.json compiled in or the phone never gets a push token.
