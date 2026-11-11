@@ -1619,10 +1619,11 @@ export const brandApi = {
   async getStoreStatus(): Promise<{ hasStore: boolean; storeId: string | null; isSetupComplete: boolean }> {
     const response = await apiClient.get('/store/status');
     const data = unwrapData<any>(response.data);
+    if (typeof data?.isSetupComplete !== 'boolean') throw new Error('Store setup status is incomplete. Please retry.');
     return {
       hasStore: data?.hasStore ?? false,
       storeId: data?.storeId ?? null,
-      isSetupComplete: data?.isSetupComplete ?? false,
+      isSetupComplete: data.isSetupComplete,
     };
   },
 };

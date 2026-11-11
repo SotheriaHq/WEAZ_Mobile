@@ -11,7 +11,8 @@ import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHea
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { useAuth } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { hasActiveBrandMembership, isBrandAccount } from '@/src/auth/brandAccess';
+import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
@@ -23,6 +24,7 @@ type SettingsRow = {
   subtitle?: string;
   metadata?: string;
   danger?: boolean;
+  requiresStoreSetup?: boolean;
   onPress?: () => void;
 };
 
@@ -112,7 +114,9 @@ export default function SettingsScreen() {
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
-  const isBrand = hasActiveBrandMembership(user);
+  const isBrand = isBrandAccount(user);
+  const setup = useStoreSetupStatus();
+  const storeReady = setup.isSetupComplete === true;
 
   React.useEffect(() => {
     navPerf.screenMounted('profile-to-settings');
@@ -341,12 +345,19 @@ export default function SettingsScreen() {
       {
         title: 'Business',
         rows: [
-          { emoji: '👥', title: 'Customer settings', subtitle: 'Purchase threshold · paid plans', onPress: () => drillDownPush('/settings/customers' as never) },
+          ...(!storeReady ? [{ emoji: '🏗️', title: setup.isLoading ? 'Checking store setup…' : setup.isError ? 'Retry store setup check' : 'Finish store setup',
+            subtitle: 'Studio settings become available after setup is complete',
+            onPress: setup.isLoading ? undefined : setup.isError ? setup.retry : () => topLevelNavigate(hasActiveBrandMembership(user)
+              ? { pathname: '/studio', params: { routeKey: 'essentials' } } as never
+              : { pathname: '/(tabs)/me-edit', params: { from: '/settings' } } as never),
+          }] : []),
+          { emoji: '👥', requiresStoreSetup: true, title: 'Customer settings', subtitle: 'Purchase threshold · paid plans', onPress: () => drillDownPush('/settings/customers' as never) },
           {
             emoji: '🏪',
             title: 'Store profile',
+            requiresStoreSetup: true,
             subtitle: 'Brand identity and public profile',
-            onPress: () => topLevelNavigate('/catalog' as never),
+            onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'storeProfile' } } as never),
           },
           {
             emoji: '🧵',
@@ -356,27 +367,30 @@ export default function SettingsScreen() {
           },
           {
             emoji: '🗂️',
-            title: 'My Content settings',
-            subtitle: 'Designs, products, collections',
-            onPress: () => topLevelNavigate('/catalog' as never),
+            title: 'Private design access',
+            subtitle: 'Viewer requests and approved access',
+            requiresStoreSetup: true,
+            onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'privateDesignAccess' } } as never),
           },
           {
             emoji: '✅',
             title: 'Verification',
+            requiresStoreSetup: true,
             subtitle: 'Brand approval and documents',
-            onPress: () => drillDownPush('/studio' as never),
+            onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'verification' } } as never),
           },
           {
             emoji: '🏦',
             title: 'Payouts',
+            requiresStoreSetup: true,
             subtitle: 'Bank and settlement settings',
-            onPress: () => drillDownPush('/studio' as never),
+            onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'payoutSettings' } } as never),
           },
         ],
       },
       ...brandSections.slice(insertAt),
-    ];
-  }, [isBrand, signOut, user?.email]);
+    ].map((section) => ({ ...section, rows: section.rows.filter((row: SettingsRow) => !row.requiresStoreSetup || storeReady) }));
+  }, [isBrand, signOut, user, storeReady, setup.isLoading, setup.isError, setup.retry]);
 
   return (
     <SafeAreaView
