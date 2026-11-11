@@ -109,7 +109,7 @@ assert.ok(eligibility,'Exercise actual WebView admission');
 const {isBrandAccount}=compile(fs.readFileSync(path.join(root,'src/auth/brandAccess.ts'),'utf8'),{});
 const staff={id:'staff',type:'REGULAR',activeBrandId:'brand-a',brandMemberships:[{brandId:'brand-a',role:'MANAGER',status:'ACTIVE'}]};
 const staffEligible=compile('module.exports = '+eligibility,{user:staff,hasBrandWorkspace:true,isBrandAccount});
-assert.equal(staffEligible,true);assert.equal(run('customers','',{}, {isStudioEligible:staffEligible}).length,1);
+assert.equal(staffEligible,false);assert.equal(run('customers','',{}, {isStudioEligible:staffEligible,setErrorMessage:()=>{},setLoadState:()=>{}}).length,0);
 assert.equal(compile('module.exports = '+eligibility,{user:{type:'REGULAR'},hasBrandWorkspace:false,isBrandAccount}),false);
 const deferredProfileSetupRef={current:null}, navigation=[];
 const profile=publishMessage({isFocusedRef:{current:false},deferredProfileSetupRef,toast:{info:()=>navigation.push('toast')},router:{replace:target=>navigation.push(target)},closeStudio:()=>navigation.push('close'),describeMissingBrandProfileFields:()=>''},{type:'PROFILE_SETUP_REQUIRED',reason:'brand-profile',missingFields:['location']});
@@ -121,7 +121,7 @@ replay(deferred.scope,false);assert.equal(navigation.length,0);assert.ok(deferre
 replay('different-workspace');assert.equal(navigation.length,0);assert.equal(deferredProfileSetupRef.current,null);
 const focus={current:false};const q={current:null};const actual=publishMessage({isFocusedRef:focus,deferredProfileSetupRef:q,toast:{info:()=>{}},router:{replace:target=>navigation.push(target)},closeStudio:()=>{},describeMissingBrandProfileFields:()=>''},{type:'PROFILE_SETUP_REQUIRED',reason:'brand-profile'});
 focus.current=true;compile('module.exports = ('+profileReplayEffect+')();',{isFocused:true,studioScope:q.current.scope,deferredProfileSetupRef:q,handleMessage:actual.handler});assert.deepEqual(navigation,['/catalog/edit-profile']);assert.equal(q.current,null);
-console.log('Actual WebView staff admission and scoped hidden-profile focus recovery passed');
+console.log('Actual brand-only browser admission and scoped hidden-profile focus recovery passed');
 
 assert.ok(resetScopeEffect);const abandoned={current:{scope:'workspace-A',message:{type:'PROFILE_SETUP_REQUIRED'}}};
 compile('module.exports = ('+resetScopeEffect+')();',{documentStudioScopeRef:{current:'workspace-A'},studioScope:'workspace-B',phoneVerification:{current:null},deferredProfileSetupRef:abandoned,sessionEstablishedRef:{current:true},lastInjectedRouteRef:{current:'old'},pendingRouteRef:{current:null},setWebUrl:()=>{},setCanGoBack:()=>{},setLoadState:()=>{}});assert.equal(abandoned.current,null,'A→B→A must not restore an old profile assessment');
