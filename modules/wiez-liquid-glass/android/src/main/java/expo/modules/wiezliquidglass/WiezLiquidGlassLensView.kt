@@ -57,6 +57,7 @@ class WiezLiquidGlassLensView(
   private var needsCapture: Boolean = true
   private var needsEffectUpdate: Boolean = true
   private var preDrawRegistered: Boolean = false
+  private var observedTreeObserverRef: WeakReference<ViewTreeObserver>? = null
 
   private var lastLensInTargetX: Float = Float.NaN
   private var lastLensInTargetY: Float = Float.NaN
@@ -211,6 +212,16 @@ class WiezLiquidGlassLensView(
     }
   }
 
+  private fun isViewAncestorOrSelf(candidate: View, child: View): Boolean {
+    if (candidate === child) return true
+    var parent = child.parent
+    while (parent != null) {
+      if (parent === candidate) return true
+      parent = parent.parent
+    }
+    return false
+  }
+
   private fun unregisterBackdropListener() {
     registeredBackdropRef?.get()?.unregisterLens(this)
     registeredBackdropRef = null
@@ -220,7 +231,7 @@ class WiezLiquidGlassLensView(
     unregisterBackdropListener()
     val id = targetViewId
     val resolved = if (id != null) appContext.findView<View>(id) else null
-    if (resolved === this) {
+    if (resolved != null && isViewAncestorOrSelf(resolved, this)) {
       targetRef = null
       return
     }
@@ -246,7 +257,7 @@ class WiezLiquidGlassLensView(
     var target = targetRef?.get()
     if (target == null) {
       target = appContext.findView<View>(id)
-      if (target != null && target !== this) {
+      if (target != null && !isViewAncestorOrSelf(target, this)) {
         targetRef = WeakReference(target)
         if (target is WiezLiquidGlassBackdropView) {
           target.registerLens(this)
@@ -295,18 +306,27 @@ class WiezLiquidGlassLensView(
     if (targetViewId != null) {
       resolveTargetView(forceNotify = false)
     }
-    if (!preDrawRegistered && viewTreeObserver.isAlive) {
-      viewTreeObserver.addOnPreDrawListener(preDrawListener)
+    val observer = viewTreeObserver
+    if (!preDrawRegistered && observer.isAlive) {
+      observer.addOnPreDrawListener(preDrawListener)
+      observedTreeObserverRef = WeakReference(observer)
       preDrawRegistered = true
     }
   }
 
   override fun onDetachedFromWindow() {
-    if (preDrawRegistered && viewTreeObserver.isAlive) {
-      viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+    val observedObserver = observedTreeObserverRef?.get()
+    if (observedObserver != null && observedObserver.isAlive) {
+      observedObserver.removeOnPreDrawListener(preDrawListener)
     }
+    val currentObserver = viewTreeObserver
+    if (preDrawRegistered && currentObserver.isAlive && currentObserver !== observedObserver) {
+      currentObserver.removeOnPreDrawListener(preDrawListener)
+    }
+    observedTreeObserverRef = null
     preDrawRegistered = false
     unregisterBackdropListener()
+    targetRef = null
     renderer?.discard()
     needsCapture = true
     needsEffectUpdate = true

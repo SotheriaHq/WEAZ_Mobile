@@ -652,9 +652,11 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
       ) : null}
 
       {/* Foreground icons, labels, and interactive children */}
-      <View style={[styles.content, contentStyle]}>
-        {children}
-      </View>
+      {children != null ? (
+        <View style={[styles.content, contentStyle]}>
+          {children}
+        </View>
+      ) : null}
     </View>
   );
 });

@@ -94,15 +94,18 @@ class WiezLiquidGlassBackdropView(
 
   private fun notifyRegisteredLenses() {
     if (registeredLenses.isEmpty()) return
-    var index = 0
-    while (index < registeredLenses.size) {
-      val lens = registeredLenses[index].get()
+    val liveLenses = ArrayList<WiezLiquidGlassLensView>(registeredLenses.size)
+    val iterator = registeredLenses.iterator()
+    while (iterator.hasNext()) {
+      val lens = iterator.next().get()
       if (lens == null) {
-        registeredLenses.removeAt(index)
+        iterator.remove()
       } else {
-        lens.onBackdropInvalidated()
-        index++
+        liveLenses.add(lens)
       }
+    }
+    for (lens in liveLenses) {
+      lens.onBackdropInvalidated()
     }
   }
 
