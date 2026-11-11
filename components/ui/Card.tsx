@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -69,10 +70,9 @@ export function Card({
             }
           : variant === 'liquidGlass'
             ? {
-                backgroundColor: theme.colors.glassSurface,
+                backgroundColor: 'transparent',
                 borderWidth: 0,
-                borderColor: theme.colors.glassBorder,
-                ...tokens.elevation.md,
+                ...(Platform.OS === 'android' ? { elevation: 0 } : tokens.elevation.md),
               }
           : variant === 'bordered'
             ? {
@@ -97,6 +97,17 @@ export function Card({
 
   const content = (
     <>
+      {variant === 'liquidGlass' ? (
+        <WiezLiquidGlass
+          mode="lightweight"
+          intensity="prominent"
+          tintAlpha={isDark ? 0.28 : 0.56}
+          highlightIntensity={0.85}
+          borderRadius={tokens.radius.lg}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {variant === 'tinted' ? (
         <LinearGradient
           colors={[...theme.colors.surfaceTintGradient]}
@@ -130,7 +141,7 @@ export function Card({
         style={({ pressed }) => [
           baseStyle,
           variantStyle,
-          (variant === 'tinted' || hasLightRay) && styles.clipped,
+          (variant === 'tinted' || variant === 'liquidGlass' || hasLightRay) && styles.clipped,
           pressed && styles.pressed,
           disabled && styles.disabled,
           style,
@@ -146,7 +157,7 @@ export function Card({
       style={[
         baseStyle,
         variantStyle,
-        (variant === 'tinted' || hasLightRay) && styles.clipped,
+        (variant === 'tinted' || variant === 'liquidGlass' || hasLightRay) && styles.clipped,
         disabled && styles.disabled,
         style,
       ]}

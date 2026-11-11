@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { SubscriptionApi, type UpgradeNotice } from '@/src/api/SubscriptionApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { getActiveBrandId, isBrandOwner } from '@/src/auth/brandAccess';
@@ -12,9 +12,11 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 
+const CLOSE_GLASS_SIZE = { width: 32, height: 32 } as const;
+
 export function SubscriptionNotice() {
   const { user, status } = useAuth();
-  const { theme, scheme } = useTheme();
+  const { theme } = useTheme();
   const pathname = usePathname();
   const brandId = getActiveBrandId(user);
   const owner = Boolean(brandId && isBrandOwner(user, brandId));
@@ -116,14 +118,7 @@ export function SubscriptionNotice() {
           />
 
           <View style={styles.topBar}>
-            <View
-              style={[
-                styles.badgePill,
-                {
-                  
-                },
-              ]}
-            >
+            <View style={styles.badgePill}>
               <AppText variant="captionBold" tone="primary" style={styles.badgeText}>
                 ✨ STUDIO UPGRADE
               </AppText>
@@ -133,12 +128,17 @@ export function SubscriptionNotice() {
               accessibilityRole="button"
               accessibilityLabel="Close subscription notice"
               onPress={close}
-              style={[
-                styles.closeButton,
-                { backgroundColor: theme.colors.glassSurface },
-              ]}
+              style={styles.closeButton}
               hitSlop={8}
             >
+              <WiezLiquidGlass
+                mode="lightweight"
+                intensity="regular"
+                borderRadius={16}
+                initialSize={CLOSE_GLASS_SIZE}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
               <AppText variant="captionBold" tone="muted">
                 ✕
               </AppText>
@@ -229,6 +229,8 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
+    borderWidth: 0,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },

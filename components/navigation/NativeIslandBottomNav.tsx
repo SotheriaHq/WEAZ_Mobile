@@ -8,7 +8,6 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import {
   GestureDetector,
   useCompetingGestures,
@@ -26,6 +25,7 @@ import Animated, {
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { measurePressHandler, useCommitCost } from '@/src/perf/commitCost';
 // Direct, not via `navPerf`: that facade reaches wiezPerf through
@@ -503,31 +503,20 @@ const FixedDockButton = React.memo(
 // shadow and milky tint are unchanged on both platforms.
 const USE_LIVE_BLUR = Platform.OS === 'ios';
 
-const ISLAND_SHEEN_LOCATIONS = [0, 0.45, 1] as const;
-const ISLAND_SHEEN_START = { x: 0.5, y: 0 } as const;
-const ISLAND_SHEEN_END = { x: 0.5, y: 1 } as const;
-
 const IslandGlass = React.memo(function IslandGlass({
   scheme,
   theme,
+  islandWidth,
 }: {
   scheme: ReturnType<typeof useTheme>['scheme'];
   theme: ReturnType<typeof useTheme>['theme'];
+  islandWidth: number;
 }) {
-  // Android (no live blur): render a balanced translucent vertical sheen (~58-76%
-  // alpha) with zero border so background imagery passes through cleanly without
-  // heavy whitewash in light mode or opaque dark slab in dark mode, while
-  // preserving icon and label contrast across bright and dark cards.
-  const fillColor = USE_LIVE_BLUR
-    ? scheme === 'dark'
-      ? tokens.island.blurDark
-      : tokens.island.blurLight
-    : scheme === 'dark'
-      ? tokens.island.solidDark
-      : tokens.island.solidLight;
-
-  const androidSheenColors =
-    scheme === 'dark' ? tokens.island.androidSheenDark : tokens.island.androidSheenLight;
+  // iOS retains live UIBlurView glass with the approved translucent tint.
+  // Android renders lightweight Liquid Glass (sheer tint + multi-stop reflection
+  // depth + directional 0.85dp specular SVG rim) with zero GPU live-blur stall
+  // during tab transitions and zero extra View hierarchy bloat on fixed chrome.
+  const iosFillColor = scheme === 'dark' ? tokens.island.blurDark : tokens.island.blurLight;
 
   return (
     <>
@@ -545,7 +534,7 @@ const IslandGlass = React.memo(function IslandGlass({
               StyleSheet.absoluteFill,
               styles.navGlassFill,
               {
-                backgroundColor: fillColor,
+                backgroundColor: iosFillColor,
                 borderColor: theme.colors.glassBorder,
                 borderRadius: NATIVE_ISLAND_NAV.radius,
               },
@@ -553,20 +542,15 @@ const IslandGlass = React.memo(function IslandGlass({
           />
         </>
       ) : (
-        <ExpoLinearGradient
-          colors={androidSheenColors}
-          locations={ISLAND_SHEEN_LOCATIONS}
-          start={ISLAND_SHEEN_START}
-          end={ISLAND_SHEEN_END}
+        <WiezLiquidGlass
+          mode="lightweight"
+          intensity="prominent"
+          tintAlpha={scheme === 'dark' ? 0.56 : 0.58}
+          highlightIntensity={0.85}
+          borderRadius={NATIVE_ISLAND_NAV.radius}
+          initialSize={{ width: islandWidth, height: NATIVE_ISLAND_NAV.height }}
           pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            styles.navGlassFill,
-            {
-              borderColor: theme.colors.glassBorder,
-              borderRadius: NATIVE_ISLAND_NAV.radius,
-            },
-          ]}
+          style={StyleSheet.absoluteFill}
         />
       )}
     </>
@@ -831,7 +815,7 @@ function NativeIslandBottomNavImpl({
           },
         ]}
       >
-        <IslandGlass scheme={scheme} theme={theme} />
+        <IslandGlass scheme={scheme} theme={theme} islandWidth={islandWidth} />
         <View style={styles.navItems}>
           {scrollableDock ? (
             <ScrollView

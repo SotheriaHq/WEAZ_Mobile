@@ -1,12 +1,14 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { BlurView } from 'expo-blur';
 
 import { StableImage } from '@/components/ui/StableImage';
 import { AppText } from '@/components/ui/AppText';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { tokens } from '@/src/styles/tokens';
+
+const CLOSE_GLASS_SIZE = { width: 34, height: 34 } as const;
 
 type ProfileImageModalProps = {
   visible: boolean;
@@ -38,9 +40,27 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
         <View style={styles.centerWrap} pointerEvents="box-none">
-          <BlurView intensity={35} tint="dark" style={styles.panel}>
-            <Pressable onPress={onClose} style={styles.closeButton} accessibilityLabel="Close profile image">
-              <AppText variant="smallBold">✖️</AppText>
+          <WiezLiquidGlass
+            mode="lightweight"
+            intensity="prominent"
+            tintMode="dark"
+            tintAlpha={0.34}
+            borderRadius={24}
+            style={styles.panel}
+            contentStyle={styles.panelContent}
+          >
+            <Pressable onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close profile image">
+              <WiezLiquidGlass
+                mode="lightweight"
+                intensity="regular"
+                tintMode="dark"
+                tintAlpha={0.28}
+                borderRadius={17}
+                initialSize={CLOSE_GLASS_SIZE}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+              <AppText variant="smallBold" tone="inverse">✖️</AppText>
             </Pressable>
 
             <View style={styles.imageWrap}>
@@ -53,7 +73,7 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
                 fadeDuration={120}
               />
             </View>
-          </BlurView>
+          </WiezLiquidGlass>
         </View>
       </View>
     </Modal>
@@ -78,19 +98,24 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    borderWidth: 2,
-    borderColor: tokens.tintLight(0.22),
+    borderWidth: 0,
+  },
+  panelContent: {
+    width: '100%',
+    height: '100%',
     padding: 12,
-    backgroundColor: tokens.colors.glassPlateDark,
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
   },
   closeButton: {
     alignSelf: 'flex-end',
     width: 34,
     height: 34,
     borderRadius: 17,
+    borderWidth: 0,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: tokens.tintLight(0.14),
   },
   imageWrap: {
     marginTop: 4,

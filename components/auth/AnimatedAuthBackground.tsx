@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Dimensions, StyleSheet, View, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
