@@ -1,3 +1,4 @@
+import { setSessionTokens } from '@/src/storage/secureStorage';
 import axios, {
   type AxiosInstance,
   AxiosError,
@@ -6,8 +7,13 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { Platform } from 'react-native';
+import { toByteArray } from 'base64-js';
+import { securityChallenges, securityIdentityFromToken, SecurityVerificationCancelled } from '@/src/auth/securityChallenge';
+import { verifyChallengedRequest, type SecurityRequestState } from '@/src/auth/securityRequestRetry';
+import { isPasswordSessionRotation } from '@/src/auth/passwordSessionRotation';
 import Constants from 'expo-constants';
 
+import { getSecurityDeviceId } from '@/src/auth/securityDevice';
 import { env } from '@/src/config/env';
 import { apiHostDevLog, apiHostDevWarn, isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
@@ -346,6 +352,7 @@ function buildDedupeKey(config: InternalAxiosRequestConfig): string | null {
   const method = String(config.method ?? 'get').toUpperCase();
   if (method !== 'GET') return null;
   if (config.signal) return null;
+  if ((config as RetryableConfig)._accountToken) return null;
   if (config.headers?.['x-no-dedupe']) return null;
 
   let params = '';
@@ -356,7 +363,7 @@ function buildDedupeKey(config: InternalAxiosRequestConfig): string | null {
     // requests are the same, so we do not claim they are.
     return null;
   }
-  return `${config.baseURL ?? ''}|${config.url ?? ''}|${params}`;
+  return `${(config as RetryableConfig)._authScope ?? authScope}|${config.baseURL ?? ''}|${config.url ?? ''}|${params}`;
 }
 
 /** Drop coalesced GETs so the next read goes to the network. */
@@ -398,9 +405,36 @@ function applyBaseUrl(baseUrl: string) {
 }
 
 let currentAuthToken: string | null = null;
+const securityIdentity = (token: string | null) => securityIdentityFromToken(token,
+  value => String.fromCharCode(...toByteArray(value)));
+export const getApiSecurityIdentity = () => securityIdentity(currentAuthToken);
+export const getApiAccessToken = () => currentAuthToken;
 let currentRefreshToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+type PasswordRotationFlow = { id: symbol; token: string | null; blocked?: { done: Promise<void>; release: () => void } };
+let passwordRotationFlow: PasswordRotationFlow | null = null;
+function releasePasswordSend(config?: { _passwordRotationId?: symbol }) {
+  const flow = passwordRotationFlow;
+  if (flow && config?._passwordRotationId === flow.id) {
+    const blocked = flow.blocked; flow.blocked = undefined; blocked?.release();
+  }
+}
+let authScope = 0;
+function advanceAuthScope() {
+  authScope++;
+  refreshPromise = null;
+  invalidateGetDedupe();
+  securityChallenges.cancel();
+  const flow = passwordRotationFlow;
+  passwordRotationFlow = null;
+  flow?.blocked?.release();
+}
+function assertCurrentScope(config: RetryableConfig) {
+  // Push unregister must still finish as the account that registered it.
+  if (!config._accountToken && config._authScope !== undefined && config._authScope !== authScope)
+    throw new SecurityVerificationCancelled('Your sign-in session changed. Start this action again.');
+}
 
 /**
  * Set once the server has told us this session is definitively dead (the refresh
@@ -417,7 +451,9 @@ let refreshPromise: Promise<string | null> | null = null;
  */
 let refreshTokenRejected = false;
 
-type RetryableConfig = InternalAxiosRequestConfig & {
+type RetryableConfig = InternalAxiosRequestConfig & SecurityRequestState & {
+  _passwordRotationId?: symbol;
+  _authScope?: number;
   _retry?: boolean;
   _hostFailoverAttempts?: number;
   _hostFailoverStartIndex?: number;
@@ -527,16 +563,61 @@ function summarizeLoginPayload(payload: Record<string, unknown> | null) {
   };
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function acceptPasswordSessionRotation(previousToken: string | null, accessToken: string, refreshToken: string): Promise<void> {
+  const expectedEpoch = authEpoch;
+  const expectedIdentity = securityIdentity(previousToken);
+  const stillCurrent = () => authEpoch === expectedEpoch && securityIdentity(currentAuthToken) === expectedIdentity;
+  if (!previousToken || !stillCurrent() || !isPasswordSessionRotation(previousToken, accessToken,
+    value => String.fromCharCode(...toByteArray(value))) || typeof refreshToken !== 'string' ||
+    refreshToken.split('.').length !== 2 || refreshToken.split('.')[0] !== securityIdentity(accessToken)?.split(':')[1] || !refreshToken.split('.')[1])
+    throw new SecurityVerificationCancelled('Your password may have changed, but your sign-in session changed too. Sign in with the new password.');
+  if (!(await setSessionTokens(accessToken, refreshToken, stillCurrent)) || !stillCurrent())
+    throw new SecurityVerificationCancelled('Your sign-in session changed before renewed credentials could be saved.');
+  setApiAuthToken(accessToken);
+  setApiRefreshToken(refreshToken);
+  rotationHandler?.(accessToken, refreshToken);
+}
+
+/** A physical password send and its credential adoption form one transition.
+ * Release the refresh barrier on428 before showing MFA, so verification can
+ * refresh normally. Re-establish it for the approved retry, after any existing
+ * refresh settles. A true sign-out still changes the epoch and cancels it. */
+export async function changePasswordWithSessionRotation(params: { currentPassword: string; newPassword: string }): Promise<{ message: string }> {
+  if (passwordRotationFlow) throw new SecurityVerificationCancelled('A password change is already in progress.');
+  const flow: PasswordRotationFlow = { id: Symbol('password-rotation'), token: currentAuthToken };
+  passwordRotationFlow = flow;
+  try {
+    const response = await apiClient.post('/auth/change-password', params,
+      { _passwordRotationId: flow.id } as AxiosRequestConfig);
+    const result = unwrapData<{ message: string; accessToken: string; refreshToken: string }>(response.data);
+    await acceptPasswordSessionRotation(flow.token, result.accessToken, result.refreshToken);
+    return { message: result.message };
+  } finally {
+    releasePasswordSend({ _passwordRotationId: flow.id });
+    if (passwordRotationFlow === flow) passwordRotationFlow = null;
+  }
+}
+
+export async function refreshAccessToken(): Promise<string | null> {
+  const flow = passwordRotationFlow, blocked = flow?.blocked;
+  if (flow && blocked) {
+    await blocked.done;
+    if (isPasswordSessionRotation(flow.token, currentAuthToken, value => String.fromCharCode(...toByteArray(value))))
+      return currentAuthToken;
+    if (securityIdentity(flow.token) !== securityIdentity(currentAuthToken)) return null;
+  }
   if (!currentRefreshToken) return null;
   // Already told "no" by the server — fail fast instead of re-asking per request.
   if (refreshTokenRejected) return null;
 
   if (!refreshPromise) {
-    refreshPromise = (async () => {
+    const expectedEpoch = authEpoch;
+    const expectedRefresh = currentRefreshToken;
+    const stillCurrent = () => authEpoch === expectedEpoch && currentRefreshToken === expectedRefresh;
+    const operation = (async () => {
       try {
         const response = await refreshClient.post('/auth/refresh', {
-          refreshToken: currentRefreshToken,
+          refreshToken: expectedRefresh,
         });
         const data = unwrapData<any>(response.data);
         const accessToken: string | null =
@@ -544,29 +625,39 @@ async function refreshAccessToken(): Promise<string | null> {
         const rotatedRefreshToken: string | null =
           (data as any)?.refreshToken ?? null;
 
-        if (accessToken) {
-          setApiAuthToken(accessToken);
-        }
-        if (rotatedRefreshToken && typeof rotatedRefreshToken === 'string') {
-          setApiRefreshToken(rotatedRefreshToken);
-        }
+        if (!accessToken || !rotatedRefreshToken || !stillCurrent()) return null;
+        if (!(await setSessionTokens(accessToken, rotatedRefreshToken, stillCurrent)) || !stillCurrent()) return null;
+        setApiAuthToken(accessToken);
+        setApiRefreshToken(rotatedRefreshToken);
+        rotationHandler?.(accessToken, rotatedRefreshToken);
 
         return accessToken;
       } catch (error) {
         // Only latch on an explicit rejection. A timeout or offline device must
         // stay retryable, or a tunnel blip would strand a valid session.
         const refreshStatus = Number((error as any)?.response?.status ?? 0);
-        if (refreshStatus === 401 || refreshStatus === 403) {
+        if (stillCurrent() && (refreshStatus === 401 || refreshStatus === 403)) {
           refreshTokenRejected = true;
         }
         return null;
-      } finally {
-        refreshPromise = null;
       }
     })();
+    refreshPromise = operation;
+    void operation.then(() => { if (refreshPromise === operation) refreshPromise = null; });
   }
 
   return refreshPromise;
+}
+
+/** Realtime has no failed HTTP interceptor to finish a definitive sign-out.
+ * Preserve transient retries, but notify only the same rejected account. */
+export async function refreshRealtimeAccessToken(): Promise<string | null> {
+  const expectedEpoch = authEpoch;
+  const token = await refreshAccessToken();
+  if (!token && expectedEpoch === authEpoch && refreshTokenRejected) {
+    try { unauthorizedHandler?.(); } catch { /* Auth cleanup owns its recovery. */ }
+  }
+  return token;
 }
 
 /**
@@ -627,7 +718,16 @@ async function waitForAuthHydration(url?: string): Promise<void> {
   ]);
 }
 
+let authEpoch = 0;
+let rotationHandler: ((access: string, refresh: string) => void) | null = null;
+export const beginAuthTransition = () => { authEpoch++; advanceAuthScope(); };
+export const setSessionRotationHandler = (handler: typeof rotationHandler) => { rotationHandler = handler; };
+export const getApiRefreshToken = () => currentRefreshToken;
+
 export function setApiAuthToken(token: string | null) {
+  if (token === null || securityIdentity(token) !== securityIdentity(currentAuthToken) ||
+    (!securityIdentity(token) && token !== currentAuthToken)) advanceAuthScope();
+  if (currentAuthToken !== token) authEpoch++;
   // Any call here means the token state is now known — including `null`, which
   // is a real answer ("signed out"), not an absence of one.
   markApiAuthHydrated();
@@ -640,6 +740,7 @@ export function setApiAuthToken(token: string | null) {
 }
 
 export function setApiRefreshToken(token: string | null) {
+  if (currentRefreshToken !== token) authEpoch++;
   currentRefreshToken = token;
   // A new refresh token means a new session — the previous rejection no longer
   // applies. Clearing the token (sign-out) also resets the latch so the next
@@ -715,7 +816,7 @@ if (resolvedBaseAdapter) {
 
     const promise = send(config)
       .then((response: any) => {
-        getDedupeEntries.set(key, {
+        if (getDedupeEntries.get(key)?.inFlight === promise) getDedupeEntries.set(key, {
           inFlight: null,
           response,
           settledAt: Date.now(),
@@ -724,7 +825,7 @@ if (resolvedBaseAdapter) {
       })
       .catch((error: unknown) => {
         // Never retain a failure — the next caller must be free to retry.
-        getDedupeEntries.delete(key);
+        if (getDedupeEntries.get(key)?.inFlight === promise) getDedupeEntries.delete(key);
         throw error;
       });
 
@@ -735,6 +836,10 @@ if (resolvedBaseAdapter) {
 
 apiClient.interceptors.request.use(async (config) => {
   const retryableConfig = config as RetryableConfig;
+  if (authHydrated) retryableConfig._authScope ??= authScope;
+  assertCurrentScope(retryableConfig);
+  if (retryableConfig._securityIdentity && retryableConfig._securityIdentity !== securityIdentity(currentAuthToken))
+    throw new SecurityVerificationCancelled('Your sign-in session changed. Start this action again.');
 
   /*
     Everything between here and `startNetworkTrace` below happens BEFORE the
@@ -749,6 +854,19 @@ apiClient.interceptors.request.use(async (config) => {
 
   // Hold until the restored token (or its confirmed absence) is known.
   await waitForAuthHydration(retryableConfig.url);
+  retryableConfig._authScope ??= authScope;
+  assertCurrentScope(retryableConfig);
+  if (retryableConfig._passwordRotationId) {
+    const flow = passwordRotationFlow;
+    if (!flow || flow.id !== retryableConfig._passwordRotationId || securityIdentity(flow.token) !== securityIdentity(currentAuthToken))
+      throw new SecurityVerificationCancelled();
+    if (refreshPromise) await refreshPromise;
+    assertCurrentScope(retryableConfig);
+    if (passwordRotationFlow !== flow || securityIdentity(flow.token) !== securityIdentity(currentAuthToken))
+      throw new SecurityVerificationCancelled();
+    let release!: () => void;
+    flow.blocked = { done: new Promise<void>(resolve => { release = resolve; }), release: () => release() };
+  }
 
   if (perfEnabled()) {
     const waited = perfGateNow() - gateStartedAt;
@@ -797,8 +915,14 @@ apiClient.interceptors.request.use(async (config) => {
     const deviceId = getCachedDeviceId() ?? (await getDeviceId());
     if (deviceId) headers.set(WIEZ_DEVICE_ID_HEADER, deviceId);
   }
+  if (String(retryableConfig.url ?? '').startsWith('/auth/')) {
+    try { headers.set('x-wiez-security-device', await getSecurityDeviceId()); } catch { /* Identification cannot block authentication. */ }
+    headers.set('x-wiez-device-name', String(Constants.deviceName ?? `${Platform.OS} app`).slice(0, 80));
+  }
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
+  assertCurrentScope(retryableConfig);
   retryableConfig.headers = headers;
+  retryableConfig._securityStartedAt = performance.now();
 
   if (isWiezDebugEnabled('network')) {
     const activeRequestBaseUrl = retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? '';
@@ -818,6 +942,7 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (res) => {
     finishNetworkTrace(res.config, res);
+    assertCurrentScope(res.config as RetryableConfig);
 
     /*
       A successful write invalidates the read cache. All of it.
@@ -849,12 +974,14 @@ apiClient.interceptors.response.use(
     return res;
   },
   async (error: AxiosError) => {
+    releasePasswordSend(error.config as RetryableConfig | undefined);
     finishNetworkTrace(error.config, error.response, error);
+    if (error.config) assertCurrentScope(error.config as RetryableConfig);
     if (isWiezDebugEnabled('network')) {
       console.log(`[api] ? ${error.message}`, {
         url: error.config?.url,
         status: error.response?.status,
-        data: error.response?.data,
+        data: String(error.config?.url ?? '').startsWith('/auth/security/mfa') ? '[private verification response]' : error.response?.data,
       });
 
       if (error.config?.url?.includes('/auth/login')) {
@@ -869,6 +996,22 @@ apiClient.interceptors.response.use(
 
     const status = error.response?.status;
     const originalRequest = error.config as RetryableConfig | undefined;
+    const sentHeaders = originalRequest?.headers instanceof AxiosHeaders
+      ? originalRequest.headers : new AxiosHeaders(originalRequest?.headers as any);
+    const sentToken = String(sentHeaders.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+    const sentIdentity = securityIdentity(sentToken);
+    if (originalRequest && !originalRequest._accountToken && sentIdentity && sentIdentity !== securityIdentity(currentAuthToken))
+      throw new SecurityVerificationCancelled();
+    if (status === 428 && originalRequest && !originalRequest._accountToken) {
+      const verified = await verifyChallengedRequest(originalRequest, error.response?.data, sentIdentity,
+        () => securityIdentity(currentAuthToken), originalRequest.signal);
+      if (verified) {
+        sentHeaders.delete('x-wiez-action-proof');
+        if (verified.proof) sentHeaders.set('x-wiez-action-proof', verified.proof);
+        originalRequest.headers = sentHeaders;
+        return apiClient(originalRequest);
+      }
+    }
 
     if (error.response && originalRequest) {
       const reachableIndex = findCandidateIndex(
@@ -944,7 +1087,10 @@ apiClient.interceptors.response.use(
         originalRequest._retry = true;
 
         const refreshedToken = await refreshAccessToken();
+        assertCurrentScope(originalRequest);
         if (refreshedToken) {
+          if (sentIdentity && sentIdentity !== securityIdentity(refreshedToken))
+            throw new SecurityVerificationCancelled();
           const headers =
             originalRequest.headers instanceof AxiosHeaders
               ? originalRequest.headers
@@ -956,7 +1102,7 @@ apiClient.interceptors.response.use(
         }
       }
 
-      if (unauthorizedHandler) {
+      if (unauthorizedHandler && refreshTokenRejected) {
         try {
           unauthorizedHandler();
         } catch {

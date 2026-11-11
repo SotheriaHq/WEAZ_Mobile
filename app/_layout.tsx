@@ -744,6 +744,7 @@ function RootLayoutNav({
               <GenderPromptSheet />
               <AnalyticsConsentSheet />
               <SubscriptionNotice />
+              <MfaVerificationHost />
               <BagCountProvider>
                 <BagFlowProvider>
                   <ScreenChromeProvider>
@@ -803,3 +804,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+import { MfaVerificationHost } from '@/components/settings/MfaSettingsPanel';

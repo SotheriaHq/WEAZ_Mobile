@@ -29,6 +29,14 @@ jobs:
 
       - name: Runway category parity
         run: npm run test:runway-categories
+      - name: Held subscription quote API
+        run: npm run test:subscription-quotes
+      - name: Verify MFA request and privacy safety
+        run: npm run test:mfa-security
+      - name: Session response isolation
+        run: npm run test:session-response-isolation
+      - name: Session-bound realtime recovery
+        run: npm run test:session-socket
 
       - name: Native border policy
         run: npm run check:borders
@@ -76,6 +84,7 @@ jobs:
       - name: Email and web links open native screens
         run: |
           npm run test:app-link-routing-contract
+          npm run test:android-release-signing
           npm run test:auth-link-routing-contract
           npm run test:security-dependency-compat
 

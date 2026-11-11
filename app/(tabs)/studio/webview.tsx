@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toByteArray } from 'base64-js';
 import { AppState, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
@@ -62,6 +63,9 @@ import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { perfMark } from '@/src/utils/perf';
+import { verifyStudioParentSession } from '@/src/features/studio/verifyParentSession';
+import { getApiSecurityIdentity } from '@/src/api/httpClient';
+import { securityIdentityFromToken } from '@/src/auth/securityChallenge';
 
 type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 
@@ -97,6 +101,8 @@ type NativeMessage =
   | { type: 'BOOT_FAILED' }
   | { type: 'ROUTE_CHANGED'; path?: string }
   | { type: 'AUTH_REQUIRED'; reason?: string }
+  | { type: 'VERIFY_PHONE_SESSION'; requestId?: string; parentSessionId?: string }
+  | { type: 'CANCEL_PHONE_SESSION_VERIFICATION'; requestId?: string; parentSessionId?: string }
   | {
       type: 'HANDOFF_FAILED';
       reason?: string;
@@ -339,12 +345,21 @@ export default function StudioWebViewScreen() {
     /** `catalog` when the Catalogue opened this page — see `catalogEntryRef`. */
     from?: string;
   }>();
-  const { status, user, signOut } = useAuth();
+  const { status, token, user, signOut } = useAuth();
+  const actorId = user?.id;
+  const activeBrandId = getActiveBrandId(user);
+  const nativeIdentity = securityIdentityFromToken(token, value => String.fromCharCode(...toByteArray(value)));
+  const studioScope = `${actorId ?? ''}:${activeBrandId ?? ''}:${nativeIdentity ?? ''}`;
+  const currentStudioScopeRef = useRef(studioScope);
+  currentStudioScopeRef.current = studioScope;
+  const documentStudioScopeRef = useRef<string | null>(null);
   const { scheme, theme } = useTheme();
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { standardScreenBottomPadding } = useScreenChrome();
   const webViewRef = useRef<WebView>(null);
+  const phoneVerification = useRef<{ controller: AbortController; requestId: string; parentSessionId: string } | null>(null);
+  useEffect(() => () => phoneVerification.current?.controller.abort(), []);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('booting');
   const [webUrl, setWebUrl] = useState<string | null>(null);
@@ -437,6 +452,15 @@ export default function StudioWebViewScreen() {
     productId?: string;
     orderId?: string;
   } | null>(null);
+  useEffect(() => {
+    if (documentStudioScopeRef.current === studioScope) return;
+    phoneVerification.current?.controller.abort();
+    sessionEstablishedRef.current = false;
+    documentStudioScopeRef.current = null;
+    lastInjectedRouteRef.current = null;
+    pendingRouteRef.current = null;
+    setWebUrl(null); setCanGoBack(false); setLoadState('booting');
+  }, [studioScope]);
   const loadStateRef = useRef(loadState);
   loadStateRef.current = loadState;
   // A web Back was sent and the page has not answered yet — see the BackHandler.
@@ -613,6 +637,7 @@ export default function StudioWebViewScreen() {
         setLoadState('error');
         return;
       }
+      if (!nativeIdentity || nativeIdentity.split(':')[0] !== actorId || getApiSecurityIdentity() !== nativeIdentity) return;
       if (!isStudioEligible) {
         setErrorMessage(
           hasBrandWorkspace
@@ -680,7 +705,8 @@ export default function StudioWebViewScreen() {
       try {
         const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
         const handoff = await StudioApi.createHandoff(intendedPath);
-        if (!mounted) return;
+        if (!mounted || currentStudioScopeRef.current !== studioScope || getApiSecurityIdentity() !== nativeIdentity) return;
+        documentStudioScopeRef.current = studioScope;
         sessionEstablishedRef.current = true;
         sessionBootedForRef.current = sessionOwnerNowRef.current;
         lastInjectedRouteRef.current = getStudioRouteSignature(resolvedRouteKey, { productId, orderId });
@@ -730,6 +756,9 @@ export default function StudioWebViewScreen() {
     reportedRouteSignature,
     retryKey,
     status,
+    actorId,
+    studioScope,
+    nativeIdentity,
     storeSetupComplete,
     toast,
   ]);
@@ -985,6 +1014,10 @@ export default function StudioWebViewScreen() {
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
+      // Queued messages from an old retained document cannot affect the next
+      // account/workspace. Ordinary route changes keep the same scope/cache.
+      if (currentStudioScopeRef.current !== studioScope || documentStudioScopeRef.current !== studioScope ||
+        getApiSecurityIdentity() !== nativeIdentity) return;
       // Any message proves the page is alive, so a pending web Back is answered.
       webBackPendingRef.current = false;
       lastPageSignalRef.current = Date.now();
@@ -1013,6 +1046,35 @@ export default function StudioWebViewScreen() {
       });
 
       switch (message?.type) {
+        case 'CANCEL_PHONE_SESSION_VERIFICATION': {
+          let origin: string;
+          try { origin = new URL(event.nativeEvent.url).origin; } catch { break; }
+          const pending = phoneVerification.current;
+          if (trustedOrigins.has(origin) && pending && pending.requestId === message.requestId && pending.parentSessionId === message.parentSessionId)
+            pending.controller.abort();
+          break;
+        }
+        case 'VERIFY_PHONE_SESSION': {
+          let origin: string;
+          try { origin = new URL(event.nativeEvent.url).origin; } catch { break; }
+          const { requestId, parentSessionId } = message;
+          const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!trustedOrigins.has(origin) || !uuid.test(requestId ?? '') || !uuid.test(parentSessionId ?? '') || phoneVerification.current) break;
+          const identity = getApiSecurityIdentity();
+          const controller = new AbortController(); phoneVerification.current = { controller, requestId: requestId!, parentSessionId: parentSessionId! };
+          void (async () => {
+            let verified = false;
+            try { await verifyStudioParentSession(parentSessionId!, controller.signal); verified = true; } catch { /* The web prompt offers a bounded retry. */ }
+            finally {
+              if (phoneVerification.current?.controller === controller) phoneVerification.current = null;
+              if (!controller.signal.aborted && identity === getApiSecurityIdentity()) {
+                const detail = JSON.stringify({ requestId, parentSessionId, verified });
+                webViewRef.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent('wiez:phone-session-verification', {detail:${detail}}));true;`);
+              }
+            }
+          })();
+          break;
+        }
         case 'BOOT_FAILED':
           sessionEstablishedRef.current = false;
           setErrorMessage('Studio could not start. Please try again shortly.');
@@ -1142,13 +1204,13 @@ export default function StudioWebViewScreen() {
            * mounted observer at this instant.
            */
           if (message.action === 'STORE_SETUP_COMPLETE') {
-            queryClient.setQueryData(queryKeys.store.status(), (previous: any) =>
+            queryClient.setQueryData(queryKeys.store.status(actorId, activeBrandId), (previous: any) =>
               previous
                 ? { ...previous, isSetupComplete: true, isPublished: true, isStoreOpen: true }
                 : previous,
             );
             void queryClient.invalidateQueries({
-              queryKey: queryKeys.store.status(),
+              queryKey: queryKeys.store.status(actorId, activeBrandId),
               refetchType: 'all',
             });
 
@@ -1173,7 +1235,8 @@ export default function StudioWebViewScreen() {
           break;
       }
     },
-    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast],
+    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast, trustedOrigins,
+      actorId, activeBrandId, studioScope, nativeIdentity],
   );
 
   const openSearch = useCallback(() => {
@@ -1309,11 +1372,11 @@ export default function StudioWebViewScreen() {
           injected script), so the page's own background runs to the edge and
           there is nothing to see under the island. */}
       <View style={[styles.webHost, { backgroundColor: studioShellBackground }]}>
-        {webUrl ? (
+        {webUrl && documentStudioScopeRef.current === studioScope ? (
           <WebView
             textZoom={100}
             ref={webViewRef}
-            key={String(retryKey)}
+            key={`${studioScope}:${retryKey}`}
             source={{ uri: webUrl }}
             originWhitelist={originWhitelist}
             onNavigationStateChange={handleNavigationStateChange}

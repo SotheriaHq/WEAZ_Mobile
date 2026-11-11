@@ -57,43 +57,61 @@ const getSecureItem = async (key: string): Promise<string | null> => {
   }
 };
 
-const setSecureItem = async (key: string, value: string): Promise<void> => {
-  if (setWebDevItem(key, value)) return;
-  await SecureStore.setItemAsync(key, value);
+let writeQueue: Promise<unknown> = Promise.resolve();
+const enqueueWrite = <T,>(write: () => Promise<T>): Promise<T> => {
+  const result = writeQueue.catch(() => undefined).then(write);
+  writeQueue = result.catch(() => undefined);
+  return result;
 };
-
-const removeSecureItem = async (key: string): Promise<void> => {
+const writeRaw = async (key: string, value: string) => {
+  if (!setWebDevItem(key, value)) await SecureStore.setItemAsync(key, value);
+};
+const removeRaw = async (key: string) => {
   if (removeWebDevItem(key)) return;
+  await SecureStore.deleteItemAsync(key);
+};
+const setSecureItem = (key: string, value: string): Promise<void> => enqueueWrite(() => writeRaw(key, value));
+const removeSecureItem = (key: string): Promise<void> => enqueueWrite(async () => {
+  try { await removeRaw(key); } catch { /* Retry on the next explicit sign-out. */ }
+});
 
+const CREDENTIALS_KEY = `${env.tokenStorageKey}.credentials.v2`;
+type Credentials = { version: 2; accessToken: string | null; refreshToken: string | null };
+const readCredentialsRaw = async (): Promise<Credentials | null> => {
+  const raw = await getSecureItem(CREDENTIALS_KEY);
   try {
-    await SecureStore.deleteItemAsync(key);
-  } catch {
-    // Secure storage cleanup is best effort.
-  }
+    const value = raw ? JSON.parse(raw) as Credentials : null;
+    return value?.version === 2 ? value : null;
+  } catch { return null; }
 };
-
+export const setSessionTokens = (accessToken: string, refreshToken: string | null,
+  stillCurrent: () => boolean = () => true): Promise<boolean> => enqueueWrite(async () => {
+  if (!stillCurrent()) return false;
+  // One secure-store value: power loss cannot leave an access/refresh mismatch.
+  await writeRaw(CREDENTIALS_KEY, JSON.stringify({ version: 2, accessToken, refreshToken }));
+  // The approved fresh-sign-in cutover retires the previous independent keys.
+  await Promise.all([removeRaw(env.tokenStorageKey), removeRaw(env.refreshTokenStorageKey)]).catch(() => undefined);
+  return stillCurrent();
+});
 export const getAccessToken = async (): Promise<string | null> => {
-  return getSecureItem(env.tokenStorageKey);
+  await writeQueue; return (await readCredentialsRaw())?.accessToken ?? null;
 };
-
-export const setAccessToken = async (token: string): Promise<void> => {
-  await setSecureItem(env.tokenStorageKey, token);
-};
-
 export const getRefreshToken = async (): Promise<string | null> => {
-  return getSecureItem(env.refreshTokenStorageKey);
+  await writeQueue; return (await readCredentialsRaw())?.refreshToken ?? null;
 };
-
-export const setRefreshToken = async (token: string): Promise<void> => {
-  await setSecureItem(env.refreshTokenStorageKey, token);
-};
-
+export const setAccessToken = (token: string): Promise<void> => enqueueWrite(async () => {
+  const previous = await readCredentialsRaw();
+  await writeRaw(CREDENTIALS_KEY, JSON.stringify({ version: 2, accessToken: token, refreshToken: previous?.refreshToken ?? null }));
+});
+export const setRefreshToken = (token: string): Promise<void> => enqueueWrite(async () => {
+  const previous = await readCredentialsRaw();
+  await writeRaw(CREDENTIALS_KEY, JSON.stringify({ version: 2, accessToken: previous?.accessToken ?? null, refreshToken: token }));
+});
 export const removeAccessToken = async (): Promise<void> => {
-  await removeSecureItem(env.tokenStorageKey);
+  await removeSecureItem(CREDENTIALS_KEY); await removeSecureItem(env.tokenStorageKey);
 };
-
 export const removeRefreshToken = async (): Promise<void> => {
-  await removeSecureItem(env.refreshTokenStorageKey);
+  await removeSecureItem(CREDENTIALS_KEY); await removeSecureItem(env.refreshTokenStorageKey);
 };
 
 export const getCachedAuthUser = async (accessToken: string): Promise<unknown | null> => {

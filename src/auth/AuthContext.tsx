@@ -3,6 +3,11 @@ import * as SecureStore from 'expo-secure-store';
 
 import {
   apiClient,
+  type AccountBoundRequestConfig,
+  beginAuthTransition,
+  refreshAccessToken,
+  getApiRefreshToken,
+  setSessionRotationHandler,
   markApiAuthHydrated,
   setApiAuthToken,
   setApiRefreshToken,
@@ -13,6 +18,7 @@ import {
   getCachedAuthUser,
   getRefreshToken,
   setAccessToken,
+  setSessionTokens,
   setCachedAuthUser,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
@@ -505,13 +511,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOutImpl = useCallback(async (options?: { notifyServer?: boolean }) => {
+    beginAuthTransition();
     const notifyServer = options?.notifyServer ?? true;
     const revokeOnServer = (refreshToken: string | null) => {
       // Local sign-out must never be held hostage by a slow or offline API.
       // The request is created while this account's credentials are still
       // present; local tokens and private data are cleared immediately after.
+      if (!token) return;
       void apiClient
-        .post('/auth/logout', { refreshToken: refreshToken ?? undefined })
+        .post('/auth/logout', { refreshToken: refreshToken ?? undefined }, { _accountToken: token } as AccountBoundRequestConfig)
         .catch(() => undefined);
     };
 
@@ -820,6 +828,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const applyAuthResponse = useCallback(async (rawData: unknown) => {
+    beginAuthTransition();
     const data = unwrapData<any>(rawData);
     const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
     const refreshToken: string | null = (data as any)?.refreshToken ?? null;
@@ -828,15 +837,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Authentication failed: missing access token');
     }
 
-    await setAccessToken(accessToken);
+    await setSessionTokens(accessToken, refreshToken);
     setApiAuthToken(accessToken);
     setToken(accessToken);
 
-    if (refreshToken) {
-      await setRefreshToken(refreshToken);
-      setApiRefreshToken(refreshToken);
-      setRefreshTokenState(refreshToken);
-    }
+    setApiRefreshToken(refreshToken);
+    setRefreshTokenState(refreshToken);
 
     const rawUser = (data as any)?.user;
     const mappedUser = normalizeAuthUser(rawUser);
@@ -1108,14 +1114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If access token is missing but refresh token exists, bootstrap a new access token.
         if (!stored && storedRefresh) {
           try {
-            const refreshResponse = await apiClient.post('/auth/refresh', {
-              refreshToken: storedRefresh,
-            });
-            const refreshed = unwrapData<any>(refreshResponse.data);
-            const nextAccess: string | null =
-              (refreshed as any)?.accessToken ?? (refreshed as any)?.token ?? null;
-            const nextRefresh: string | null =
-              (refreshed as any)?.refreshToken ?? null;
+            const nextAccess = await refreshAccessToken();
+            const nextRefresh = getApiRefreshToken();
 
             if (nextAccess) {
               await setAccessToken(nextAccess);
@@ -1167,6 +1167,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
     };
   }, [applyActiveBrandSelection, signOut, validateToken]);
+
+  useEffect(() => {
+    setSessionRotationHandler((access, refresh) => {
+      setToken(access);
+      setRefreshTokenState(refresh);
+    });
+    return () => setSessionRotationHandler(null);
+  }, []);
 
   useEffect(() => {
     // Global 401 handler: clear token on unauthorized.
