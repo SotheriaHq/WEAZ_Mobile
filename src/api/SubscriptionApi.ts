@@ -1,5 +1,6 @@
 import { apiClient } from './httpClient';
 import { LEGAL_PAGE_VERSION } from '@/src/legal/legalDocuments';
+import { assertSubscriptionQuoteFresh, timeSubscriptionQuote, type SubscriptionQuoteClock } from './subscriptionQuote';
 
 export type Subscription = {
   id?: string;
@@ -10,6 +11,7 @@ export type Subscription = {
   lockedMonthlyPriceNgn: number;
   cancelAtPeriodEnd: boolean;
   pendingTierKey?: string | null;
+  pendingMonthlyPriceNgn?: number | null;
   recoveryUntil?: string | null;
   savedPaymentMethodId?: string | null;
 };
@@ -31,7 +33,7 @@ export type SubscriptionCard = {
   reusable: boolean;
   isDefault?: boolean;
 };
-export type SubscriptionPreview = {
+export type SubscriptionPreview = SubscriptionQuoteClock & {
   amountNgn: number;
   effectiveAt: string;
   periodEnd: string;
@@ -80,23 +82,29 @@ export const SubscriptionApi = {
         authorizationUrl?: string;
       }>;
     }>(root(id)),
-  preview: (id: string, tierKey: string) =>
-    post<SubscriptionPreview>(`${root(id)}/preview`, { tierKey }),
-  checkout: (
+  preview: async (id: string, tierKey: string) => {
+    const started = performance.now();
+    const quote = await post<SubscriptionPreview>(`${root(id)}/preview`, { tierKey });
+    return timeSubscriptionQuote(quote, id, started);
+  },
+  checkout: async (
     id: string,
     tierKey: string,
-    amount: number,
+    quote: SubscriptionPreview,
     callbackUrl: string,
     savedCardId?: string,
-  ) =>
-    post<SubscriptionPayment>(`${root(id)}/checkout`, {
+  ) => {
+    assertSubscriptionQuoteFresh(quote, id);
+    return post<SubscriptionPayment>(`${root(id)}/checkout`, {
+      quoteId: quote.quoteId,
       tierKey,
-      expectedAmountNgn: amount,
+      expectedAmountNgn: quote.amountNgn,
       callbackUrl,
       savedCardId,
       recurringConsent: true,
       legalVersion: LEGAL_PAGE_VERSION,
-    }),
+    });
+  },
   cancel: (id: string) => post(`${root(id)}/cancel-renewal`),
   verify: (id: string, reference: string) =>
     post<{ status: string }>(`${root(id)}/verify`, { reference }),

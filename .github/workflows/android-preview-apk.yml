@@ -70,6 +70,8 @@ jobs:
         run: |
           node scripts/test-studio-startup-recovery.cjs
           node scripts/test-studio-navigation-feedback.cjs
+          node scripts/test-subscription-quotes.cjs
+          node --test scripts/test-mfa-security.cjs
           node --test scripts/test-android-release-signing.cjs
           node --test scripts/test-fetch-gradle-distribution.cjs
           node scripts/test-image-compression.cjs

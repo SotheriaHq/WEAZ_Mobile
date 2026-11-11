@@ -35,6 +35,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import { tokens } from '@/src/styles/tokens';
 import { LEGAL_PAGE_VERSION } from '@/src/legal/legalDocuments';
 import { env } from '@/src/config/env';
+import { subscriptionQuoteRemainingMs } from '@/src/api/subscriptionQuote';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 const tierName = (key?: string | null) =>
@@ -203,6 +204,17 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
 
   const [tier, setTier] = useState('');
   const [preview, setPreview] = useState<SubscriptionPreview | null>(null);
+  const [quoteExpired, setQuoteExpired] = useState(false);
+  const previewEpoch = useRef(0);
+  useEffect(() => {
+    setQuoteExpired(false);
+    if (!preview) return;
+    const expire = () => { setQuoteExpired(true); setConsent(false); };
+    const remaining = subscriptionQuoteRemainingMs(preview);
+    if (remaining <= 0) { expire(); return; }
+    const timer = setTimeout(expire, remaining);
+    return () => clearTimeout(timer);
+  }, [preview]);
   const [consent, setConsent] = useState(false);
   const [cardId, setCardId] = useState('');
   const [cardConsent, setCardConsent] = useState(false);
@@ -263,15 +275,26 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
       toast.error(
         typeof detail === 'string'
           ? detail
+          : error instanceof Error ? error.message
           : 'Unable to complete this billing action. Refresh its status before paying again.',
       );
     } finally {
       void client.invalidateQueries({ queryKey: key });
       void client.invalidateQueries({ queryKey: ['paymentMethods'] });
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
-
+  async function reviewTier(tierKey: string) {
+    if (!brandId || busy || !owner) return;
+    const epoch = ++previewEpoch.current;
+    await run(async () => {
+      setTier(tierKey);
+      setPreview(null);
+      setConsent(false);
+      const quote = await SubscriptionApi.preview(brandId, tierKey);
+      if (mounted.current && epoch === previewEpoch.current) setPreview(quote);
+    });
+  }
   async function openPayment(payment: SubscriptionPayment) {
     if (!mounted.current) return;
     if (!payment.authorizationUrl) return;
@@ -521,6 +544,9 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       {subscription.pendingTierKey ? (
                         <AppText variant="caption" tone="primary" style={{ marginTop: 2 }}>
                           Next renewal: {tierName(subscription.pendingTierKey)}
+                          {typeof subscription.pendingMonthlyPriceNgn === 'number'
+                            ? ` at ${money(subscription.pendingMonthlyPriceNgn)} monthly, as approved.`
+                            : '. Review the approved renewal price before paying.'}
                         </AppText>
                       ) : null}
                       {subscription.recoveryUntil ? (
@@ -707,19 +733,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                                   variant={isSelected || isAru || isIgwe ? 'brand' : 'secondary'}
                                   size="sm"
                                   disabled={busy}
-                                  onPress={() =>
-                                    void run(async () => {
-                                      setTier(plan.tierKey);
-                                      setPreview(null);
-                                      setConsent(false);
-                                      setPreview(
-                                        await SubscriptionApi.preview(
-                                          brandId!,
-                                          plan.tierKey,
-                                        ),
-                                      );
-                                    })
-                                  }
+                                  onPress={() => void reviewTier(plan.tierKey)}
                                 />
                               )}
                             </View>
@@ -861,9 +875,14 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       />
                     </View>
 
+                    <AppText variant="body" accessibilityLiveRegion="polite">
+                      {quoteExpired ? 'This price quote expired. Review a fresh price before paying.' : 'This price is held for up to five minutes while you verify your identity.'}
+                    </AppText>
+                    <Button title="Review fresh price" variant="secondary" disabled={busy} onPress={() => void reviewTier(tier)} />
                     <Pressable
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: consent }}
+                      accessibilityState={{ checked: consent, disabled: busy || quoteExpired }}
+                      disabled={busy || quoteExpired}
                       onPress={() => setConsent((value) => !value)}
                       style={styles.checkbox}
                     >
@@ -902,7 +921,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                           busy ? 'Processing…' : 'Confirm Subscription Change'
                         }
                         variant="brand"
-                        disabled={!consent || busy}
+                        disabled={!consent || busy || quoteExpired}
                         onPress={() =>
                           void run(async () => {
                             if (
@@ -916,7 +935,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                             const result = await SubscriptionApi.checkout(
                               brandId!,
                               tier,
-                              preview.amountNgn,
+                              preview,
                               new URL(
                                 `/settings?tab=subscription-billing&brandId=${encodeURIComponent(brandId!)}`,
                                 env.webAppUrl,
@@ -924,6 +943,8 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                               cardId || undefined,
                             );
                             if (!mounted.current) return;
+                            setPreview(null);
+                            setConsent(false);
                             setPending(result);
                             setMessage(
                               result.action === 'SCHEDULED_DOWNGRADE'
@@ -1215,6 +1236,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  grid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1339,5 +1365,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingVertical: tokens.spacing.sm,
     marginTop: tokens.spacing.xs,
+  },
+  plan: {
+    width: '47%',
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.lg,
   },
 });

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { brandApi } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { getActiveBrandId, hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { queryKeys } from '@/src/query/queryKeys';
 
 const STORE_STATUS_STALE_TIME_MS = 60_000;
@@ -34,7 +34,7 @@ export function useStoreSetupStatus(): StoreSetupStatus {
   const enabled = status === 'authenticated' && isBrand;
 
   const query = useQuery({
-    queryKey: queryKeys.store.status(),
+    queryKey: queryKeys.store.status(user?.id, getActiveBrandId(user)),
     queryFn: () => brandApi.getStoreStatus(),
     enabled,
     staleTime: STORE_STATUS_STALE_TIME_MS,

@@ -116,6 +116,10 @@ function classifyNativeOwnedPath(
 ): StudioWebNavigationClassification | null {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   const path = pathWithSearch(url);
+  if (pathname === '/settings/account-security' ||
+    (pathname === '/settings' && ['security', 'account-security'].includes(url.searchParams.get('tab') ?? ''))) {
+    return { type: 'native', path, nativeRoute: '/settings/account-security' as Href };
+  }
   if (
     (pathname === '/settings' &&
       url.searchParams.get('tab') === 'subscription-billing') ||
