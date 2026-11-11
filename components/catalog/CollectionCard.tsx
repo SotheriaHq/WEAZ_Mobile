@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { formatMoneyRange } from '@/src/utils/money';
 import { Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -16,7 +15,6 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { getCatalogCardCopy, resolveCatalogCardBranch } from '@/src/features/catalog/catalogCardBranch';
 import { getContentStatusLabel } from '@/src/features/design-editor/designCreationRules';
 import { ContentReviewDecisionSheet } from './ContentReviewDecisionSheet';
-import { MuseLoader } from '@/components/ui/MuseLoader';
 
 export interface CollectionCardProps {
   collection: CollectionDto;
@@ -570,34 +568,6 @@ function ImageFallback({ title }: { title: string }) {
   );
 }
 
-function RailButton({ emoji, label, busy = false, onPress }: { emoji: string; label?: string; busy?: boolean; onPress?: () => void }) {
-  const { theme, scheme } = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={busy}
-      style={[styles.railButton, { backgroundColor: theme.colors.glassSurface }]}
-      hitSlop={tokens.spacing.xs}
-      accessibilityRole="button"
-    >
-      <BlurView
-        intensity={theme.colors.glassBlur as number}
-        tint={scheme === 'dark' ? 'dark' : 'light'}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.railButtonContent}>
-        {busy ? <MuseLoader size={20} /> : <AppText variant="caption">{emoji}</AppText>}
-        {label ? (
-          <AppText variant="captionBold" tone="secondary">
-            {label}
-          </AppText>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
 function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: string; label: string; onPress?: () => void }) {
   const content = (
     <View style={styles.socialMetricContent}>
@@ -684,27 +654,6 @@ const styles = StyleSheet.create({
     left: tokens.spacing.sm,
     // Width cap removed with the badge's plate — see `NewDropBadge`. At ~22% of
     // a grid card it clipped the label away entirely.
-  },
-  actionRail: {
-    position: 'absolute',
-    right: tokens.spacing.sm,
-    bottom: 108,
-    gap: tokens.spacing.xs,
-    zIndex: 2,
-  },
-  railButton: {
-    minWidth: 36,
-    minHeight: 36,
-    borderRadius: tokens.radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.xs,
-    overflow: 'hidden',
-  },
-  railButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
   },
   menuGlyph: {
     textShadowColor: tokens.scrim(0.5),

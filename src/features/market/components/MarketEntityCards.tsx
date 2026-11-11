@@ -4,9 +4,12 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 import { AppText } from '@/components/ui/AppText';
 import { MediaScrim } from '@/components/ui/MediaScrim';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+
+const PIECES_PILL_GLASS_SIZE = { width: 84, height: 26 } as const;
 
 /**
  * Cards for everything on Market that is not a single product.
@@ -121,9 +124,19 @@ export const CollectionShelfCard = memo(function CollectionShelfCard({
           </>
         )}
         {piecesLabel ? (
-          <View style={[styles.piecesPill, { backgroundColor: theme.colors.backdropStrong }]}>
+          <WiezLiquidGlass
+            mode="lightweight"
+            intensity="prominent"
+            tintMode="dark"
+            tintAlpha={0.34}
+            borderRadius={tokens.radius.full}
+            initialSize={PIECES_PILL_GLASS_SIZE}
+            pointerEvents="none"
+            style={styles.piecesPill}
+            contentStyle={styles.piecesPillContent}
+          >
             <AppText variant="captionBold" tone="inverse">{piecesLabel}</AppText>
-          </View>
+          </WiezLiquidGlass>
         ) : null}
       </View>
       <View style={styles.shelfBody}>
@@ -242,6 +255,10 @@ const styles = StyleSheet.create({
     bottom: tokens.spacing.sm,
     minHeight: 26,
     borderRadius: tokens.radius.full,
+    borderWidth: 0,
+  },
+  piecesPillContent: {
+    minHeight: 26,
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',

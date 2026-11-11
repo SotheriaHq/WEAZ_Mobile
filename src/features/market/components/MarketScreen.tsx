@@ -30,6 +30,7 @@ import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import {
   MobileStoreApi,
@@ -767,6 +768,8 @@ function MarketCard(props: MarketCardProps) {
   return <MarketDesignCard {...props} item={props.item} />;
 }
 
+const HERO_PILL_GLASS_SIZE = { width: 108, height: 30 } as const;
+
 function MarketHeroSlide({
   item,
   width,
@@ -811,9 +814,19 @@ function MarketHeroSlide({
       */}
       <MediaScrim edges={['top', 'bottom']} reach={0.36} strength="strong" />
       <View style={styles.heroTopRow}>
-        <View style={[styles.heroPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
+        <WiezLiquidGlass
+          mode="lightweight"
+          intensity="prominent"
+          tintMode="dark"
+          tintAlpha={0.34}
+          borderRadius={tokens.radius.full}
+          initialSize={HERO_PILL_GLASS_SIZE}
+          pointerEvents="none"
+          style={styles.heroPill}
+          contentStyle={styles.heroPillContent}
+        >
           <AppText variant="captionBold" tone="inverse">Market Pick</AppText>
-        </View>
+        </WiezLiquidGlass>
         <NewDropBadge
           itemId={item.key}
           createdAt={getItemCreatedAt(item)}
@@ -3176,7 +3189,10 @@ const styles = StyleSheet.create({
   heroPill: {
     minHeight: 30,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
+  },
+  heroPillContent: {
+    minHeight: 30,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',

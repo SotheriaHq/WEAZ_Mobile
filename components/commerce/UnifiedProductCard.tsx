@@ -10,6 +10,7 @@ import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { BagItButton } from '@/components/commerce/BagItButton';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
@@ -103,6 +104,7 @@ const IMAGE_FALLBACK_ICON = String.fromCodePoint(0x1f5bc, 0xfe0f);
   See `src/constants/clipping.ts`.
 */
 const FAVORITE_ICON = CLIP_EMOJI;
+const FAVORITE_GLASS_SIZE = { width: 38, height: 38 } as const;
 
 /**
  * The one product card in the app.
@@ -237,12 +239,24 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
               styles.favoriteButton,
               favorite
                 ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
-                : { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
+                : { backgroundColor: 'transparent', borderWidth: 0 },
               pressed && styles.inlinePressed,
             ]}
             accessibilityRole="button"
             accessibilityLabel={favoriteAccessibilityLabel ?? clipAccessibilityLabel(favorite)}
           >
+            {!favorite ? (
+              <WiezLiquidGlass
+                mode="lightweight"
+                intensity="prominent"
+                tintMode="dark"
+                tintAlpha={0.36}
+                borderRadius={tokens.radius.md}
+                initialSize={FAVORITE_GLASS_SIZE}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null}
             {favoriteBusy ? (
               <MuseLoader size={20} />
             ) : (
@@ -341,6 +355,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: tokens.radius.md,
     borderWidth: 2,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -12,6 +12,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
   createMarketSuppression,
@@ -34,6 +35,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { formatMoney } from '@/src/utils/money';
 import { MuseLoader } from '@/components/ui/MuseLoader';
+
+const KIND_BADGE_GLASS_SIZE = { width: 68, height: 24 } as const;
 
 type Props = {
   context: MarketSuggestionContext;
@@ -221,16 +224,21 @@ function SuggestionCard({
             only way to find out a press led somewhere else was to press it.
           */}
           {opensContent ? null : (
-            <View
-              style={[
-                styles.kindBadge,
-                { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
-              ]}
+            <WiezLiquidGlass
+              mode="lightweight"
+              intensity="prominent"
+              tintMode="dark"
+              tintAlpha={0.36}
+              borderRadius={tokens.radius.full}
+              initialSize={KIND_BADGE_GLASS_SIZE}
+              pointerEvents="none"
+              style={styles.kindBadge}
+              contentStyle={styles.kindBadgeContent}
             >
-              <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+              <AppText variant="captionBold" tone="inverse">
                 {getItemTargetType(item) === 'BRAND' ? 'Brand' : 'Browse'}
               </AppText>
-            </View>
+            </WiezLiquidGlass>
           )}
         </View>
         <View style={styles.cardCopy}>
@@ -570,9 +578,13 @@ const styles = StyleSheet.create({
     top: tokens.spacing.xs,
     left: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
+  },
+  kindBadgeContent: {
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brandLink: {
     borderTopWidth: 2,
