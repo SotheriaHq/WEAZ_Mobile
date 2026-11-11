@@ -24,6 +24,7 @@ import Reanimated, {
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { AppText } from '@/components/ui/AppText';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 
 type Props = {
   label: string;
@@ -224,9 +225,7 @@ function LegacyChip({
                 ? theme.colors.primarySoft
                 : 'transparent'
               : (isStageNav || isNav)
-                  ? selected
-                    ? theme.colors.glassSurfaceStrong
-                    : 'transparent'
+                  ? 'transparent'
                   : usePendingTreatment
                     ? theme.colors.surfaceAlt
                     : selected
@@ -245,7 +244,7 @@ function LegacyChip({
                           // is the answer.
                           'transparent',
             borderColor: (isStageNav || isNav)
-              ? selected ? theme.colors.glassBorder : 'transparent'
+              ? 'transparent'
               : usePendingTreatment
                 ? theme.colors.warning
                 : selected
@@ -255,7 +254,7 @@ function LegacyChip({
                     : theme.colors.border,
             // The nav underline is gone — the pill is the indicator now.
             borderBottomColor: 'transparent',
-            borderWidth: (isStageNav || isNav) && selected ? 2 : 0,
+            borderWidth: 0,
             // Pressed tints the ring instead of fading the whole chip, so the
             // label never dims out from under the finger that is choosing it.
             // Disabled carries its own neutral pair above and needs no fade.
@@ -269,6 +268,17 @@ function LegacyChip({
           disabled: Boolean(disabled),
         }}
       >
+        {isNav && selected ? (
+          <WiezLiquidGlass
+            mode="lightweight"
+            intensity="prominent"
+            tintMode={isStageNav ? 'dark' : 'auto'}
+            tintAlpha={isStageNav ? 0.34 : undefined}
+            borderRadius={tokens.radius.full}
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
         {isSwatch ? (
           <View
             style={[
@@ -394,6 +404,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderBottomWidth: 0,
     borderRadius: tokens.radius.full,
+    overflow: 'hidden',
     flexShrink: 0,
   },
   navSelected: {

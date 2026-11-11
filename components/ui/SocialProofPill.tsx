@@ -2,11 +2,12 @@ import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { tokens } from '@/src/styles/tokens';
-import { useTheme } from '@/src/theme/ThemeProvider';
 
 export const THREAD_SOCIAL_PROOF_THRESHOLD = 3;
+const SOCIAL_PROOF_GLASS_SIZE = { width: 172, height: 28 } as const;
 
 type SocialProofPillProps = {
   itemId: string;
@@ -38,7 +39,6 @@ export function SocialProofPill({
   visible = true,
   style,
 }: SocialProofPillProps) {
-  const { theme } = useTheme();
   const trackedKeyRef = useRef<string | null>(null);
   const label = getThreadSocialProofLabel(threadCount);
 
@@ -61,20 +61,21 @@ export function SocialProofPill({
   if (!visible || !label) return null;
 
   return (
-    <View
-      style={[
-        styles.pill,
-        {
-          backgroundColor: theme.colors.backdropStrong,
-          borderColor: theme.colors.glassBorder,
-        },
-        style,
-      ]}
+    <WiezLiquidGlass
+      mode="lightweight"
+      intensity="prominent"
+      tintMode="dark"
+      tintAlpha={0.36}
+      borderRadius={tokens.radius.md}
+      initialSize={SOCIAL_PROOF_GLASS_SIZE}
+      pointerEvents="none"
+      style={[styles.pill, style]}
+      contentStyle={styles.pillContent}
     >
-      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+      <AppText variant="captionBold" tone="inverse">
         {label}
       </AppText>
-    </View>
+    </WiezLiquidGlass>
   );
 }
 
@@ -83,7 +84,10 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     minHeight: 28,
     borderRadius: tokens.radius.md,
-    borderWidth: 2,
+    borderWidth: 0,
+  },
+  pillContent: {
+    minHeight: 28,
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
