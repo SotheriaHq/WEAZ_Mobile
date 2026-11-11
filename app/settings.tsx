@@ -25,6 +25,7 @@ type SettingsRow = {
   metadata?: string;
   danger?: boolean;
   requiresStoreSetup?: boolean;
+  requiresStudio?: boolean;
   onPress?: () => void;
 };
 
@@ -345,7 +346,7 @@ export default function SettingsScreen() {
       {
         title: 'Business',
         rows: [
-          ...(!storeReady ? [{ emoji: '🏗️', title: setup.isLoading ? 'Checking store setup…' : setup.isError ? 'Retry store setup check' : 'Finish store setup',
+          ...(!storeReady && user?.type === 'BRAND' ? [{ emoji: '🏗️', title: setup.isLoading ? 'Checking store setup…' : setup.isError ? 'Retry store setup check' : 'Finish store setup',
             subtitle: 'Studio settings become available after setup is complete',
             onPress: setup.isLoading ? undefined : setup.isError ? setup.retry : () => topLevelNavigate(hasActiveBrandMembership(user)
               ? { pathname: '/studio', params: { routeKey: 'essentials' } } as never
@@ -356,6 +357,7 @@ export default function SettingsScreen() {
             emoji: '🏪',
             title: 'Store profile',
             requiresStoreSetup: true,
+            requiresStudio: true,
             subtitle: 'Brand identity and public profile',
             onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'storeProfile' } } as never),
           },
@@ -370,12 +372,14 @@ export default function SettingsScreen() {
             title: 'Private design access',
             subtitle: 'Viewer requests and approved access',
             requiresStoreSetup: true,
+            requiresStudio: true,
             onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'privateDesignAccess' } } as never),
           },
           {
             emoji: '✅',
             title: 'Verification',
             requiresStoreSetup: true,
+            requiresStudio: true,
             subtitle: 'Brand approval and documents',
             onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'verification' } } as never),
           },
@@ -383,13 +387,14 @@ export default function SettingsScreen() {
             emoji: '🏦',
             title: 'Payouts',
             requiresStoreSetup: true,
+            requiresStudio: true,
             subtitle: 'Bank and settlement settings',
             onPress: () => topLevelNavigate({ pathname: '/studio', params: { routeKey: 'payoutSettings' } } as never),
           },
         ],
       },
       ...brandSections.slice(insertAt),
-    ].map((section) => ({ ...section, rows: section.rows.filter((row: SettingsRow) => !row.requiresStoreSetup || storeReady) }));
+    ].map((section) => ({ ...section, rows: section.rows.filter((row: SettingsRow) => (!row.requiresStoreSetup || storeReady) && (!row.requiresStudio || user?.type === 'BRAND')) }));
   }, [isBrand, signOut, user, storeReady, setup.isLoading, setup.isError, setup.retry]);
 
   return (

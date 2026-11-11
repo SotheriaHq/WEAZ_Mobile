@@ -11,7 +11,7 @@ import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
-/** Covers native Finance/Staff as well as the embedded Studio document. */
+/** Browser/content setup gate; native Finance/Staff retain their own role checks. */
 export function StudioSetupGate({ children }: { children: React.ReactNode }) {
   const { user, status } = useAuth();
   const setup = useStoreSetupStatus();
@@ -24,7 +24,7 @@ export function StudioSetupGate({ children }: { children: React.ReactNode }) {
   const workspace = hasActiveBrandMembership(user);
   const decision = resolveStudioSetupAccess(route ?? 'overview', setup.isSetupComplete);
 
-  if (status === 'authenticated' && isBrandAccount(user) && workspace) {
+  if (status === 'authenticated' && user?.type === 'BRAND' && workspace) {
     if (decision === 'allow') return <>{children}</>;
     if (decision === 'setup' && focused) {
       return <Redirect href={{ pathname: '/studio', params: { routeKey: 'essentials' } } as never} />;
@@ -32,7 +32,7 @@ export function StudioSetupGate({ children }: { children: React.ReactNode }) {
   }
   // A hidden, pre-warmed Studio must not navigate over the active tab.
   if (!focused) return null;
-  const checking = status === 'loading' || (status === 'authenticated' && isBrandAccount(user) && workspace && setup.isLoading && !setup.isError);
+  const checking = status === 'loading' || (status === 'authenticated' && user?.type === 'BRAND' && workspace && setup.isLoading && !setup.isError);
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       {checking ? <MuseLoader size={32} /> : null}

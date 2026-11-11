@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
 import { StableImage } from '@/components/ui/StableImage';
+import { StudioSetupGate } from '@/components/studio/StudioSetupGate';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import StudioApi from '@/src/api/StudioApi';
 import { env } from '@/src/config/env';
@@ -32,7 +33,6 @@ import {
   getActiveBrandId,
   hasActiveBrandMembership,
   isBrandOwner,
-  isBrandAccount,
 } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import { markStudioOpened } from '@/src/features/studio/studioWarmEntry';
@@ -338,7 +338,7 @@ function getTrustedAliasPath(target: string): { type: 'profile' | 'brand'; value
   }
 }
 
-export default function StudioWebViewScreen() {
+function StudioWebViewContent() {
   const params = useLocalSearchParams<{
     routeKey?: string;
     studioRouteReport?: string;
@@ -425,7 +425,7 @@ export default function StudioWebViewScreen() {
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const hasBrandWorkspace = hasActiveBrandMembership(user);
-  const isStudioEligible = isBrandAccount(user) && hasBrandWorkspace;
+  const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
   // False while the tab shell has warmed Studio in the background.
   const isFocused = useIsFocused();
   const isFocusedRef = useRef(isFocused);
@@ -1824,3 +1824,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
 });
+
+export default function StudioWebViewScreen() {
+  return <StudioSetupGate><StudioWebViewContent /></StudioSetupGate>;
+}

@@ -1,9 +1,7 @@
 import { Stack } from 'expo-router';
-import { StudioSetupGate } from '@/components/studio/StudioSetupGate';
 
 export default function StudioLayout() {
   return (
-    <StudioSetupGate>
     <Stack
       screenOptions={{
         headerShown: false,
@@ -34,6 +32,5 @@ export default function StudioLayout() {
       <Stack.Screen name="staff" options={{ animation: 'fade' }} />
       <Stack.Screen name="resolve-alias" options={{ animation: 'fade' }} />
     </Stack>
-    </StudioSetupGate>
   );
 }
