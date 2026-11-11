@@ -35,6 +35,8 @@ jobs:
         run: npm run test:mfa-security
       - name: Session response isolation
         run: npm run test:session-response-isolation
+      - name: Device-session modals and identity-bound actions
+        run: npm run test:session-devices
       - name: Session-bound realtime recovery
         run: npm run test:session-socket
 
