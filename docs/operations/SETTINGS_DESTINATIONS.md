@@ -31,7 +31,7 @@ Store profile and content settings formerly pointed directly to Catalogue. Verif
 ## State and recovery rules
 
 - Unknown or malformed setup status never unlocks ordinary Studio. Initial failure shows retry; known cached completeness can remain during a failed background refresh. Pausing a completed store does not restart setup.
-- Status and successful-publication cache updates use the exact actor and active brand. Another account or workspace cannot inherit completeness.
+- Status and successful-publication cache updates use the exact actor and active brand. The returned brand ID must also match the selected workspace; mismatched fresh or cached data cannot approve access. Another account or workspace cannot inherit completeness.
 - Browser Studio follows the existing backend brand-account-only handoff contract. Its setup gate does not wrap native Finance/Staff: those retain their existing owner-membership and API permission checks. The four browser-bound Settings links are hidden for accounts that cannot receive a handoff; this does not enable staff browser access or change backend permissions.
 - A hidden Studio must not redirect the current tab. Profile-required messages are retained only within the current document/session scope and handled when Studio is focused; scope changes discard them.
 - Store bank details and hours are setup prerequisites. Essentials and the wizard stay available to repair an incomplete published store. Being live alone cannot redirect it back into a blocked Studio; only authoritative setup completion exits setup.
