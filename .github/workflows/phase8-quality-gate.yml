@@ -179,3 +179,9 @@ jobs:
 
       - name: Studio access and Settings destination state matrix
         run: npm run test:studio-access
+
+      - name: Notification sections, guarded reads and session-bound saves
+        run: npm run test:notification-settings-contract
+
+      - name: Settings section headings and bare-container contract
+        run: npm run test:settings-sections
