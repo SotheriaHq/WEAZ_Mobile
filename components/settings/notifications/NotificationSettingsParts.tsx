@@ -282,6 +282,7 @@ export function QuietHoursPanel({
       {/* A time is a choice, not free text: these open a picker. */}
       {showTimes ? (
         <>
+          <AppText variant="captionRegular" tone="muted">Times use UTC. Both times are needed. Equal times pause notifications all day.</AppText>
           <TimeRow label="Starts" value={start} onPress={() => setOpenPicker('start')} disabled={timesPending} />
           <TimeRow label="Ends" value={end} onPress={() => setOpenPicker('end')} disabled={timesPending} />
           {timesPending ? (

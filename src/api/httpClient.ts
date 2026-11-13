@@ -408,6 +408,9 @@ let currentAuthToken: string | null = null;
 const securityIdentity = (token: string | null) => securityIdentityFromToken(token,
   value => String.fromCharCode(...toByteArray(value)));
 export const getApiSecurityIdentity = () => securityIdentity(currentAuthToken);
+/** Captured when a queued action starts; normal JWT refresh keeps this scope. */
+export type SessionRequestConfig = import('axios').AxiosRequestConfig & { _securityIdentity?: string; _authScope: number };
+export const getApiSessionScope = () => authScope;
 export const getApiAccessToken = () => currentAuthToken;
 let currentRefreshToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;

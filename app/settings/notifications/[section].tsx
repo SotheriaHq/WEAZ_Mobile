@@ -3,6 +3,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import { SettingsHeader, SettingsStateCard } from '@/components/settings/SettingsPrimitives';
 import {
   DeviceStatusPanel,
@@ -16,6 +17,7 @@ import {
   NOTIFICATION_SECTION_ROUTE,
   PUSH_MASTER_TOGGLE,
   readToggle,
+  visibleNotificationToggles,
   type NotificationToggle,
 } from '@/src/notifications/notificationSections';
 import type { NotificationSettingPatchDescriptor } from '@/src/notifications/notificationSettings';
@@ -109,7 +111,7 @@ export default function NotificationSectionScreen() {
     }
     return (
       <View>
-        {section.items.map((item) => (
+        {visibleNotificationToggles(section, settings).map((item) => (
           <NotificationToggleRow
             key={item.id}
             item={item}
@@ -149,6 +151,7 @@ export default function NotificationSectionScreen() {
           showsVerticalScrollIndicator={false}
         >
           {failed ? <SaveFailedBanner message={failed.message} onRetry={retryFailed} onDismiss={dismissFailure} /> : null}
+          <SettingsSectionHeading title={section.id === 'device' ? 'Delivery status' : section.id === 'quiet-hours' ? 'Schedule' : 'Preferences'} />
           {renderBody()}
         </ScrollView>
       )}
