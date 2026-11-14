@@ -514,15 +514,68 @@ export const tokens = {
   liquidGlass: {
     menuGlyphFill: '#FFFFFF',
     menuGlyphStroke: 'rgba(20,20,22,0.82)',
+    /**
+     * Strong Lens optical spec (owner-approved 14 Nov 2026 for the island,
+     * circular controls, buttons and chips). This is the single source of
+     * truth for every refracting surface: `WiezLiquidGlass` reads the props
+     * below, and `lens` mirrors the named constants in the AGSL shader
+     * (`LiquidGlassRenderers.kt`), enforced by `test-liquid-glass-phase1.js`.
+     * The Web material (fthreadly `liquidGlassOptics.ts`) carries the same
+     * numbers.
+     */
     optics: {
-      curvature: 0.66,
-      opticalThickness: 0.55,
+      /** Fraction of the short half-axis that is curved (1 = full dome cross-section). */
+      curvature: 1,
+      opticalThickness: 0.75,
       chromaticAberration: 0,
-      refractionStrength: {
-        subtle: 0.74,
-        regular: 1.02,
-        prominent: 1.2,
+      /** One refraction strength everywhere: the lens is the same material on every control. */
+      refractionStrength: 1.25,
+      /** Scales Fresnel, specular and rim on the refracting path only (lightweight is untouched). */
+      reflectionStrength: 0.6,
+      /** Tint inside the refracting lens, both themes (colour comes from `tintHex`). */
+      lensTintAlpha: 0.14,
+      lens: {
+        falloffK: 1.7,
+        depthFrac: 0.55,
+        stretchLimit: 0.7,
+        magnify: 0.1,
+        maxTiltDeg: 70,
+        fresnelGain: 0.7,
+        specGain: 0.35,
+        shininess: 30,
+        rimDp: 1.1,
+        shadeGain: 0.08,
+        saturation: 1.15,
+        bezelMaxDp: 36,
       },
+    },
+    /**
+     * Tint for surfaces that cannot refract (lightweight mode: lists, video,
+     * WebView, modals, and the island where capture is unsafe). With no
+     * backdrop blur on Android, this tint is what keeps labels legible, so it
+     * stays much higher than `optics.lensTintAlpha`. Named by role so call
+     * sites never hard-code alphas.
+     */
+    fallbackTint: {
+      /** Stage/media chrome pills and nav chips over photography. */
+      stageChrome: 0.34,
+      /** Small media pills and clip buttons on product imagery. */
+      mediaPill: 0.36,
+      /** Secondary chrome inside full-screen image modals. */
+      modalSoft: 0.28,
+      cardLight: 0.56,
+      cardDark: 0.28,
+      viewerLight: 0.6,
+      viewerDark: 0.56,
+      islandLight: 0.58,
+      islandDark: 0.56,
+      /** Highlight scalar for large lightweight surfaces (cards, viewers, island). */
+      surfaceHighlight: 0.85,
+    },
+    /** Label halo under a refracting lens (tint is only `optics.lensTintAlpha`). */
+    lensLegibility: {
+      light: { textShadowColor: 'rgba(255,255,255,0.82)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 0 } },
+      dark: { textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } },
     },
     light: {
       transmission: {

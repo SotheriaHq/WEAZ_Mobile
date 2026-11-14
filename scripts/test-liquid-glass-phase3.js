@@ -523,9 +523,11 @@ async function runTests() {
     /observedTreeObserverRef/,
     'Lens view must track observed ViewTreeObserver for clean PreDrawListener removal',
   );
-  assert.match(lensKt, /private var refractionStrength: Float = 1\.02f/);
-  assert.match(lensKt, /private var curvature: Float = 0\.66f/);
-  assert.match(lensKt, /private var opticalThickness: Float = 0\.55f/);
+  // Strong Lens defaults (tokens.liquidGlass.optics is the source of truth).
+  assert.match(lensKt, /private var refractionStrength: Float = 1\.25f/);
+  assert.match(lensKt, /private var curvature: Float = 1\.0f/);
+  assert.match(lensKt, /private var opticalThickness: Float = 0\.75f/);
+  assert.match(lensKt, /private var tintAlpha: Float = 0\.14f/);
   assert.match(lensKt, /private var chromaticAberration: Float = 0f/);
   assert.match(lensKt, /private var blurRadiusDp: Float = 0f/);
 
@@ -975,6 +977,63 @@ async function runTests() {
     await renderer.act(async () => marketTab.props.onPress());
     assert.equal(selectedKey, 'market');
     await renderer.act(async () => tree.unmount());
+  }
+
+  // 5b. Strong Lens island: with a backdrop target the Android island refracts
+  // (enhanced AGSL lens, lens tint, label halo); hidden or target-less islands
+  // keep the lightweight fallback (Runway video / Studio WebView path).
+  {
+    const { WiezLiquidGlassBackdrop, useLiquidGlassBlurTarget } = harness.loadTs(
+      'components/ui/WiezLiquidGlass.tsx',
+    );
+    for (const scheme of ['light', 'dark']) {
+      harness.setScheme(scheme);
+      for (const variant of ['refracting', 'hidden', 'no-target']) {
+        function IslandOverBackdrop() {
+          const { targetRef, blurTargetRef, onTargetLayout } = useLiquidGlassBlurTarget();
+          return React.createElement(
+            'View',
+            null,
+            React.createElement(WiezLiquidGlassBackdrop, { targetRef, onLayout: onTargetLayout }),
+            React.createElement(NativeIslandBottomNav, {
+              items: navItems,
+              onSelect: () => undefined,
+              hidden: variant === 'hidden',
+              lensTarget: variant === 'no-target' ? null : blurTargetRef,
+            }),
+          );
+        }
+        let tree;
+        await renderer.act(async () => {
+          tree = renderer.create(React.createElement(IslandOverBackdrop), { createNodeMock });
+        });
+        const json = tree.toJSON();
+        const lenses = collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView');
+        const haloLabels = collectNodes(
+          json,
+          (n) => n.type === 'AppText' && flattenStyle(n.props?.style).textShadowColor !== undefined,
+        );
+        if (variant === 'refracting') {
+          assert.equal(lenses.length, 1, `${scheme}: island with a backdrop target must refract`);
+          const lens = lenses[0];
+          assert.equal(lens.props.refractionStrength, tokens.liquidGlass.optics.refractionStrength);
+          assert.equal(lens.props.curvature, tokens.liquidGlass.optics.curvature);
+          assert.equal(lens.props.opticalThickness, tokens.liquidGlass.optics.opticalThickness);
+          assert.equal(lens.props.tintAlpha, tokens.liquidGlass.optics.lensTintAlpha, 'Refracting island uses the lens tint, not the fallback tint');
+          assert.equal(lens.props.reflectionStrength, tokens.liquidGlass.optics.reflectionStrength);
+          assert.equal(lens.props.cornerRadius, 28);
+          assert.ok(haloLabels.length >= 2, `${scheme}: refracting island labels carry the legibility halo`);
+          assert.equal(
+            flattenStyle(haloLabels[0].props.style).textShadowColor,
+            tokens.liquidGlass.lensLegibility[scheme].textShadowColor,
+          );
+        } else {
+          assert.equal(lenses.length, 0, `${scheme}/${variant}: island must not capture`);
+          assert.equal(haloLabels.length, 0, `${scheme}/${variant}: no halo on the lightweight island`);
+        }
+        await renderer.act(async () => tree.unmount());
+      }
+    }
   }
 
   // Fresh iOS runtime harness verifies USE_LIVE_BLUR = true still mounts BlurView on iOS

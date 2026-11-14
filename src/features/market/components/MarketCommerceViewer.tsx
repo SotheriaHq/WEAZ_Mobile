@@ -1396,8 +1396,8 @@ export function MarketCommerceViewer({
           <WiezLiquidGlass
             mode="lightweight"
             intensity="prominent"
-            tintAlpha={scheme === 'dark' ? 0.56 : 0.6}
-            highlightIntensity={0.85}
+            tintAlpha={scheme === 'dark' ? tokens.liquidGlass.fallbackTint.viewerDark : tokens.liquidGlass.fallbackTint.viewerLight}
+            highlightIntensity={tokens.liquidGlass.fallbackTint.surfaceHighlight}
             borderRadius={tokens.radius.xl}
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
@@ -1789,7 +1789,7 @@ export function MarketCommerceViewer({
           mode="lightweight"
           intensity="prominent"
           tintMode="dark"
-          tintAlpha={0.36}
+          tintAlpha={tokens.liquidGlass.fallbackTint.mediaPill}
           borderRadius={tokens.radius.full}
           initialSize={IN_BAG_PILL_GLASS_SIZE}
           pointerEvents="none"

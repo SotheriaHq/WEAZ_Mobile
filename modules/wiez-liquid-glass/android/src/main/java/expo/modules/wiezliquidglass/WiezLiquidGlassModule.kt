@@ -44,7 +44,7 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("refractionStrength") { view: WiezLiquidGlassLensView, refractionStrength: Float? ->
-        view.setRefractionStrength(refractionStrength ?: 1.02f)
+        view.setRefractionStrength(refractionStrength ?: 1.25f)
       }
 
       Prop("chromaticAberration") { view: WiezLiquidGlassLensView, chromaticAberration: Float? ->
@@ -52,19 +52,19 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("rimStrength") { view: WiezLiquidGlassLensView, rimStrength: Float? ->
-        view.setRimStrength(rimStrength ?: 1.0f)
+        view.setRimStrength(rimStrength ?: 0.6f)
       }
 
       Prop("reflectionStrength") { view: WiezLiquidGlassLensView, reflectionStrength: Float? ->
-        view.setReflectionStrength(reflectionStrength ?: 1.0f)
+        view.setReflectionStrength(reflectionStrength ?: 0.6f)
       }
 
       Prop("curvature") { view: WiezLiquidGlassLensView, curvature: Float? ->
-        view.setCurvature(curvature ?: 0.66f)
+        view.setCurvature(curvature ?: 1.0f)
       }
 
       Prop("opticalThickness") { view: WiezLiquidGlassLensView, opticalThickness: Float? ->
-        view.setOpticalThickness(opticalThickness ?: 0.55f)
+        view.setOpticalThickness(opticalThickness ?: 0.75f)
       }
 
       Prop("tintColor") { view: WiezLiquidGlassLensView, tintColor: Int? ->
@@ -72,7 +72,7 @@ class WiezLiquidGlassModule : Module() {
       }
 
       Prop("tintAlpha") { view: WiezLiquidGlassLensView, tintAlpha: Float? ->
-        view.setTintAlpha(tintAlpha ?: 0.02f)
+        view.setTintAlpha(tintAlpha ?: 0.14f)
       }
 
       Prop("fallbackColor") { view: WiezLiquidGlassLensView, fallbackColor: Int? ->

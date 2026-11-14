@@ -818,7 +818,7 @@ function MarketHeroSlide({
           mode="lightweight"
           intensity="prominent"
           tintMode="dark"
-          tintAlpha={0.34}
+          tintAlpha={tokens.liquidGlass.fallbackTint.stageChrome}
           borderRadius={tokens.radius.full}
           initialSize={HERO_PILL_GLASS_SIZE}
           pointerEvents="none"

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   View,
   type GestureResponderEvent,
+  type TextStyle,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import {
@@ -151,6 +152,13 @@ type NativeIslandBottomNavProps = {
    * `display: none` — no layout, no paint, no touches — and nothing to rebuild.
    */
   hidden?: boolean;
+  /**
+   * Android: the `WiezLiquidGlassBackdrop` behind the island. When set the
+   * island refracts it with the Strong Lens; leave it null over video
+   * (SurfaceView), WebView or anything a RenderNode capture cannot record.
+   * A hidden island is `display: none`, so it never captures.
+   */
+  lensTarget?: React.RefObject<View | null> | null;
 };
 
 /*
@@ -195,6 +203,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   pressedKey: SharedValue<string | null>;
 }) {
   const { theme } = useTheme();
+  const lensHalo = React.useContext(IslandLensHaloContext);
   // The chip must stay structurally IDENTICAL whether focused or not — only
   // colors change. On Android, toggling `borderWidth`, `shadow*` props, or
   // `fontSize` on the chip whose `focused` flips true->false re-clips the view
@@ -352,7 +361,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
                   variant="captionBold"
                   tone="secondary"
                   numberOfLines={1}
-                  style={styles.tabLabelBase}
+                  style={[styles.tabLabelBase, lensHalo]}
                   maxFontSizeMultiplier={1.2}
                 >
                   {label}
@@ -366,7 +375,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
                   variant="captionBold"
                   tone="primary"
                   numberOfLines={1}
-                  style={styles.tabLabelBase}
+                  style={[styles.tabLabelBase, lensHalo]}
                   maxFontSizeMultiplier={1.2}
                 >
                   {label}
@@ -503,20 +512,31 @@ const FixedDockButton = React.memo(
 // shadow and milky tint are unchanged on both platforms.
 const USE_LIVE_BLUR = Platform.OS === 'ios';
 
+/** Label halo while the island refracts (null on the lightweight fallback and iOS). */
+const IslandLensHaloContext = React.createContext<TextStyle | null>(null);
+
 const IslandGlass = React.memo(function IslandGlass({
   scheme,
   theme,
   islandWidth,
+  lensTarget,
 }: {
   scheme: ReturnType<typeof useTheme>['scheme'];
   theme: ReturnType<typeof useTheme>['theme'];
   islandWidth: number;
+  /** Backdrop behind the island; null keeps the lightweight fallback. */
+  lensTarget: React.RefObject<View | null> | null;
 }) {
   // iOS retains live UIBlurView glass with the approved translucent tint.
-  // Android renders lightweight Liquid Glass (sheer tint + multi-stop reflection
-  // depth + directional 0.85dp specular SVG rim) with zero GPU live-blur stall
-  // during tab transitions and zero extra View hierarchy bloat on fixed chrome.
+  // Android refracts the screen behind it with the Strong Lens (enhanced mode)
+  // whenever the layout provides a backdrop target. WiezLiquidGlass itself
+  // degrades to lightweight on API < 31, missing targets or no native module,
+  // and `fallbackTintAlpha` keeps labels legible there (no blur on Android).
   const iosFillColor = scheme === 'dark' ? tokens.island.blurDark : tokens.island.blurLight;
+  const fallbackTint =
+    scheme === 'dark'
+      ? tokens.liquidGlass.fallbackTint.islandDark
+      : tokens.liquidGlass.fallbackTint.islandLight;
 
   return (
     <>
@@ -543,10 +563,11 @@ const IslandGlass = React.memo(function IslandGlass({
         </>
       ) : (
         <WiezLiquidGlass
-          mode="lightweight"
+          mode={lensTarget ? 'enhanced' : 'lightweight'}
+          blurTarget={lensTarget ?? undefined}
           intensity="prominent"
-          tintAlpha={scheme === 'dark' ? 0.56 : 0.58}
-          highlightIntensity={0.85}
+          fallbackTintAlpha={fallbackTint}
+          highlightIntensity={lensTarget ? 1 : tokens.liquidGlass.fallbackTint.surfaceHighlight}
           borderRadius={NATIVE_ISLAND_NAV.radius}
           initialSize={{ width: islandWidth, height: NATIVE_ISLAND_NAV.height }}
           pointerEvents="none"
@@ -573,7 +594,8 @@ export const NativeIslandBottomNav = React.memo(
       : prev.items === next.items &&
         prev.onSelect === next.onSelect &&
         prev.onPressIn === next.onPressIn &&
-        prev.hidden === next.hidden,
+        prev.hidden === next.hidden &&
+        prev.lensTarget === next.lensTarget,
 );
 
 function NativeIslandBottomNavImpl({
@@ -581,9 +603,16 @@ function NativeIslandBottomNavImpl({
   onSelect,
   onPressIn,
   hidden = false,
+  lensTarget = null,
 }: NativeIslandBottomNavProps) {
   useCommitCost('Island');
   const { scheme, theme } = useTheme();
+  const activeLensTarget = !USE_LIVE_BLUR && !hidden ? lensTarget : null;
+  const lensHalo = activeLensTarget
+    ? scheme === 'dark'
+      ? tokens.liquidGlass.lensLegibility.dark
+      : tokens.liquidGlass.lensLegibility.light
+    : null;
   const { windowWidth, islandLayout } = useScreenChrome();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
   // Studio docks have 9 chips — do not compress them into flex:1 slots.
@@ -815,43 +844,50 @@ function NativeIslandBottomNavImpl({
           },
         ]}
       >
-        <IslandGlass scheme={scheme} theme={theme} islandWidth={islandWidth} />
-        <View style={styles.navItems}>
-          {scrollableDock ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              bounces={false}
-              overScrollMode="never"
-              directionalLockEnabled
-              contentContainerStyle={styles.scrollDockContent}
-              style={styles.scrollDock}
-            >
-              {items.map((item) => (
-                <ScrollDockButton
-                  key={item.key}
-                  item={item}
-                  focused={item.key === settledKey && !item.disabled}
-                  pressedKey={pressedKey}
-                  handlersRef={dockHandlersRef}
-                />
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
-              {items.map((item) => (
-                <FixedDockButton
-                  key={item.key}
-                  item={item}
-                  focused={item.key === settledKey && !item.disabled}
-                  compact={compact}
-                  pressedKey={pressedKey}
-                  handlersRef={dockHandlersRef}
-                />
-              ))}
-            </View>
-          )}
-        </View>
+        <IslandGlass
+          scheme={scheme}
+          theme={theme}
+          islandWidth={islandWidth}
+          lensTarget={activeLensTarget}
+        />
+        <IslandLensHaloContext.Provider value={lensHalo}>
+          <View style={styles.navItems}>
+            {scrollableDock ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                overScrollMode="never"
+                directionalLockEnabled
+                contentContainerStyle={styles.scrollDockContent}
+                style={styles.scrollDock}
+              >
+                {items.map((item) => (
+                  <ScrollDockButton
+                    key={item.key}
+                    item={item}
+                    focused={item.key === settledKey && !item.disabled}
+                    pressedKey={pressedKey}
+                    handlersRef={dockHandlersRef}
+                  />
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
+                {items.map((item) => (
+                  <FixedDockButton
+                    key={item.key}
+                    item={item}
+                    focused={item.key === settledKey && !item.disabled}
+                    compact={compact}
+                    pressedKey={pressedKey}
+                    handlersRef={dockHandlersRef}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        </IslandLensHaloContext.Provider>
       </View>
     </View>
   );

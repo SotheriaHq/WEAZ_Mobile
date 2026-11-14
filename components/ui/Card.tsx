@@ -101,8 +101,8 @@ export function Card({
         <WiezLiquidGlass
           mode="lightweight"
           intensity="prominent"
-          tintAlpha={isDark ? 0.28 : 0.56}
-          highlightIntensity={0.85}
+          tintAlpha={isDark ? tokens.liquidGlass.fallbackTint.cardDark : tokens.liquidGlass.fallbackTint.cardLight}
+          highlightIntensity={tokens.liquidGlass.fallbackTint.surfaceHighlight}
           borderRadius={tokens.radius.lg}
           pointerEvents="none"
           style={StyleSheet.absoluteFill}

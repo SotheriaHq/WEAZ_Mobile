@@ -6,6 +6,10 @@ import {
   NativeIslandBottomNav,
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
+import {
+  WiezLiquidGlassBackdrop,
+  useLiquidGlassBlurTarget,
+} from '@/components/ui/WiezLiquidGlass';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership, isBrandAccount } from '@/src/auth/brandAccess';
 import {
@@ -81,6 +85,8 @@ export const unstable_settings = {
 // catalogue rendered its own island and hid it for these routes). `/catalog`
 // and the visitor `/catalog/[brandId]` keep the island.
 const FOCUSED_CATALOG_FLOW = /^\/catalog\/(view|create-design|create-collection|edit-profile)(\/|$)/;
+/** The navigator fills the screen exactly as before; the wrapper only adds the island backdrop. */
+const ISLAND_BACKDROP_STYLE = { flex: 1 } as const;
 
 type ExpoTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 type HiddenTabNavigation = ExpoTabBarProps['navigation'];
@@ -316,6 +322,20 @@ export default function TabLayout() {
   const hideIslandForFocusedFlow =
     FOCUSED_CATALOG_FLOW.test(pathname) ||
     (inStudioIsland && isStudioFocusedFlow(studioRouteKeyParam));
+
+  // Strong Lens island: the tab tree is the backdrop the island refracts on
+  // Android. Runway plays video in a SurfaceView and Studio hosts a WebView;
+  // neither can be recorded by a RenderNode capture, so those surfaces keep the
+  // lightweight island.
+  const {
+    targetRef: islandBackdropRef,
+    blurTargetRef: islandLensTarget,
+    onTargetLayout: onIslandBackdropLayout,
+  } = useLiquidGlassBlurTarget();
+  const islandRefracts =
+    Platform.OS === 'android' &&
+    !inStudioIsland &&
+    activeIslandKey !== NATIVE_ISLAND_KEYS.designs;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     lastNotificationRefreshAttemptAtRef.current = Date.now();
@@ -1164,7 +1184,13 @@ export default function TabLayout() {
 
   return (
     <>
-      {tabNavigatorTree}
+      <WiezLiquidGlassBackdrop
+        targetRef={islandBackdropRef}
+        onLayout={onIslandBackdropLayout}
+        style={ISLAND_BACKDROP_STYLE}
+      >
+        {tabNavigatorTree}
+      </WiezLiquidGlassBackdrop>
 
       {/* The island resolves the ambient scheme on every route. It used to be
           forced dark over the Runway, whose stage was black in both themes;
@@ -1176,6 +1202,7 @@ export default function TabLayout() {
         items={shopperIslandItems}
         onSelect={handleSelect}
         hidden={inStudioIsland || hideIslandForFocusedFlow}
+        lensTarget={islandRefracts ? islandLensTarget : null}
         // No optimistic React state on press. The chip lights from the
         // island's UI-thread `pressedKey` the instant the finger lands, and
         // stays lit until the route confirms. Setting `optimisticActiveKey`

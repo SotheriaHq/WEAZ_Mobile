@@ -273,7 +273,7 @@ function LegacyChip({
             mode="lightweight"
             intensity="prominent"
             tintMode={isStageNav ? 'dark' : 'auto'}
-            tintAlpha={isStageNav ? 0.34 : undefined}
+            tintAlpha={isStageNav ? tokens.liquidGlass.fallbackTint.stageChrome : undefined}
             borderRadius={tokens.radius.full}
             pointerEvents="none"
             style={StyleSheet.absoluteFill}

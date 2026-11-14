@@ -616,17 +616,17 @@ async function runTests() {
     assert.equal(collectNodes(json, (n) => n.type === 'Svg').length, 0, 'API 33+ AGSL composites rim directly without duplicate SVG stack');
     assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0, 'API 33+ AGSL composites reflection without haze layers');
     assert.ok(lenses[0].props.targetViewId > 0, 'Native lens must receive valid targetViewId handle');
-    assert.ok(
-      lenses[0].props.refractionStrength >= 1.0 && lenses[0].props.refractionStrength <= 1.15,
-      'Optical Balance v4 regular intensity must calibrate refractionStrength around 1.02',
-    );
-    assert.equal(lenses[0].props.curvature, 0.66, 'Optical Balance v4 default curvature must be 0.66');
-    assert.equal(lenses[0].props.opticalThickness, 0.55, 'Optical Balance v4 default opticalThickness must be 0.55');
+    const lensOptics = tokens.liquidGlass.optics;
+    assert.equal(lenses[0].props.refractionStrength, lensOptics.refractionStrength, 'Strong Lens refraction comes from tokens (1.25)');
+    assert.equal(lenses[0].props.curvature, lensOptics.curvature, 'Strong Lens curvature is a full dome (1)');
+    assert.equal(lenses[0].props.opticalThickness, lensOptics.opticalThickness, 'Strong Lens optical thickness (0.75)');
     assert.equal(lenses[0].props.blurRadius, 0, 'API 33+ lens must have 0dp center Gaussian blur');
     assert.equal(lenses[0].props.chromaticAberration, 0, 'Chromatic aberration must stay disabled (0)');
     assert.equal(lenses[0].props.isDark, true);
     assert.equal(lenses[0].props.pressed, true);
-    assert.ok(lenses[0].props.tintAlpha <= 0.06, 'Dark-theme native tint must remain crystal sheer');
+    assert.equal(lenses[0].props.tintAlpha, lensOptics.lensTintAlpha, 'Refracting lens tint is optics.lensTintAlpha in both themes');
+    assert.equal(lenses[0].props.reflectionStrength, lensOptics.reflectionStrength, 'Lens reflection scales by optics.reflectionStrength');
+    assert.equal(lenses[0].props.rimStrength, lensOptics.reflectionStrength, 'Lens rim scales by optics.reflectionStrength');
     await renderer.act(async () => tree.unmount());
   }
 
@@ -669,25 +669,47 @@ async function runTests() {
       /recordingCanvas\.drawColor\(config\.fallbackColorArgb\)/,
       'RenderNodes must NEVER fill fallbackColorArgb behind targetView (prevents dark #1A2230 perimeter fringe)',
     );
+    // Strong Lens shader invariants (owner-approved 14 Nov 2026).
     assert.match(agsl, /uniform float4 uShapeParams;/, 'Shader must accept dynamic curvature & thickness uniforms');
-    assert.match(agsl, /float2 rawGrad = float2\(gx, gy\)/, 'Shader must compute smooth C1 finite-difference SDF normals');
-    assert.match(agsl, /fragCoord - lensNormal \* edgeShiftPx/, 'Shader must apply convex physical Snell inward sampling');
-    assert.match(agsl, /bezelReachDp/, 'Meniscus bevel must adapt cleanly across circles, pills, and cards');
-    assert.match(agsl, /float rampEnd = mix\(/, 'Shader must use C2 Hermite-integrated smooth-ramp meniscus profile');
-    assert.match(agsl, /float peakNormSlope = 1\.0 \/ max\(totalArea,\s*0\.25\)/, 'Shader must compute peak normalized meniscus slope for Jacobian clamping');
-    assert.match(agsl, /float maxSlope = clamp\(refractStr \* 0\.54,\s*0\.0,\s*0\.72\)/, 'Shader must enforce restrained monotonic Jacobian slope bound <= 0.72');
-    assert.match(agsl, /float physicalCapPx = \(bezelWidth \* maxSlope\) \/ max\(peakNormSlope,\s*1\.0\)/, 'Shader must cap edge shift against bezelWidth and peakNormSlope to prevent caustic folding and text twisting');
-    assert.match(agsl, /float smoothEdgeT = smoothstep\(0\.0,\s*1\.0,\s*edgeT\)/, 'Optical tint transition must smoothstep cleanly from flat core to rim');
+    assert.doesNotMatch(agsl, /\$/, 'AGSL inside a Kotlin raw string must not contain "$" templates');
+    // Single source of truth: every named lens constant equals tokens.liquidGlass.optics.lens.
+    const lensConstants = {
+      LENS_FALLOFF_K: 'falloffK',
+      LENS_DEPTH_FRAC: 'depthFrac',
+      LENS_STRETCH_LIMIT: 'stretchLimit',
+      LENS_MAGNIFY: 'magnify',
+      LENS_MAX_TILT_DEG: 'maxTiltDeg',
+      LENS_FRESNEL_GAIN: 'fresnelGain',
+      LENS_SPEC_GAIN: 'specGain',
+      LENS_SHININESS: 'shininess',
+      LENS_RIM_DP: 'rimDp',
+      LENS_SHADE_GAIN: 'shadeGain',
+      LENS_SATURATION: 'saturation',
+      LENS_BEZEL_MAX_DP: 'bezelMaxDp',
+    };
+    for (const [constName, tokenKey] of Object.entries(lensConstants)) {
+      const match = new RegExp(`const float ${constName} = ([0-9.]+);`).exec(agsl);
+      assert.ok(match, `AGSL must declare ${constName}`);
+      assert.equal(
+        Number(match[1]),
+        tokens.liquidGlass.optics.lens[tokenKey],
+        `AGSL ${constName} must equal tokens.liquidGlass.optics.lens.${tokenKey}`,
+      );
+    }
+    assert.equal(
+      Object.keys(tokens.liquidGlass.optics.lens).length,
+      Object.keys(lensConstants).length,
+      'Every lens token must be mirrored by an AGSL constant',
+    );
+    assert.match(agsl, /float bezel = min\(min\(minHalf, LENS_BEZEL_MAX_DP \* density\)/, 'Bezel reach must derive from the short half-axis (full dome on capsules)');
+    assert.match(agsl, /float2 q = abs\(p\) - \(halfSize - float2\(r2, r2\)\);/, 'Normals must come from the crease-free r2 rounded shape');
+    assert.match(agsl, /float foldLimit = max\(0\.0, 0\.85 - magnify\) \* bezel \/ LENS_FALLOFF_K;/, 'Displacement must be hard-clamped so the sampling map never folds');
+    assert.match(agsl, /fragCoord - n \* \(maxShift \* g\)/, 'Refraction must sample inward along the outward normal');
+    assert.match(agsl, /float fres = 0\.04 \+ 0\.96 \* pow\(1\.0 - ct, 5\.0\);/, 'Reflection must use Schlick Fresnel on the tilted 3D normal');
+    assert.match(agsl, /rgb = mix\(rgb, float3\(0\.055, 0\.055, 0\.063\), shade\);/, 'Edge depth must stay neutral charcoal, never tinted');
     assert.doesNotMatch(agsl, /float3\(0\.16,\s*0\.19,\s*0\.30\)/, 'Optical bevel shading must stay neutral achromatic instead of blue-lavender indigo');
-    assert.match(agsl, /veryBrightBg/, 'Shader must isolate very bright backgrounds for subtle inboard optical edge definition');
-    assert.match(agsl, /inboardShadow/, 'Shader must compute smooth inboard optical shadow on bright grounds without harsh strokes');
-    assert.match(agsl, /totalShade/, 'Shader must blend bounded neutral bevel and inboard shade');
-    assert.match(agsl, /rgb = mix\(rgb,\s*float3\(0\.055,\s*0\.055,\s*0\.06\),\s*totalShade\)/, 'Bright backdrops must use compact neutral charcoal optical lip depth');
-    assert.match(agsl, /glossSecDir/, 'Shader must include delicate secondary opposite meniscus catchlight without plastic sheet wash');
-    assert.doesNotMatch(agsl, /corePull/, 'Central optical core must have zero displacement/pull');
     assert.doesNotMatch(agsl, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
-    assert.match(agsl, /bgLuma/, 'Fresnel rim must adapt to sampled background luminance');
-    assert.match(agsl, /bevelShadeCurve/, 'Bright backdrops must use soft beveled edge depth rather than a 1px dark ring');
+    assert.doesNotMatch(agsl, /uOpticalParams\.w/, 'Chromatic aberration stays disabled in the Strong Lens');
 
     assert.equal(
       tokens.liquidGlass.dark.tintHex,
@@ -703,12 +725,29 @@ async function runTests() {
       path.join(ROOT, 'modules', 'wiez-liquid-glass', 'android', 'src', 'main', 'java', 'expo', 'modules', 'wiezliquidglass', 'WiezLiquidGlassModule.kt'),
       'utf8',
     );
-    assert.match(lensViewSource, /refractionStrength:\s*Float\s*=\s*1\.02f/, 'Kotlin LensView default refractionStrength must match TS v4 (1.02f)');
-    assert.match(lensViewSource, /curvature:\s*Float\s*=\s*0\.66f/, 'Kotlin LensView default curvature must match TS v4 (0.66f)');
-    assert.match(lensViewSource, /opticalThickness:\s*Float\s*=\s*0\.55f/, 'Kotlin LensView default opticalThickness must match TS v4 (0.55f)');
-    assert.match(moduleSource, /refractionStrength\s*\?:\s*1\.02f/, 'Kotlin Module prop fallback refractionStrength must match TS v4 (1.02f)');
-    assert.match(moduleSource, /curvature\s*\?:\s*0\.66f/, 'Kotlin Module prop fallback curvature must match TS v4 (0.66f)');
-    assert.match(moduleSource, /opticalThickness\s*\?:\s*0\.55f/, 'Kotlin Module prop fallback opticalThickness must match TS v4 (0.55f)');
+    // Kotlin defaults must equal the token spec so a missing prop still renders the Strong Lens.
+    const kotlinFloat = (value) => `${Number.isInteger(value) ? value.toFixed(1) : value}f`.replace('.', '\\.');
+    const optics = tokens.liquidGlass.optics;
+    const kotlinDefaults = [
+      ['refractionStrength', optics.refractionStrength],
+      ['curvature', optics.curvature],
+      ['opticalThickness', optics.opticalThickness],
+      ['tintAlpha', optics.lensTintAlpha],
+      ['rimStrength', optics.reflectionStrength],
+      ['reflectionStrength', optics.reflectionStrength],
+    ];
+    for (const [name, value] of kotlinDefaults) {
+      assert.match(
+        lensViewSource,
+        new RegExp(`${name}:\\s*Float\\s*=\\s*${kotlinFloat(value)}`),
+        `Kotlin LensView default ${name} must equal the token spec (${value})`,
+      );
+      assert.match(
+        moduleSource,
+        new RegExp(`${name}\\s*\\?:\\s*${kotlinFloat(value)}`),
+        `Kotlin Module prop fallback ${name} must equal the token spec (${value})`,
+      );
+    }
   }
 
   // Android API 36 with `refraction={false}` opt-out (for A/B telemetry & fallback)
@@ -944,7 +983,7 @@ async function runTests() {
     await renderer.act(async () => tree.unmount());
   }
 
-  // ── 6. NativeIslandBottomNav keeps USE_LIVE_BLUR gate and uses lightweight Android glass ──
+  // ── 6. NativeIslandBottomNav: Strong Lens when a backdrop target is safe, lightweight otherwise ──
   const islandSource = fs.readFileSync(
     path.join(ROOT, 'components', 'navigation', 'NativeIslandBottomNav.tsx'),
     'utf8',
@@ -956,13 +995,39 @@ async function runTests() {
   );
   assert.match(
     islandSource,
-    /WiezLiquidGlass/,
-    'NativeIslandBottomNav Android surface must use shared lightweight WiezLiquidGlass',
+    /mode=\{lensTarget \? 'enhanced' : 'lightweight'\}/,
+    'Android island refracts only when the layout hands it a backdrop target',
+  );
+  assert.match(
+    islandSource,
+    /const activeLensTarget = !USE_LIVE_BLUR && !hidden \? lensTarget : null;/,
+    'A hidden island must never capture its backdrop',
+  );
+  assert.match(
+    islandSource,
+    /fallbackTintAlpha=\{fallbackTint\}/,
+    'Island fallback tint must come from tokens.liquidGlass.fallbackTint (no literals)',
   );
   assert.doesNotMatch(
     islandSource,
-    /WiezLiquidGlassBackdrop|mode="enhanced"/,
-    'NativeIslandBottomNav must NOT migrate to per-frame backdrop capture on Android',
+    /tintAlpha=\{scheme === 'dark' \? 0\.\d+/,
+    'Island must not hard-code tint alphas',
+  );
+  const tabsLayoutSource = fs.readFileSync(path.join(ROOT, 'app', '(tabs)', '_layout.tsx'), 'utf8');
+  assert.match(
+    tabsLayoutSource,
+    /<WiezLiquidGlassBackdrop[\s\S]*?\{tabNavigatorTree\}[\s\S]*?<\/WiezLiquidGlassBackdrop>/,
+    'The tab navigator is the backdrop the island refracts',
+  );
+  assert.match(
+    tabsLayoutSource,
+    /!inStudioIsland &&\s*activeIslandKey !== NATIVE_ISLAND_KEYS\.designs/,
+    'Runway (SurfaceView video) and Studio (WebView) keep the lightweight island',
+  );
+  assert.match(
+    tabsLayoutSource,
+    /lensTarget=\{islandRefracts \? islandLensTarget : null\}/,
+    'Only the gated shopper island receives the lens target',
   );
   assert.doesNotMatch(
     islandSource,
@@ -1159,13 +1224,13 @@ async function runTests() {
   }
 
   // ── 9. Phase 2 Consolidation & Regression Fixes ───────────────────────────
-  // 9a. Single-source optics defaults in tokens match Phase 1 v4 baseline
-  assert.equal(tokens.liquidGlass.optics.curvature, 0.66);
-  assert.equal(tokens.liquidGlass.optics.opticalThickness, 0.55);
+  // 9a. Single-source optics spec in tokens = owner-approved Strong Lens (14 Nov 2026)
+  assert.equal(tokens.liquidGlass.optics.curvature, 1);
+  assert.equal(tokens.liquidGlass.optics.opticalThickness, 0.75);
   assert.equal(tokens.liquidGlass.optics.chromaticAberration, 0);
-  assert.equal(tokens.liquidGlass.optics.refractionStrength.subtle, 0.74);
-  assert.equal(tokens.liquidGlass.optics.refractionStrength.regular, 1.02);
-  assert.equal(tokens.liquidGlass.optics.refractionStrength.prominent, 1.2);
+  assert.equal(tokens.liquidGlass.optics.refractionStrength, 1.25);
+  assert.equal(tokens.liquidGlass.optics.reflectionStrength, 0.6);
+  assert.equal(tokens.liquidGlass.optics.lensTintAlpha, 0.14);
 
   // 9b. initialSize seeds first paint BEFORE layout, while onLayout updates flexible surfaces
   harness.setPlatform('android', 36);
@@ -1357,8 +1422,8 @@ async function runTests() {
       const enhLens = collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView')[0];
       assert.equal(
         enhLens.props.tintAlpha,
-        palette.tintAlpha[expectedKey],
-        `${scheme} enhanced numeric intensity=${intensity} must match ${expectedKey} tintAlpha token`,
+        tokens.liquidGlass.optics.lensTintAlpha,
+        `${scheme} refracting lens tint at intensity=${intensity} must be the single Strong Lens tint`,
       );
       await renderer.act(async () => tree.unmount());
     }

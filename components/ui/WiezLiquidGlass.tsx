@@ -85,11 +85,11 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
    * in `enhanced` mode). Defaults to `true`.
    */
   refraction?: boolean;
-  /** Override displacement amplitude scalar (`0..2`). Defaults from `intensity`. */
+  /** Override displacement amplitude scalar (`0..2`). Defaults to `tokens.liquidGlass.optics.refractionStrength`. */
   refractionStrength?: number;
-  /** Override meniscus shoulder dome curve (`0..1`: crisp lip -> curved dome). Defaults to `0.66`. */
+  /** Override curved fraction of the short half-axis (`0..1`, 1 = full dome). Defaults to `tokens.liquidGlass.optics.curvature`. */
   curvature?: number;
-  /** Override optical bezel thickness/reach (`0..1`). Defaults to `0.55`. */
+  /** Override optical thickness: bezel reach + depth (`0..1`). Defaults to `tokens.liquidGlass.optics.opticalThickness`. */
   opticalThickness?: number;
   /** Override optional Gaussian scatter blur radius in dp (`0..24`). Defaults to `0` on AGSL and token-derived blur on API 31–32 `RenderEffect`. */
   blurRadius?: number;
@@ -97,8 +97,14 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
   fresnelIntensity?: number;
   /** Override specular shoulder reflection intensity (`0..1.5`). Defaults to `highlightIntensity`. */
   reflectionIntensity?: number;
-  /** Override sheer optical tint alpha (`0..0.6`). Defaults to theme crystal-sheer token. */
+  /** Override tint alpha on every path (`0..0.6`). Defaults to `optics.lensTintAlpha` when refracting, else the theme token. */
   tintAlpha?: number;
+  /**
+   * Tint used only when this surface cannot refract (lightweight, API < 33, missing target).
+   * Lets an `enhanced` control keep the Strong Lens tint while staying legible on fallback.
+   * Use a `tokens.liquidGlass.fallbackTint.*` role, never a literal.
+   */
+  fallbackTintAlpha?: number;
   /** Optional chromatic dispersion (`0..1`). Defaults to `0` (disabled). */
   chromaticAberration?: number;
   /** Sibling backdrop ref paired with `WiezLiquidGlassBackdrop` via `useLiquidGlassBlurTarget()` on Android. Never attach to an ancestor containing this lens. */
@@ -328,18 +334,12 @@ function resolveRenderEffectBlurDp(
   return clamp(Math.round((baseBlur / reductionFactor) * 10) / 10, 0, 24);
 }
 
-function resolveRefractionAmount(
-  intensity: WiezLiquidGlassIntensity,
-  refractionStrengthOverride?: number,
-): number {
+/** Strong Lens uses one refraction strength on every control; `intensity` only tunes tint/blur. */
+function resolveRefractionAmount(refractionStrengthOverride?: number): number {
   if (typeof refractionStrengthOverride === 'number' && Number.isFinite(refractionStrengthOverride)) {
     return clamp(refractionStrengthOverride, 0, 2);
   }
-  const table = tokens.liquidGlass.optics.refractionStrength;
-  if (typeof intensity === 'string') {
-    return table[intensity] ?? table.regular;
-  }
-  return lerpRounded(0.65, 1.25, intensity, 100);
+  return tokens.liquidGlass.optics.refractionStrength;
 }
 
 /**
@@ -371,6 +371,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   fresnelIntensity,
   reflectionIntensity,
   tintAlpha,
+  fallbackTintAlpha,
   chromaticAberration = DEFAULT_CHROMA,
   blurTarget,
   initialSize,
@@ -451,17 +452,24 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
 
   const liveOpticalBackdropActive = androidNativeLensActive || useIosNativeBlur;
 
+  const hasExplicitTint = typeof tintAlpha === 'number' && Number.isFinite(tintAlpha);
+  const nonRefractingTint = hasExplicitTint ? tintAlpha : fallbackTintAlpha;
   const transmissionColor = resolveTransmissionColor(
     effectiveScheme,
     intensity,
     liveOpticalBackdropActive,
-    tintAlpha,
+    nonRefractingTint,
   );
-  const tintAlphaValue = resolveTintAlpha(effectiveScheme, intensity, tintAlpha);
+  // The refracting (AGSL) path always uses the Strong Lens tint from tokens unless a caller
+  // explicitly overrides it; API 31-32 blur, iOS and lightweight use the fallback tint.
+  const tintAlphaValue =
+    androidAgslActive && !hasExplicitTint
+      ? tokens.liquidGlass.optics.lensTintAlpha
+      : resolveTintAlpha(effectiveScheme, intensity, nonRefractingTint);
   const opticalBlurDp = resolveOpticalBlurDp(effectiveScheme, intensity, blurRadius);
   const renderEffectBlurDp = resolveRenderEffectBlurDp(effectiveScheme, intensity, blurRadius);
   const iosBlurIntensityValue = resolveIosBlurIntensity(effectiveScheme, intensity);
-  const refractionAmount = resolveRefractionAmount(intensity, refractionStrength);
+  const refractionAmount = resolveRefractionAmount(refractionStrength);
   const highlightScalar = highlightIntensity === false ? 0 : clamp(highlightIntensity, 0, 1.5);
   const effectiveRimStrength =
     typeof fresnelIntensity === 'number' && Number.isFinite(fresnelIntensity)
@@ -474,6 +482,17 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   const effectiveCurvature = clamp(curvature, 0, 1);
   const effectiveThickness = clamp(opticalThickness, 0, 1);
   const effectiveChroma = clamp(chromaticAberration, 0, 1);
+  // `highlightIntensity` is relative (1 = spec), so it is scaled into the Strong Lens
+  // reflection level on the refracting path; explicit fresnel/reflection values stay absolute.
+  const lensReflectionScale = androidAgslActive ? tokens.liquidGlass.optics.reflectionStrength : 1;
+  const nativeRimStrength =
+    typeof fresnelIntensity === 'number' && Number.isFinite(fresnelIntensity)
+      ? effectiveRimStrength
+      : highlightScalar * lensReflectionScale;
+  const nativeReflectionStrength =
+    typeof reflectionIntensity === 'number' && Number.isFinite(reflectionIntensity)
+      ? effectiveReflectionStrength
+      : highlightScalar * lensReflectionScale;
 
   const clampedBorderRadius =
     surfaceWidth > 0 && surfaceHeight > 0
@@ -526,8 +545,8 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
           }
           refractionStrength={androidAgslActive && refraction ? refractionAmount : 0}
           chromaticAberration={androidAgslActive ? effectiveChroma : 0}
-          rimStrength={effectiveRimStrength}
-          reflectionStrength={effectiveReflectionStrength}
+          rimStrength={nativeRimStrength}
+          reflectionStrength={nativeReflectionStrength}
           curvature={effectiveCurvature}
           opticalThickness={effectiveThickness}
           tintColor={tintColorInt}

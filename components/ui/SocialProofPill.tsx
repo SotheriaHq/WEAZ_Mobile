@@ -65,7 +65,7 @@ export function SocialProofPill({
       mode="lightweight"
       intensity="prominent"
       tintMode="dark"
-      tintAlpha={0.36}
+      tintAlpha={tokens.liquidGlass.fallbackTint.mediaPill}
       borderRadius={tokens.radius.md}
       initialSize={SOCIAL_PROOF_GLASS_SIZE}
       pointerEvents="none"

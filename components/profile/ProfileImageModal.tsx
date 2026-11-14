@@ -44,7 +44,7 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
             mode="lightweight"
             intensity="prominent"
             tintMode="dark"
-            tintAlpha={0.34}
+            tintAlpha={tokens.liquidGlass.fallbackTint.stageChrome}
             borderRadius={24}
             style={styles.panel}
             contentStyle={styles.panelContent}
@@ -54,7 +54,7 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
                 mode="lightweight"
                 intensity="regular"
                 tintMode="dark"
-                tintAlpha={0.28}
+                tintAlpha={tokens.liquidGlass.fallbackTint.modalSoft}
                 borderRadius={17}
                 initialSize={CLOSE_GLASS_SIZE}
                 pointerEvents="none"

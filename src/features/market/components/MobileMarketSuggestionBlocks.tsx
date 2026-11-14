@@ -228,7 +228,7 @@ function SuggestionCard({
               mode="lightweight"
               intensity="prominent"
               tintMode="dark"
-              tintAlpha={0.36}
+              tintAlpha={tokens.liquidGlass.fallbackTint.mediaPill}
               borderRadius={tokens.radius.full}
               initialSize={KIND_BADGE_GLASS_SIZE}
               pointerEvents="none"
