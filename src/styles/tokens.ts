@@ -575,7 +575,7 @@ export const tokens = {
     /** Label halo under a refracting lens (tint is only `optics.lensTintAlpha`). */
     lensLegibility: {
       light: { textShadowColor: 'rgba(255,255,255,0.82)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 0 } },
-      dark: { textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } },
+      dark: { textShadowColor: 'rgba(0,0,0,0.72)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
     },
     light: {
       transmission: {
