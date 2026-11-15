@@ -319,7 +319,7 @@ export function Button({
     !isBusy &&
     (isSecondary ||
       (isPressed &&
-        (variant === 'brand' || variant === 'primary' || variant === 'danger' || variant === 'outline')));
+        (variant === 'danger' || variant === 'outline')));
 
   const tactileOverlayColors: readonly [string, string, ...string[]] = (() => {
     if (isSecondary) {

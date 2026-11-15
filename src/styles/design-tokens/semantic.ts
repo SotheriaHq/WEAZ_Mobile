@@ -126,7 +126,7 @@ export const lightSemanticTokens: SemanticColors = {
     primaryText: neutralPrimitives[0], // #ffffff
     brand: brandPrimitives.violet[600], // #9333ea
     brandHover: brandPrimitives.violet[700], // #7e22ce
-    brandPressed: brandPrimitives.violet[750], // #6b21a8
+    brandPressed: brandPrimitives.violet[500], // #af87f4 approved lighter violet pressed state
     brandText: neutralPrimitives[0],
     secondary: '#eff0ed', // WIEZ Material & Surface Lab tactile paper
     secondaryHover: '#e1e4de',
@@ -183,7 +183,7 @@ export const lightSemanticTokens: SemanticColors = {
       primary: neutralPrimitives[950], // #0a0a0a
       primaryPressed: '#171717',
       brand: brandPrimitives.violet[600], // #9333ea
-      brandPressed: brandPrimitives.violet[750], // #6b21a8
+      brandPressed: brandPrimitives.violet[500], // #af87f4 approved lighter violet
       secondary: '#e1e4de', // approved Material & Surface Lab paper/stone
       secondaryPressed: '#d8ded4',
       outline: 'transparent',
@@ -235,7 +235,7 @@ export const darkSemanticTokens: SemanticColors = {
     primaryText: neutralPrimitives[950],
     brand: brandPrimitives.violet[600],
     brandHover: brandPrimitives.violet[700],
-    brandPressed: brandPrimitives.violet[900],
+    brandPressed: brandPrimitives.violet[500], // #af87f4 approved lighter violet
     brandText: neutralPrimitives[0],
     secondary: '#171e29',
     secondaryHover: '#1f2733',
@@ -291,8 +291,8 @@ export const darkSemanticTokens: SemanticColors = {
     surface: {
       primary: '#fafafa',
       primaryPressed: neutralPrimitives[0],
-      brand: brandPrimitives.violet[500], // #af87f4
-      brandPressed: brandPrimitives.violet[750], // #6b21a8
+      brand: brandPrimitives.violet[600], // #9333ea unified default purple across themes
+      brandPressed: brandPrimitives.violet[500], // #af87f4 approved lighter violet
       secondary: '#1c1c1c', // approved dark Material & Surface Lab stone
       secondaryPressed: '#121212',
       outline: 'transparent',
@@ -303,7 +303,7 @@ export const darkSemanticTokens: SemanticColors = {
     },
     text: {
       primary: neutralPrimitives[950],
-      brand: neutralPrimitives[950],
+      brand: neutralPrimitives[0], // #ffffff high-contrast text on #9333ea
       secondary: '#f4f4f5',
       outline: '#fafafa',
       danger: neutralPrimitives[0],
