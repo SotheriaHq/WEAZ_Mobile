@@ -977,7 +977,16 @@ async function runTests() {
       0,
       'Android IslandGlass uses the Strong Lens material SVG (no legacy gradient sheen)',
     );
-    assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView').length, 0);
+    // The only backdrop is the dock's own: its tab buttons are what the active
+    // droplet refracts (AGSL available in this harness). The island glass
+    // itself has no lens target here, so it stays lightweight.
+    const dockBackdrops = collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView');
+    assert.equal(dockBackdrops.length, 1, 'The droplet refracts the dock buttons through one backdrop');
+    assert.equal(
+      collectNodes(dockBackdrops[0], (n) => n.props?.accessibilityRole === 'tab').length,
+      navItems.length,
+      'Every tab button sits inside the droplet lens backdrop',
+    );
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
     const svg = collectNodes(json, (n) => n.type === 'Svg')[0];
     assert.ok(svg, `Android IslandGlass must mount lightweight specular SVG in ${scheme}`);

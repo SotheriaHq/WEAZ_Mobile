@@ -6,7 +6,6 @@ import {
   StyleSheet,
   View,
   type GestureResponderEvent,
-  type LayoutChangeEvent,
   type LayoutRectangle,
   type TextStyle,
 } from 'react-native';
@@ -32,7 +31,13 @@ import Animated, {
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import { glassRoleProps } from '@/components/ui/LiquidGlassFill';
-import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
+import {
+  supportsEnhancedLiquidGlass,
+  useLiquidGlassBlurTarget,
+  WiezLiquidGlass,
+  WiezLiquidGlassBackdrop,
+} from '@/components/ui/WiezLiquidGlass';
+import { isWiezLiquidGlassNativeAvailable } from '@/modules/wiez-liquid-glass/src';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { measurePressHandler, useCommitCost } from '@/src/perf/commitCost';
 // Direct, not via `navPerf`: that facade reaches wiezPerf through
@@ -185,7 +190,6 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   itemKey,
   pressedKey,
   showPill = true,
-  onChipLayout,
 }: {
   label: string;
   emoji: string;
@@ -198,8 +202,6 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
    * `IslandActiveIndicator` glides between chips instead of each chip fading.
    */
   showPill?: boolean;
-  /** Reports the chip's frame (relative to its dock button) for the gliding indicator. */
-  onChipLayout?: (event: LayoutChangeEvent) => void;
   /** This chip's identity, compared against `pressedKey` on the UI thread. */
   itemKey?: string;
   /**
@@ -350,7 +352,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   return (
     <View style={styles.tabIconWrap}>
       <View style={styles.tabGlyphWrap}>
-        <View style={chipStyle} onLayout={onChipLayout}>
+        <View style={chipStyle}>
           {/* The frosted fill, always mounted and crossfaded underneath the
               glyph. Absolutely filled so it cannot affect the stack's layout,
               and clipped to the pill by the chip's own radius. The docks use
@@ -419,27 +421,41 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
 type DockHandlers = {
   pressIn: (item: NativeIslandNavItem, event?: GestureResponderEvent) => void;
   press: (item: NativeIslandNavItem) => void;
-  /** Frame reports for the gliding indicator: the dock button and the chip inside it. */
-  layout: (key: string, part: 'item' | 'chip', rect: LayoutRectangle) => void;
+  /** Measures one dock button against the dock layer for the gliding indicator. */
+  measure: (key: string, node: View | null) => void;
 };
 
-/** A chip's pill frame in its dock layer's coordinates. */
+/** The indicator droplet's frame in its dock layer's coordinates. */
 type ChipFrame = { x: number; y: number; w: number; h: number };
 
 /** Liquid but settled: a short glide with a hint of overshoot, never a bounce. */
 const INDICATOR_SPRING = { damping: 18, stiffness: 230, mass: 0.85 } as const;
 
-/** Stable layout reporters for one dock button (memo-friendly). */
-function useDockLayoutReporters(handlersRef: React.MutableRefObject<DockHandlers>, itemKey: string) {
+/**
+ * The droplet wraps the whole tab (emoji AND label), centred in its cell:
+ * inset from the cell sides and capped in height, so a long label such as
+ * "Runway" sits inside the glass instead of running off its edge.
+ */
+const INDICATOR_INSET_X = 4;
+const INDICATOR_MAX_HEIGHT = 48;
+
+/**
+ * Stable measuring hook for one dock button (memo-friendly).
+ *
+ * Why `measureLayout` and not `onLayout` coordinates: Gesture Handler v3 wraps
+ * every `GestureDetector` child in a `display: 'contents'` host view, so a dock
+ * button's `onLayout` x/y are relative to that wrapper (about 0 for every
+ * button), not to the dock. Every tab then resolved to the first slot and the
+ * droplet sat on Runway whichever tab was active. `measureLayout` composes the
+ * real mounted frames up to the dock layer, wrapper or not.
+ */
+function useDockMeasure(handlersRef: React.MutableRefObject<DockHandlers>, itemKey: string) {
+  const itemRef = React.useRef<View>(null);
   const onItemLayout = React.useCallback(
-    (event: LayoutChangeEvent) => handlersRef.current.layout(itemKey, 'item', event.nativeEvent.layout),
+    () => handlersRef.current.measure(itemKey, itemRef.current),
     [handlersRef, itemKey],
   );
-  const onChipLayout = React.useCallback(
-    (event: LayoutChangeEvent) => handlersRef.current.layout(itemKey, 'chip', event.nativeEvent.layout),
-    [handlersRef, itemKey],
-  );
-  return { onItemLayout, onChipLayout };
+  return { itemRef, onItemLayout };
 }
 
 /**
@@ -460,9 +476,12 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
   pressedKey,
   settledKey,
   goToRef,
+  lensTarget,
 }: {
   /** The dock calls this from its press handler so the glide starts with the route. */
   goToRef: React.MutableRefObject<((key: string) => void) | null>;
+  /** The dock buttons' backdrop when the droplet refracts the tab beneath it (AGSL). */
+  lensTarget: React.RefObject<View | null> | null;
   frames: SharedValue<Record<string, ChipFrame>>;
   /** Bumped when a frame is measured, so the glass re-sizes to the settled chip. */
   framesTick: number;
@@ -569,10 +588,16 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
   return (
     <Animated.View pointerEvents="none" style={[styles.activeIndicator, indicatorStyle]}>
       {glassW > 0 && glassH > 0 ? (
+        // A thick droplet: brighter Fresnel/specular than the island it sits
+        // on, and (where the AGSL lens exists) real refraction of the tab
+        // under it. The lens tracks the glide every frame (pre-draw location).
         <WiezLiquidGlass
-          mode="lightweight"
+          mode={lensTarget ? 'enhanced' : 'lightweight'}
+          blurTarget={lensTarget ?? undefined}
           intensity="regular"
           {...glass}
+          highlightIntensity={tokens.liquidGlass.droplet.highlight}
+          opticalThickness={tokens.liquidGlass.droplet.thickness}
           borderRadius={9999}
           pointerEvents="none"
           style={{ width: glassW, height: glassH }}
@@ -633,10 +658,11 @@ const FixedDockButton = React.memo(
         scheduleOnRN(routeFromTouchDown);
       },
     });
-    const { onItemLayout, onChipLayout } = useDockLayoutReporters(handlersRef, itemKey);
+    const { itemRef, onItemLayout } = useDockMeasure(handlersRef, itemKey);
     return (
       <GestureDetector gesture={tap}>
         <Pressable
+          ref={itemRef}
           accessibilityRole="tab"
           accessibilityState={{ selected: focused, disabled: item.disabled }}
           accessibilityLabel={item.label}
@@ -658,7 +684,6 @@ const FixedDockButton = React.memo(
             badge={item.badge}
             compact={compact}
             showPill={false}
-            onChipLayout={onChipLayout}
           />
         </Pressable>
       </GestureDetector>
@@ -987,27 +1012,28 @@ function NativeIslandBottomNavImpl({
   // share it: each decides on the UI thread WHEN a touch is a press, and both
   // route the same way once it is.
   /*
-    Chip frames for the gliding indicator. A chip's frame is its dock button's
-    position in the dock layer plus the chip's position inside that button
-    (the icon wrappers fill the button, so the two offsets simply add). The UI
+    Droplet frames for the gliding indicator, in the dock layer's coordinates.
+    Each dock button is measured against the layer (see `useDockMeasure` for
+    why `onLayout` offsets cannot be used), and the droplet is the button's
+    cell inset and centred, so it always wraps the emoji and the label. The UI
     thread reads `chipFrames`; the JS copy sizes the indicator's glass.
   */
   const chipFrames = useSharedValue<Record<string, ChipFrame>>({});
   const jsChipFramesRef = React.useRef<Record<string, ChipFrame>>({});
-  const itemRectsRef = React.useRef<Record<string, LayoutRectangle>>({});
-  const chipRectsRef = React.useRef<Record<string, LayoutRectangle>>({});
+  const itemNodesRef = React.useRef<Record<string, View | null>>({});
+  const fixedLayerRef = React.useRef<View>(null);
+  const scrollRowRef = React.useRef<View>(null);
   const [chipFramesTick, setChipFramesTick] = React.useState(0);
-  const reportDockLayout = React.useCallback(
-    (key: string, part: 'item' | 'chip', rect: LayoutRectangle) => {
-      (part === 'item' ? itemRectsRef : chipRectsRef).current[key] = rect;
-      const itemRect = itemRectsRef.current[key];
-      const chipRect = chipRectsRef.current[key];
-      if (!itemRect || !chipRect) return;
+  const storeDropletFrame = React.useCallback(
+    (key: string, cell: LayoutRectangle) => {
+      if (cell.width <= 0 || cell.height <= 0) return;
+      const w = Math.max(cell.width - INDICATOR_INSET_X * 2, 0);
+      const h = Math.min(cell.height - INDICATOR_INSET_X * 2, INDICATOR_MAX_HEIGHT);
       const next: ChipFrame = {
-        x: itemRect.x + chipRect.x,
-        y: itemRect.y + chipRect.y,
-        w: chipRect.width,
-        h: chipRect.height,
+        x: cell.x + (cell.width - w) / 2,
+        y: cell.y + (cell.height - h) / 2,
+        w,
+        h,
       };
       const previous = jsChipFramesRef.current[key];
       if (
@@ -1025,18 +1051,62 @@ function NativeIslandBottomNavImpl({
     },
     [chipFrames],
   );
+  const measureDockItem = React.useCallback(
+    (key: string, node: View | null) => {
+      itemNodesRef.current[key] = node;
+      const layer = scrollableDock ? scrollRowRef.current : fixedLayerRef.current;
+      if (!node || !layer) return;
+      try {
+        node.measureLayout(
+          layer,
+          (x, y, width, height) => storeDropletFrame(key, { x, y, width, height }),
+          () => undefined,
+        );
+      } catch {
+        // An unmounted button (items changed) has nothing to measure.
+        delete itemNodesRef.current[key];
+      }
+    },
+    [scrollableDock, storeDropletFrame],
+  );
+  // The layer itself moved or resized (rotation, safe area, item count): every
+  // button keeps its own layout box, so re-measure them all against it.
+  const remeasureDock = React.useCallback(() => {
+    for (const [key, node] of Object.entries(itemNodesRef.current)) measureDockItem(key, node);
+  }, [measureDockItem]);
   const getChipFrame = React.useCallback((key: string) => jsChipFramesRef.current[key], []);
 
   const dockHandlersRef = React.useRef<DockHandlers>({
     pressIn: handleFixedPressIn,
     press: handleFixedPress,
-    layout: reportDockLayout,
+    measure: measureDockItem,
   });
   dockHandlersRef.current = {
     pressIn: handleFixedPressIn,
     press: handleFixedPress,
-    layout: reportDockLayout,
+    measure: measureDockItem,
   };
+
+  /*
+    The droplet refracts the tab it sits on. Where the AGSL lens exists
+    (Android 13+ with the native module), the fixed dock's buttons render inside
+    a `WiezLiquidGlassBackdrop` and the droplet is drawn ABOVE them as a real
+    lens: the emoji and label bend through its curved edge like the system
+    media island. Everywhere else the droplet stays tinted glass BELOW the
+    labels so they remain crisp. The scrolling dock keeps the lightweight
+    droplet (capturing a scrolling row every frame is not worth it).
+  */
+  const {
+    targetRef: dockBackdropRef,
+    blurTargetRef: dockLensTarget,
+    onTargetLayout: onDockBackdropLayout,
+  } = useLiquidGlassBlurTarget();
+  const dropletRefracts =
+    Platform.OS === 'android' &&
+    !scrollableDock &&
+    !hidden &&
+    supportsEnhancedLiquidGlass() &&
+    isWiezLiquidGlassNativeAvailable();
 
   // One key. `item.active` is the route; `immediateActiveKey` is the press
   // that has not been confirmed yet. ORing them lit both chips.
@@ -1057,8 +1127,21 @@ function NativeIslandBottomNavImpl({
       pressedKey={pressedKey}
       settledKey={settledKey}
       goToRef={indicatorGoToRef}
+      lensTarget={dropletRefracts ? dockLensTarget : null}
     />
   );
+  const fixedDockButtons = scrollableDock
+    ? null
+    : items.map((item) => (
+        <FixedDockButton
+          key={item.key}
+          item={item}
+          focused={item.key === settledKey && !item.disabled}
+          compact={compact}
+          pressedKey={pressedKey}
+          handlersRef={dockHandlersRef}
+        />
+      ));
 
   // The island is permanently fixed and fully expanded — there is no collapse
   // state. A previous design collapsed the bar to a pill (and reset that pill on
@@ -1104,30 +1187,35 @@ function NativeIslandBottomNavImpl({
                 contentContainerStyle={styles.scrollDockContent}
                 style={styles.scrollDock}
               >
-                {activeIndicator}
-                {items.map((item) => (
-                  <ScrollDockButton
-                    key={item.key}
-                    item={item}
-                    focused={item.key === settledKey && !item.disabled}
-                    pressedKey={pressedKey}
-                    handlersRef={dockHandlersRef}
-                  />
-                ))}
+                {/* The measured layer: droplet and chips share its coordinates. */}
+                <View ref={scrollRowRef} onLayout={remeasureDock} style={styles.scrollDockRow}>
+                  {activeIndicator}
+                  {items.map((item) => (
+                    <ScrollDockButton
+                      key={item.key}
+                      item={item}
+                      focused={item.key === settledKey && !item.disabled}
+                      pressedKey={pressedKey}
+                      handlersRef={dockHandlersRef}
+                    />
+                  ))}
+                </View>
               </ScrollView>
             ) : (
-              <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
-                {activeIndicator}
-                {items.map((item) => (
-                  <FixedDockButton
-                    key={item.key}
-                    item={item}
-                    focused={item.key === settledKey && !item.disabled}
-                    compact={compact}
-                    pressedKey={pressedKey}
-                    handlersRef={dockHandlersRef}
-                  />
-                ))}
+              <View ref={fixedLayerRef} onLayout={remeasureDock} style={styles.navModeLayer}>
+                {dropletRefracts ? null : activeIndicator}
+                {dropletRefracts ? (
+                  <WiezLiquidGlassBackdrop
+                    targetRef={dockBackdropRef}
+                    onLayout={onDockBackdropLayout}
+                    style={[styles.dockItemsRow, styles.expandedItemsLayer]}
+                  >
+                    {fixedDockButtons}
+                  </WiezLiquidGlassBackdrop>
+                ) : (
+                  <View style={[styles.dockItemsRow, styles.expandedItemsLayer]}>{fixedDockButtons}</View>
+                )}
+                {dropletRefracts ? activeIndicator : null}
               </View>
             )}
           </View>
@@ -1191,10 +1279,11 @@ const ScrollDockButton = React.memo(
       },
     });
     const press = useCompetingGestures(hold, tap);
-    const { onItemLayout, onChipLayout } = useDockLayoutReporters(handlersRef, itemKey);
+    const { itemRef, onItemLayout } = useDockMeasure(handlersRef, itemKey);
     return (
       <GestureDetector gesture={press}>
         <Pressable
+          ref={itemRef}
           accessibilityRole="tab"
           accessibilityState={{ selected: focused, disabled: item.disabled }}
           accessibilityLabel={item.label}
@@ -1225,7 +1314,6 @@ const ScrollDockButton = React.memo(
             badge={item.badge}
             compact={false}
             showPill={false}
-            onChipLayout={onChipLayout}
           />
         </Pressable>
       </GestureDetector>
@@ -1303,6 +1391,20 @@ const styles = StyleSheet.create({
   expandedItemsLayer: {
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
   },
+  /** The fixed dock's button row (plain View, or the droplet's lens backdrop). */
+  dockItemsRow: {
+    ...StyleSheet.absoluteFill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** The scrolling dock's measured row (droplet + chips share its coordinates). */
+  scrollDockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 2,
+  },
   navItem: {
     flex: 1,
     height: '100%',
@@ -1329,7 +1431,6 @@ const styles = StyleSheet.create({
      * keeps the whole chip in the straight section of the pill.
      */
     paddingHorizontal: 12,
-    gap: 2,
   },
   // Fixed chip width so Studio's 9 items keep the same breathing room as the
   // main 5-item dock; the bar scrolls instead of squashing labels.

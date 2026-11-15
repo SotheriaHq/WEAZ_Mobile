@@ -611,6 +611,15 @@ export const tokens = {
       light: { specular: 0.3, caustic: 0.14 },
       dark: { specular: 0.22, caustic: 0.1 },
     },
+    /**
+     * The island's active-tab droplet: a thicker, brighter piece of glass than
+     * the island it sits on (stronger Fresnel/specular, deeper bezel), so the
+     * selection reads as a lens over the tab rather than a flat tint.
+     */
+    droplet: {
+      highlight: 1.35,
+      thickness: 0.95,
+    },
     /** Label halo under a refracting lens (tint is only `optics.lensTintAlpha`). */
     lensLegibility: {
       light: { textShadowColor: 'rgba(255,255,255,0.82)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 0 } },

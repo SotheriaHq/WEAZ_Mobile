@@ -89,9 +89,15 @@ assert.ok(
   segmentedTabsSource.includes('borderBottomWidth: 2'),
   'SegmentedTabs must declare bottom border of at least 2px'
 );
+// The indicator is a gliding Strong Lens glass pill behind the active segment
+// (it replaced the 2px underline in the November 2026 glass rollout).
 assert.ok(
-  segmentedTabsSource.includes('height: 2'),
-  'SegmentedTabs indicator must declare height of at least 2px'
+  /indicator:\s*\{[\s\S]*?position: 'absolute',[\s\S]*?top: \d+,[\s\S]*?bottom: \d+,/.test(segmentedTabsSource),
+  'SegmentedTabs indicator must be an absolutely positioned pill inset from top and bottom'
+);
+assert.ok(
+  segmentedTabsSource.includes('glassRole="brandSoft"'),
+  'SegmentedTabs indicator must be brand-tinted glass'
 );
 assert.ok(
   segmentedTabsSource.includes('actionBrand') || segmentedTabsSource.includes('primary'),

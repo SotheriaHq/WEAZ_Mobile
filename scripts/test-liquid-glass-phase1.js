@@ -1033,7 +1033,26 @@ async function runTests() {
   assert.match(islandSource, /pressedKey\.value \?\? settled\.value/, 'Indicator follows the press on the UI thread at touch-down');
   assert.match(islandSource, /withSpring\(next\[0\], INDICATOR_SPRING\)/, 'Indicator glides with a spring');
   assert.match(islandSource, /glassRoleProps\('brandSoft'/, 'Indicator is brand-tinted Strong Lens glass from the role map');
-  assert.equal((islandSource.match(/\{activeIndicator\}/g) || []).length, 2, 'Indicator mounts in both docks');
+  assert.match(islandSource, /\{activeIndicator\}/, 'Indicator mounts in the scrolling dock');
+  assert.match(
+    islandSource,
+    /\{dropletRefracts \? null : activeIndicator\}[\s\S]*?\{dropletRefracts \? activeIndicator : null\}/,
+    'Indicator mounts in the fixed dock: under the labels, or above them as a lens when it refracts',
+  );
+  // Regression (15 Nov 2026, droplet stuck on Runway): Gesture Handler v3 wraps
+  // each dock button in a display:contents host, so onLayout offsets are ~0.
+  // Buttons must be measured against the dock layer instead.
+  assert.match(islandSource, /node\.measureLayout\(\s*layer,/, 'Dock buttons are measured against the dock layer');
+  assert.doesNotMatch(islandSource, /itemRect\.x \+ chipRect\.x/, 'Droplet frames never add onLayout offsets');
+  assert.doesNotMatch(islandSource, /onChipLayout/, 'Chip onLayout reporting is gone');
+  assert.match(islandSource, /<View ref=\{fixedLayerRef\} onLayout=\{remeasureDock\}/, 'Fixed dock layer is the measuring frame');
+  assert.match(islandSource, /<View ref=\{scrollRowRef\} onLayout=\{remeasureDock\}/, 'Scrolling dock row is the measuring frame');
+  // The droplet wraps the whole tab (emoji + label), centred in its cell.
+  assert.match(islandSource, /x: cell\.x \+ \(cell\.width - w\) \/ 2/, 'Droplet is centred on its tab cell');
+  // Real refraction of the tab under the droplet where the AGSL lens exists.
+  assert.match(islandSource, /<WiezLiquidGlassBackdrop\s+targetRef=\{dockBackdropRef\}/, 'Dock buttons are the droplet lens backdrop');
+  assert.match(islandSource, /mode=\{lensTarget \? 'enhanced' : 'lightweight'\}/, 'Droplet refracts when a lens target is available');
+  assert.match(islandSource, /highlightIntensity=\{tokens\.liquidGlass\.droplet\.highlight\}/, 'Droplet reflection comes from tokens');
   const tabsLayoutSource = fs.readFileSync(path.join(ROOT, 'app', '(tabs)', '_layout.tsx'), 'utf8');
   assert.match(
     tabsLayoutSource,
