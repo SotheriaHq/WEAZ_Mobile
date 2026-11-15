@@ -144,15 +144,16 @@ async function main() {
   assert.equal(fs.existsSync(sectionScreenPath), true, 'each section has its own screen');
   const sectionScreen = fs.readFileSync(sectionScreenPath, 'utf8');
 
-  assert.match(settingsHook, /NotificationsApi\.getSettings\(\)/);
-  assert.match(settingsHook, /NotificationsApi\.updateSettings\(/);
-  assert.match(settingsHook, /buildNotificationSettingsPatch\(patch\.section,\s*patch\.key,\s*patch\.value\)/);
+  assert.match(settingsHook, /store\.load\(signal\)/);
+  assert.match(read('src/notifications/notificationSettingsStore.ts'), /NotificationsApi\.updateSettings\(/);
+  assert.match(read('src/notifications/notificationSettingsStore.ts'), /buildNotificationSettingsPatch\(patch\.section,\s*patch\.key,\s*patch\.value\)/);
   assert.match(settingsHook, /queryKeys\.notifications\.settings\(userId\)/, 'one shared copy for overview and sections');
   assert.match(deviceHook, /registerAuthenticatedPushToken\(/);
   assert.match(deviceHook, /AppState\.addEventListener\('change'/, 'device recovery: re-checks on return from phone settings');
   assert.match(parts, /Notifications are enabled in WIEZ, but disabled at device level\./);
   assert.match(overview, /useNotificationSettings\(\)/);
   assert.match(sectionScreen, /useNotificationSettings\(\)/);
+  assert.match(sectionScreen, /<SettingsSectionHeading title=/, 'each focused section has the shared label and trailing divider');
   assert.match(overview, /router\.push\(notificationSectionHref\(section\.id\)/, 'rows open their section screen');
   assert.match(sectionScreen, /<Redirect href=\{NOTIFICATION_SECTION_ROUTE/, 'an unknown section goes back to the overview');
   for (const [name, source] of [['overview', overview], ['section', sectionScreen]]) {
@@ -213,17 +214,22 @@ async function checkSections() {
   // realm's prototype and never deep-equal a literal.
   const ids = (list) => Array.from(list, (section) => section.id);
 
-  assert.deepEqual(ids(sections.visibleNotificationSections(settings)), ['alerts', 'quiet-hours', 'device', 'activity', 'commerce', 'messaging']);
+  assert.deepEqual(ids(sections.visibleNotificationSections(settings)), ['security', 'reviews', 'fit', 'alerts', 'quiet-hours', 'device', 'activity', 'commerce', 'messaging']);
   assert.deepEqual(
     ids(sections.visibleNotificationSections({ push: { ...settings.push, enabled: false } })),
-    ['activity', 'commerce', 'messaging'],
+    ['security', 'reviews', 'fit', 'activity', 'commerce', 'messaging'],
     'push off: only the topics remain — they still govern the inbox',
   );
 
+  const controls = [sections.PUSH_MASTER_TOGGLE, ...sections.NOTIFICATION_SECTIONS.flatMap(section => section.items)];
+  assert.equal(new Set(controls.map(item => item.id)).size, controls.length, 'preference control IDs are unique');
+  for (const [section, values] of Object.entries(settings)) for (const [key, value] of Object.entries(values)) {
+    if (typeof value === 'boolean') assert(controls.some(item => item.section === section && item.key === key), 'Missing canonical preference ' + section + '.' + key);
+  }
   const activity = sections.getNotificationSection('activity');
-  assert.equal(sections.summarizeNotificationSection(activity, settings), 'All on');
+  assert.equal(sections.summarizeNotificationSection(activity, settings), '6 of 8 on');
   const partly = { ...settings, social: { ...settings.social, threads: false } };
-  assert.equal(sections.summarizeNotificationSection(activity, partly), '5 of 6 on');
+  assert.equal(sections.summarizeNotificationSection(activity, partly), '5 of 8 on');
 
   const quiet = sections.getNotificationSection('quiet-hours');
   assert.equal(sections.summarizeNotificationSection(quiet, settings), 'Off');
@@ -242,72 +248,8 @@ async function checkSections() {
 /* ---- behaviour: the save queue ------------------------------------------ */
 
 async function checkSaveQueue() {
-  const { QueryClient } = require('@tanstack/react-query');
-  const settingsHelpers = loadTs('src/notifications/notificationSettings.ts');
-  const queryKeysModule = loadTs('src/query/queryKeys.ts');
-
-  // A server we answer by hand, in the order we choose.
-  let serverState = baseSettings();
-  const waiting = [];
-  const api = {
-    getSettings: async () => serverState,
-    updateSettings: (body) => new Promise((resolve, reject) => waiting.push({ body, resolve, reject })),
-  };
-  const answerNext = (fail = false) => {
-    const call = waiting.shift();
-    if (fail) return call.reject(new Error('Network down'));
-    for (const [section, values] of Object.entries(call.body)) {
-      serverState = { ...serverState, [section]: { ...serverState[section], ...values } };
-    }
-    call.resolve(serverState);
-  };
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-  const hook = loadTs('src/notifications/useNotificationSettings.ts', {
-    react: require('react'),
-    '@tanstack/react-query': require('@tanstack/react-query'),
-    '@/src/api/NotificationsApi': { NotificationsApi: api },
-    '@/src/auth/AuthContext': { useAuth: () => ({ status: 'authenticated', user: { id: 'user_1' } }) },
-    '@/src/notifications/notificationSettings': settingsHelpers,
-    '@/src/query/queryKeys': queryKeysModule,
-  });
-  hook.resetNotificationSettingsSaves();
-  hook.__testing.setActiveUser('user_1');
-
-  const client = new QueryClient();
-  const key = queryKeysModule.queryKeys.notifications.settings('user_1');
-  client.setQueryData(key, serverState);
-  const read = () => client.getQueryData(key);
-
-  // Two quick taps: threads off, then replies off.
-  const first = hook.__testing.savePatch(client, 'user_1', { section: 'social', key: 'threads', value: false });
-  const second = hook.__testing.savePatch(client, 'user_1', { section: 'comments', key: 'replies', value: false });
-  assert.equal(read().social.threads, false, 'the switch moves at once');
-  assert.equal(read().comments.replies, false);
-
-  await flush();
-  assert.equal(waiting.length, 1, 'saves go one at a time');
-  answerNext(); // threads saved; the server does not know about replies yet
-  await first;
-  assert.equal(read().comments.replies, false, 'an earlier answer never flips a later switch back');
-  await flush();
-  answerNext();
-  await second;
-  assert.equal(read().social.threads, false);
-  assert.equal(read().comments.replies, false);
-
-  // A failure undoes only its own switch.
-  const failing = hook.__testing.savePatch(client, 'user_1', { section: 'tags', key: 'mentions', value: false });
-  const after = hook.__testing.savePatch(client, 'user_1', { section: 'orders', key: 'placed', value: false });
-  await flush();
-  answerNext(true);
-  assert.equal(await failing, false);
-  assert.equal(read().tags.mentions, true, 'the failed switch returns to what the server holds');
-  assert.equal(read().orders.placed, false, 'the waiting switch keeps its new value');
-  await flush();
-  answerNext();
-  assert.equal(await after, true);
-  assert.equal(read().orders.placed, false);
+  // Exercise the actual shared store, including account/session transitions.
+  await require('./test-notification-session-queue.cjs').run();
 }
 
 main().catch((error) => {

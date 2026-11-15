@@ -29,7 +29,10 @@ export type NotificationSectionId =
   | 'device'
   | 'activity'
   | 'commerce'
-  | 'messaging';
+  | 'messaging'
+  | 'security'
+  | 'reviews'
+  | 'fit';
 
 export type NotificationSectionGroup = 'phone' | 'topics';
 
@@ -86,6 +89,8 @@ const ALERT_ITEMS: NotificationToggle[] = [
 ];
 
 const ACTIVITY_ITEMS: NotificationToggle[] = [
+  { id: 'comments.fromUnpatchedUsers', label: 'Comments from unpatched users', description: 'Include comment notifications from people you have not patched.', section: 'comments', key: 'fromUnpatchedUsers' },
+  { id: 'tags.fromUnpatchedUsers', label: 'Tags from unpatched users', description: 'Include tag notifications from people you have not patched.', section: 'tags', key: 'fromUnpatchedUsers' },
   { id: 'comments.enabled', label: 'Comments', description: 'Activity on your designs, products and posts.', section: 'comments', key: 'enabled' },
   { id: 'comments.replies', label: 'Replies', description: 'Replies to your comment threads.', section: 'comments', key: 'replies' },
   { id: 'social.follows', label: 'Profile patches', description: 'When someone patches you or shows interest in your profile.', section: 'social', key: 'follows' },
@@ -105,6 +110,7 @@ const COMMERCE_ITEMS: NotificationToggle[] = [
 ];
 
 const MESSAGING_ITEMS: NotificationToggle[] = [
+  { id: 'messaging.desktop', label: 'Browser message alerts', description: 'Show browser notifications while WIEZ is open in the background, when browser permission allows.', section: 'messaging', key: 'desktop' },
   { id: 'messaging.newMessages', label: 'New messages', description: 'New order and support messages.', section: 'messaging', key: 'newMessages' },
   { id: 'messaging.reminders', label: 'Unread reminders', description: 'Reminders about conversations you have not read.', section: 'messaging', key: 'reminders' },
   { id: 'messaging.moderation', label: 'Moderation notices', description: 'Visibility and moderation changes on your conversations.', section: 'messaging', key: 'moderation' },
@@ -126,6 +132,23 @@ const MESSAGING_ITEMS: NotificationToggle[] = [
 ];
 
 export const NOTIFICATION_SECTIONS: readonly NotificationSectionConfig[] = [
+  { id: 'security', group: 'topics', title: 'Security alerts', emoji: '🔐', requiresPush: false,
+    description: 'In-app sign-in and sign-out alerts. Security emails are managed separately.', items: [
+      { id: 'security.login', label: 'Sign-in alerts', section: 'security', key: 'login' },
+      { id: 'security.logout', label: 'Sign-out alerts', section: 'security', key: 'logout' },
+    ] },
+  { id: 'reviews', group: 'topics', title: 'Reviews', emoji: '⭐', requiresPush: false,
+    description: 'Review reminders, replies and moderation updates.', items: [
+      { id: 'reviews.reminders', label: 'Review reminders', section: 'reviews', key: 'reminders' },
+      { id: 'reviews.replies', label: 'Review replies', section: 'reviews', key: 'replies' },
+      { id: 'reviews.moderation', label: 'Review moderation', section: 'reviews', key: 'moderation' },
+    ] },
+  { id: 'fit', group: 'topics', title: 'Fitting updates', emoji: '📏', requiresPush: false,
+    description: 'Measurement reminders and fitting-profile sharing updates.', items: [
+      { id: 'fit.reminders', label: 'Measurement reminders', section: 'fit', key: 'reminders' },
+      { id: 'fit.shares', label: 'Fitting-profile sharing', section: 'fit', key: 'shares' },
+      { id: 'fit.approvals', label: 'Sharing approvals', section: 'fit', key: 'approvals' },
+    ] },
   {
     id: 'alerts',
     group: 'phone',
@@ -140,7 +163,7 @@ export const NOTIFICATION_SECTIONS: readonly NotificationSectionConfig[] = [
     group: 'phone',
     title: 'Quiet hours',
     emoji: '🌙',
-    description: 'A daily window when non-urgent push notifications wait.',
+    description: 'A daily window when non-urgent push notifications are paused (UTC).',
     requiresPush: true,
     items: [QUIET_HOURS_TOGGLE],
   },
@@ -238,4 +261,11 @@ export function summarizeNotificationSection(
 export const NOTIFICATION_SECTION_ROUTE = '/settings/notifications';
 export function notificationSectionHref(id: NotificationSectionId) {
   return `${NOTIFICATION_SECTION_ROUTE}/${id}` as const;
+}
+
+/** Dependent controls keep their values while their parent preference is off. */
+export function visibleNotificationToggles(section: NotificationSectionConfig, settings: NotificationSettings) {
+  return section.items.filter(item =>
+    !(item.section === 'comments' && item.key !== 'enabled' && !settings.comments.enabled) &&
+    !(item.section === 'tags' && item.key !== 'mentions' && !settings.tags.mentions));
 }

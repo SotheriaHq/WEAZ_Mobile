@@ -1,7 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
-import { apiClient } from '@/src/api/httpClient';
+import { apiClient, getApiSecurityIdentity } from '@/src/api/httpClient';
+import { bindNativeSessionSocket } from './nativeSessionSocket';
 import { MessagingApi } from '@/src/api/MessagingApi';
 import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
@@ -25,6 +26,7 @@ export const MESSAGE_FOREGROUND_ALERT_DEDUPE_WINDOW_MS = 6_000;
 let socket: Socket | null = null;
 let socketToken: string | null = null;
 let socketUserId: string | null = null;
+let unbindSession: (() => void) | null = null;
 let activeSubscriptions = 0;
 let unreadCountRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let activeMessageThreadId: string | null = null;
@@ -164,6 +166,7 @@ function scheduleUnreadMessageCountRefresh() {
 }
 
 function disconnectSocket() {
+  unbindSession?.(); unbindSession = null;
   if (!socket) return;
   socket.removeAllListeners();
   socket.disconnect();
@@ -174,6 +177,7 @@ function disconnectSocket() {
 }
 
 function ensureSocket(token: string, userId: string) {
+  if (getApiSecurityIdentity()?.split(':')[0] !== userId) return null;
   const baseUrl = getSocketBaseUrl();
   if (!baseUrl) return null;
 
@@ -186,14 +190,17 @@ function ensureSocket(token: string, userId: string) {
   socketToken = token;
   socketUserId = userId;
   socket = io(baseUrl, {
-    autoConnect: true,
+    autoConnect: false,
     transports: ['websocket'],
     withCredentials: true,
     auth: { token },
     reconnection: true,
-    reconnectionAttempts: 5,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 30000,
     timeout: 10000,
   });
+  unbindSession = bindNativeSessionSocket(socket);
 
   socket.on('connect', () => {
     socket?.emit('join', { room: `USER:${userId}` });
@@ -234,6 +241,7 @@ function ensureSocket(token: string, userId: string) {
     }
   });
 
+  socket.connect();
   return socket;
 }
 

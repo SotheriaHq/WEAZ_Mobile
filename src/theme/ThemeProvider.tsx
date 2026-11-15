@@ -60,13 +60,17 @@ export function ThemeProvider({
 
   const setThemePreference = useCallback((next: ThemePreference) => {
     const normalized = normalizeThemePreference(next);
-    // A theme change re-renders every mounted screen, which on the A17 is a
-    // long synchronous commit — the tap that asked for it froze along with
-    // everything else. As a transition the press is acknowledged at once and
-    // the repaint runs interruptibly behind it.
-    React.startTransition(() => {
-      setModeState(normalized);
-    });
+    /*
+      Urgent, not a transition.
+
+      A theme change used to re-render every mounted screen in one pass — on
+      the A17 about a second — and as a transition nothing changed on screen
+      until ALL of it was done (owner, Nov 2026: "the theme change is still not
+      instant"). Hidden tabs now take the change through `DeferredThemeScope`
+      a beat later, so this urgent pass only repaints what is on display and
+      lands at once.
+    */
+    setModeState(normalized);
     SecureStore.setItemAsync(THEME_MODE_KEY, normalized).catch(() => undefined);
   }, []);
 
@@ -158,6 +162,33 @@ export function DarkStageThemeScope({ children }: { children: React.ReactNode })
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+/**
+ * A screen that is not on display takes a theme change a beat later.
+ *
+ * Every visited tab stays mounted (see `freezeHiddenTabs.tsx`), so a theme
+ * change used to repaint all of them before the one being looked at could
+ * show the new colours. Inside this scope, while `deferred` is true, the
+ * screen reads the theme through `useDeferredValue`: the urgent pass skips it
+ * entirely (its value has not changed yet) and React repaints it afterwards
+ * in the background, interruptibly. When it comes back on display it reads
+ * the live value again — by then the background pass has normally caught up,
+ * so nothing re-renders on the way in.
+ */
+export function DeferredThemeScope({
+  deferred,
+  children,
+}: {
+  deferred: boolean;
+  children: React.ReactNode;
+}) {
+  const parent = useTheme();
+  const lagging = React.useDeferredValue(parent);
+
+  return (
+    <ThemeContext.Provider value={deferred ? lagging : parent}>{children}</ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {

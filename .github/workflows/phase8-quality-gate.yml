@@ -29,6 +29,16 @@ jobs:
 
       - name: Runway category parity
         run: npm run test:runway-categories
+      - name: Held subscription quote API
+        run: npm run test:subscription-quotes
+      - name: Verify MFA request and privacy safety
+        run: npm run test:mfa-security
+      - name: Session response isolation
+        run: npm run test:session-response-isolation
+      - name: Device-session modals and identity-bound actions
+        run: npm run test:session-devices
+      - name: Session-bound realtime recovery
+        run: npm run test:session-socket
 
       - name: Native border policy
         run: npm run check:borders
@@ -76,6 +86,7 @@ jobs:
       - name: Email and web links open native screens
         run: |
           npm run test:app-link-routing-contract
+          npm run test:android-release-signing
           npm run test:auth-link-routing-contract
           npm run test:security-dependency-compat
 
@@ -165,6 +176,15 @@ jobs:
       # native rules (bounded heartbeat, inline strips) still run.
       - name: Market presentation contract
         run: npm run test:market-presentation-contract
+
+      - name: Studio access and Settings destination state matrix
+        run: npm run test:studio-access
+
+      - name: Notification sections, guarded reads and session-bound saves
+        run: npm run test:notification-settings-contract
+
+      - name: Settings section headings and bare-container contract
+        run: npm run test:settings-sections
 
       - name: Liquid Glass Phase 1 and Phase 3 contracts
         run: |

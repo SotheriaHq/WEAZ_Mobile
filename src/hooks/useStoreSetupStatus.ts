@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { brandApi } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { getActiveBrandId, isBrandAccount } from '@/src/auth/brandAccess';
 import { queryKeys } from '@/src/query/queryKeys';
 
 const STORE_STATUS_STALE_TIME_MS = 60_000;
@@ -20,6 +20,8 @@ export type StoreSetupStatus = {
    */
   isSetupComplete: boolean | null;
   isLoading: boolean;
+  isError: boolean;
+  retry: () => void;
 };
 
 /**
@@ -30,23 +32,32 @@ export type StoreSetupStatus = {
  */
 export function useStoreSetupStatus(): StoreSetupStatus {
   const { user, status } = useAuth();
-  const isBrand = hasActiveBrandMembership(user);
+  const isBrand = isBrandAccount(user);
   const enabled = status === 'authenticated' && isBrand;
 
+  const brandId = getActiveBrandId(user);
   const query = useQuery({
-    queryKey: queryKeys.store.status(),
-    queryFn: () => brandApi.getStoreStatus(),
+    queryKey: queryKeys.store.status(user?.id, brandId),
+    queryFn: async () => {
+      const data = await brandApi.getStoreStatus();
+      if (!data || (brandId && data.brandId !== brandId) || typeof data.isSetupComplete !== 'boolean') throw new Error('Store setup status is incomplete. Please retry.');
+      return data;
+    },
+    select: data => brandId && data.brandId !== brandId ? undefined : data,
     enabled,
     staleTime: STORE_STATUS_STALE_TIME_MS,
   });
 
   if (!enabled) {
-    return { isSetupComplete: isBrand ? null : true, isLoading: false };
+    return { isSetupComplete: isBrand ? null : true, isLoading: false, isError: false,
+      retry: () => { void query.refetch(); } };
   }
 
   return {
     isSetupComplete: query.data ? query.data.isSetupComplete : null,
     isLoading: query.isPending,
+    isError: query.isError || (!query.isPending && !query.data),
+    retry: () => { void query.refetch(); },
   };
 }
 

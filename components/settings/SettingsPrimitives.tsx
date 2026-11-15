@@ -198,7 +198,7 @@ export function SettingsSection({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={[styles.section, style]}>
+    <View style={[styles.section, style, styles.barePanel]}>
       <SettingsSectionHeading title={title} />
       {children}
     </View>

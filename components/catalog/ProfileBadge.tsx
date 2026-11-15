@@ -175,7 +175,10 @@ export function getBrandBadges(source: BrandBadgeSource): ProfileBadgeModel[] {
   }
 
   const storeStatus = getStoreStatusBadge(source.storeStatus, source.isStoreOpen, Boolean(source.storeVerified || source.brandVerified));
-  if (storeStatus) {
+  // A store held for verification and a verification under review are one
+  // fact. Both used to push `pending_verification`, so the profile showed two
+  // identical "Pending" chips under the location (owner, Nov 2026).
+  if (storeStatus && !badges.some((badge) => badge.variant === storeStatus.variant)) {
     badges.push(storeStatus);
   }
 

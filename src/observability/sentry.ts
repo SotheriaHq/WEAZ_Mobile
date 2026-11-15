@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 
 import { analyticsPermitted } from '@/src/privacy/consent';
 import { telemetryPath, telemetryUrl } from '@/src/privacy/telemetryUrl';
+import { scrubSecurityTelemetry } from '@/src/auth/securityTelemetry';
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>;
 const dsn = String(extra.sentryDsn ?? process.env.EXPO_PUBLIC_SENTRY_DSN ?? '').trim();
@@ -24,16 +25,16 @@ const scrubEvent = <T extends ScrubbableEvent>(event: T): T => {
     }
   }
   if (event.transaction?.startsWith('/')) event.transaction = telemetryPath(event.transaction);
-  return event;
+  return scrubSecurityTelemetry(event);
 };
 
 const scrubBreadcrumb = (breadcrumb: Sentry.Breadcrumb): Sentry.Breadcrumb => {
   const data = breadcrumb.data;
-  if (!data) return breadcrumb;
+  if (!data) return scrubSecurityTelemetry(breadcrumb);
   for (const key of ['url', 'from', 'to'] as const) {
     if (typeof data[key] === 'string') data[key] = telemetryUrl(data[key] as string);
   }
-  return breadcrumb;
+  return scrubSecurityTelemetry(breadcrumb);
 };
 
 /**

@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { SecurityDevicesPanel } from '@/components/settings/SecurityDevicesPanel';
+import React, { useCallback, useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -8,12 +9,8 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import {
   changePassword,
   confirmPhoneChange,
-  listSecuritySessions,
-  logoutOtherSecuritySessions,
   requestEmailChange,
   requestPhoneChange,
-  revokeSecuritySession,
-  type SecuritySession,
 } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { AppText } from '@/components/ui/AppText';
@@ -39,50 +36,6 @@ const passwordChecks = (password: string) => ({
   special: /[^A-Za-z0-9]/.test(password),
 });
 
-function formatDateTime(value?: string | null) {
-  if (!value) return 'Unknown time';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-function describeSessionDevice(userAgent: string | null) {
-  const normalized = String(userAgent ?? '').toLowerCase();
-  if (!normalized) return 'Unknown device';
-
-  const browser = normalized.includes('okhttp/')
-    ? 'Android app'
-    : normalized.includes('chrome/')
-      ? 'Chrome'
-      : normalized.includes('edg/')
-        ? 'Edge'
-        : normalized.includes('safari/') && !normalized.includes('chrome/')
-          ? 'Safari'
-          : normalized.includes('firefox/')
-            ? 'Firefox'
-            : 'Device';
-
-  const os = normalized.includes('android') || normalized.includes('okhttp/')
-    ? 'Android'
-    : normalized.includes('iphone') || normalized.includes('ipad')
-      ? 'iOS'
-      : normalized.includes('windows')
-        ? 'Windows'
-        : normalized.includes('mac os') || normalized.includes('macintosh')
-          ? 'macOS'
-          : normalized.includes('linux')
-            ? 'Linux'
-            : '';
-
-  return os ? `${browser} on ${os}` : browser;
-}
-
 function extractErrorMessage(error: unknown, fallback: string) {
   const data = (error as any)?.response?.data;
   const candidates = [data?.message, data?.data?.message, data?.error, (error as any)?.message];
@@ -90,50 +43,6 @@ function extractErrorMessage(error: unknown, fallback: string) {
     if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
   }
   return fallback;
-}
-
-function SessionRow({
-  session,
-  busy,
-  onRevoke,
-}: {
-  session: SecuritySession;
-  busy: boolean;
-  onRevoke: (sessionId: string) => void;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    // Device, time, status — one line each, no card. A session is a list entry;
-    // the three-line, bordered, IP-carrying block it used to be gave every row
-    // the visual weight of a section and told the user nothing they could act
-    // on. Masked IP and location are dropped: neither survives a `numberOfLines`
-    // budget, and neither helps anyone decide whether to revoke.
-    <View style={[styles.sessionCard, { borderBottomColor: theme.colors.border }]}>
-      <View style={styles.sessionCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>
-          {describeSessionDevice(session.userAgent)}
-        </AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-          {formatDateTime(session.lastUsedAt)}
-        </AppText>
-      </View>
-      {session.isCurrentSession ? (
-        <AppText variant="captionBold" tone="primary">
-          Current
-        </AppText>
-      ) : (
-        <Button
-          title={busy ? 'Revoking...' : 'Revoke'}
-          size="xs"
-          variant="outline"
-          loading={busy}
-          disabled={busy}
-          onPress={() => onRevoke(session.id)}
-        />
-      )}
-    </View>
-  );
 }
 
 export default function AccountSecuritySettingsScreen() {
@@ -168,11 +77,6 @@ export default function AccountSecuritySettingsScreen() {
         ? 'Password and active sessions'
         : 'Email, password, and sessions';
 
-  const [sessions, setSessions] = useState<SecuritySession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [sessionBusyId, setSessionBusyId] = useState<string | null>(null);
-  const [logoutOthersBusy, setLogoutOthersBusy] = useState(false);
 
   const [newEmail, setNewEmail] = useState('');
   const [confirmNewEmail, setConfirmNewEmail] = useState('');
@@ -207,29 +111,6 @@ export default function AccountSecuritySettingsScreen() {
     nextPassword === confirmPassword &&
     currentPassword.length > 0 &&
     !passwordBusy;
-
-  const loadSessions = useCallback(async () => {
-    if (status !== 'authenticated') {
-      setSessions([]);
-      setSessionsLoading(false);
-      return;
-    }
-
-    setSessionsLoading(true);
-    setSessionsError(null);
-    try {
-      const nextSessions = await listSecuritySessions();
-      setSessions(Array.isArray(nextSessions) ? nextSessions : []);
-    } catch (error) {
-      setSessionsError(extractErrorMessage(error, 'Unable to load login sessions.'));
-    } finally {
-      setSessionsLoading(false);
-    }
-  }, [status]);
-
-  useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
 
   const submitEmailChange = useCallback(async () => {
     const next = newEmail.trim().toLowerCase();
@@ -326,48 +207,6 @@ export default function AccountSecuritySettingsScreen() {
       setPasswordBusy(false);
     }
   }, [currentPassword, nextPassword, passwordReady, toast, validateToken]);
-
-  const revokeSession = useCallback(
-    (sessionId: string) => {
-      setSessionBusyId(sessionId);
-      void revokeSecuritySession(sessionId)
-        .then(() => {
-          setSessions((current) => current.filter((session) => session.id !== sessionId));
-          toast.success('Session revoked.');
-        })
-        .catch((error) => {
-          toast.error(extractErrorMessage(error, 'Unable to revoke that session.'));
-        })
-        .finally(() => setSessionBusyId(null));
-    },
-    [toast],
-  );
-
-  const confirmLogoutOthers = useCallback(() => {
-    Alert.alert(
-      'Sign out other sessions?',
-      'This keeps your current session active and revokes other active login sessions.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign out others',
-          style: 'destructive',
-          onPress: () => {
-            setLogoutOthersBusy(true);
-            void logoutOtherSecuritySessions()
-              .then((result) => {
-                toast.success(`${result.revokedCount ?? 0} session${result.revokedCount === 1 ? '' : 's'} revoked.`);
-                void loadSessions();
-              })
-              .catch((error) => {
-                toast.error(extractErrorMessage(error, 'Unable to revoke other sessions.'));
-              })
-              .finally(() => setLogoutOthersBusy(false));
-          },
-        },
-      ],
-    );
-  }, [loadSessions, toast]);
 
   if (status === 'loading') {
     return (
@@ -580,65 +419,12 @@ export default function AccountSecuritySettingsScreen() {
 
         {showSessions ? (
         <SettingsSection title="Login sessions">
-          <SettingsPanel>
-            <View style={styles.inlineHeader}>
-              <AppText variant="captionRegular" tone="muted" style={styles.inlineCopy}>
-                Revoke anything you do not recognise.
-              </AppText>
-              <Button
-                title={logoutOthersBusy ? 'Signing out...' : 'Sign out others'}
-                size="sm"
-                variant="outline"
-                loading={logoutOthersBusy}
-                disabled={logoutOthersBusy}
-                onPress={confirmLogoutOthers}
-              />
-            </View>
-          </SettingsPanel>
-          {sessionsLoading ? (
-            <SettingsStateCard title="Loading sessions" loading />
-          ) : sessionsError ? (
-            <SettingsStateCard
-              title="Could not load sessions"
-              body={sessionsError}
-              actionTitle="Retry"
-              onAction={() => void loadSessions()}
-            />
-          ) : sessions.length === 0 ? (
-            <SettingsStateCard title="No sessions found" body="Your current login session will appear here after the backend records it." />
-          ) : (
-            <View style={styles.sessionStack}>
-              {sessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  busy={sessionBusyId === session.id}
-                  onRevoke={revokeSession}
-                />
-              ))}
-            </View>
-          )}
+          <SecurityDevicesPanel key={user?.id} />
         </SettingsSection>
         ) : null}
 
         {showSessions ? (
-        <SettingsSection title="Two-factor authentication">
-          <SettingsPanel>
-            <View style={styles.inlineHeader}>
-              <View style={styles.inlineCopy}>
-                <AppText variant="bodyBold">2FA is not available yet</AppText>
-                <AppText variant="captionRegular" tone="muted">
-                  The backend does not expose QR-code, recovery-code, or passkey setup endpoints in this workspace yet.
-                </AppText>
-              </View>
-              <View style={[styles.statusPill, { backgroundColor: theme.colors.surfaceAlt }]}>
-                <AppText variant="captionBold" tone="muted">
-                  Disabled
-                </AppText>
-              </View>
-            </View>
-          </SettingsPanel>
-        </SettingsSection>
+        <MfaSettingsPanel key={user?.id} />
         ) : null}
       </KeyboardAwareFormScroll>
     </SafeAreaView>
@@ -677,8 +463,8 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   notice: {
-    borderWidth: 2,
-    borderRadius: tokens.radius.lg,
+    borderWidth: 0,
+    borderRadius: 0,
     padding: tokens.spacing.md,
   },
   policyList: {
@@ -700,3 +486,4 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 });
+import { MfaSettingsPanel } from '@/components/settings/MfaSettingsPanel';

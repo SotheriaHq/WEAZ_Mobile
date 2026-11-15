@@ -1,5 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
+
+import { tokens } from '@/src/styles/tokens';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 /**
  * A two-column card grid whose height stops growing.
@@ -38,6 +41,11 @@ export type InlineCardGridProps<T> = {
   estimatedCardHeight?: number;
   paddingVertical?: number;
   accessibilityLabel?: string;
+  /**
+   * Scroll the capped area so this card is in view — the card a notification
+   * pointed at. Each key scrolls once.
+   */
+  scrollToKey?: string | null;
 };
 
 export function shouldCapGridHeight(count: number, inlineAfter = 4): boolean {
@@ -55,6 +63,31 @@ export function cappedGridHeight(args: {
   return Math.round(cardHeight * visibleRows + rowGap * Math.floor(visibleRows) + paddingVertical);
 }
 
+/**
+ * The capped area must fit in the part of the screen nothing floats over.
+ *
+ * Two and a half rows of full-size cards is about 850pt — nearly the whole
+ * phone. So while scrolling inside the grid its bottom row sat under the
+ * floating island, and the last cards could only be seen by scrolling the
+ * page out of the grid (owner, Nov 2026: "i had to extra scroll out of it to
+ * see the complete part of the bottom cards"). The area is now never taller
+ * than the space between the status bar and the island, so with the grid in
+ * view its last row clears the island.
+ */
+export function fitGridHeightToViewport(args: {
+  height: number;
+  windowHeight: number;
+  topInset: number;
+  bottomClearance: number;
+  margin: number;
+}): number {
+  const { height, windowHeight, topInset, bottomClearance, margin } = args;
+  const available = Math.round(windowHeight - topInset - bottomClearance - margin);
+  // A degenerate window (zero before layout) must not collapse the grid.
+  if (available <= 0) return height;
+  return Math.min(height, available);
+}
+
 export function InlineCardGrid<T>({
   items,
   keyOf,
@@ -68,9 +101,30 @@ export function InlineCardGrid<T>({
   estimatedCardHeight,
   paddingVertical = 0,
   accessibilityLabel,
+  scrollToKey = null,
 }: InlineCardGridProps<T>) {
   const capped = shouldCapGridHeight(items.length, inlineAfter);
+  const { windowHeight, insets, standardScreenBottomPadding } = useScreenChrome();
   const [cardHeight, setCardHeight] = useState<number | null>(null);
+  const listRef = useRef<FlatList<T>>(null);
+  const scrolledToKeyRef = useRef<string | null>(null);
+
+  /*
+    Bring a notified card into view inside the capped area. Row arithmetic,
+    not `scrollToIndex`: two cards share a row, and the offset only needs the
+    measured card height. Waits for that height so it lands on the row.
+  */
+  useEffect(() => {
+    if (!capped || !scrollToKey || scrolledToKeyRef.current === scrollToKey) return;
+    const index = items.findIndex((item) => keyOf(item) === scrollToKey);
+    if (index < 0 || cardHeight === null) return;
+    scrolledToKeyRef.current = scrollToKey;
+    const offset = Math.floor(index / 2) * (cardHeight + rowGap);
+    const frame = requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset, animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [capped, cardHeight, items, keyOf, rowGap, scrollToKey]);
   const onFirstCardLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.round(event.nativeEvent.layout.height);
     if (next > 0) setCardHeight((current) => (current === next ? current : next));
@@ -100,20 +154,30 @@ export function InlineCardGrid<T>({
     );
   }
 
-  const height = cappedGridHeight({
-    cardHeight: cardHeight ?? estimatedCardHeight ?? Math.round(gridCardWidth * 1.6),
-    rowGap,
-    visibleRows,
-    paddingVertical,
+  const height = fitGridHeightToViewport({
+    height: cappedGridHeight({
+      cardHeight: cardHeight ?? estimatedCardHeight ?? Math.round(gridCardWidth * 1.6),
+      rowGap,
+      visibleRows,
+      paddingVertical,
+    }),
+    windowHeight,
+    topInset: insets.top,
+    bottomClearance: standardScreenBottomPadding,
+    margin: tokens.spacing.lg,
   });
 
   return (
     <View style={{ height }}>
       <FlatList
+        ref={listRef}
         data={items as T[]}
         numColumns={2}
         keyExtractor={keyOf}
         renderItem={renderCell}
+        // A new card renderer (e.g. the highlight moving) must reach the
+        // cells already on screen.
+        extraData={renderCard}
         accessibilityLabel={accessibilityLabel}
         showsVerticalScrollIndicator={false}
         overScrollMode="never"

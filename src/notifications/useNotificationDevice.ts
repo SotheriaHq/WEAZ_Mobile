@@ -3,6 +3,7 @@ import type * as ExpoNotificationsType from 'expo-notifications';
 import { AppState, Linking, Platform } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
+import { getApiSecurityIdentity, getApiSessionScope } from '@/src/api/httpClient';
 import {
   describePushDeviceStatus,
   describePushSkipReason,
@@ -35,7 +36,7 @@ async function readDevicePermissionStatus(): Promise<DevicePermissionStatus> {
   phone. Without a shared attempt, each would start its own registration on
   first sight and on every return from the phone's settings.
 */
-let attemptInFlight: Promise<unknown> | null = null;
+let attemptInFlight: { key: string; promise: Promise<unknown> } | null = null;
 let firstSightCheckedFor: string | null = null;
 
 export type NotificationDeviceController = {
@@ -61,6 +62,9 @@ export function useNotificationDevice(pushEnabled: boolean): NotificationDeviceC
   const { status: authStatus, token, user } = useAuth();
   const userId = authStatus === 'authenticated' ? user?.id ?? null : null;
   const registration = usePushRegistrationState();
+  const sessionIdentity = getApiSecurityIdentity();
+  const sessionScope = getApiSessionScope();
+  const attemptKey = `${userId}:${sessionScope}`;
   const [permission, setPermissionState] = useState<DevicePermissionStatus>('unavailable');
   const permissionRef = useRef<DevicePermissionStatus>('unavailable');
   const setPermission = useCallback((next: DevicePermissionStatus) => {
@@ -71,8 +75,9 @@ export function useNotificationDevice(pushEnabled: boolean): NotificationDeviceC
 
   const register = useCallback(
     (force: boolean) => {
-      if (!userId) return Promise.resolve();
-      if (attemptInFlight) return attemptInFlight;
+      if (!userId || !pushEnabled || sessionIdentity?.split(':')[0] !== userId ||
+        getApiSessionScope() !== sessionScope) return Promise.resolve();
+      if (attemptInFlight?.key === attemptKey) return attemptInFlight.promise;
       setRetrying(true);
       const attempt = registerAuthenticatedPushToken({ userId, authToken: token, force })
         .then(async (result) => {
@@ -84,13 +89,13 @@ export function useNotificationDevice(pushEnabled: boolean): NotificationDeviceC
         })
         .catch(() => undefined)
         .finally(() => {
-          attemptInFlight = null;
+          if (attemptInFlight?.promise === attempt) attemptInFlight = null;
           setRetrying(false);
         });
-      attemptInFlight = attempt;
+      attemptInFlight = { key: attemptKey, promise: attempt };
       return attempt;
     },
-    [setPermission, token, userId],
+    [attemptKey, pushEnabled, sessionIdentity, sessionScope, setPermission, token, userId],
   );
 
   useEffect(() => {
@@ -105,11 +110,17 @@ export function useNotificationDevice(pushEnabled: boolean): NotificationDeviceC
 
   // First sight of push being on with no outcome yet: check once per account.
   useEffect(() => {
-    if (!userId || !pushEnabled || registration.result) return;
-    if (firstSightCheckedFor === userId) return;
-    firstSightCheckedFor = userId;
+    if (!userId) return;
+    if (!pushEnabled) {
+      if (firstSightCheckedFor === attemptKey) firstSightCheckedFor = null;
+      return;
+    }
+    if (registration.result?.status === 'registered' ||
+      (registration.result?.status === 'skipped' && registration.result.reason === 'already-registered')) return;
+    if (firstSightCheckedFor === attemptKey) return;
+    firstSightCheckedFor = attemptKey;
     void register(false);
-  }, [pushEnabled, register, registration.result, userId]);
+  }, [attemptKey, pushEnabled, register, registration.result, userId]);
 
   // Back from the phone's settings.
   useEffect(() => {

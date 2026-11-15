@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toByteArray } from 'base64-js';
 import { AppState, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
@@ -22,6 +23,7 @@ import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
 import { StableImage } from '@/components/ui/StableImage';
+import { StudioSetupGate } from '@/components/studio/StudioSetupGate';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import StudioApi from '@/src/api/StudioApi';
 import { env } from '@/src/config/env';
@@ -53,6 +55,7 @@ import {
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useBrandCommerceAccess } from '@/src/hooks/useBrandCommerceAccess';
 import { useQueryClient } from '@tanstack/react-query';
+import { resolveStudioSetupAccess } from '@/src/features/studio/studioAccessPolicy';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
@@ -62,6 +65,9 @@ import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { perfMark } from '@/src/utils/perf';
+import { verifyStudioParentSession } from '@/src/features/studio/verifyParentSession';
+import { getApiSecurityIdentity } from '@/src/api/httpClient';
+import { securityIdentityFromToken } from '@/src/auth/securityChallenge';
 
 type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 
@@ -97,6 +103,8 @@ type NativeMessage =
   | { type: 'BOOT_FAILED' }
   | { type: 'ROUTE_CHANGED'; path?: string }
   | { type: 'AUTH_REQUIRED'; reason?: string }
+  | { type: 'VERIFY_PHONE_SESSION'; requestId?: string; parentSessionId?: string }
+  | { type: 'CANCEL_PHONE_SESSION_VERIFICATION'; requestId?: string; parentSessionId?: string }
   | {
       type: 'HANDOFF_FAILED';
       reason?: string;
@@ -139,6 +147,21 @@ type NativeMessage =
 
 const asString = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
+
+/**
+ * One Studio page as a comparable key: the path without hash or trailing
+ * slash, plus its `tab` (Studio sections are `/studio?tab=…`). Other query
+ * values (a review note, a highlight) do not make it a different page.
+ */
+function normalizeStudioEntryPath(path: string): string {
+  const [beforeHash] = path.split('#');
+  const queryStart = beforeHash.indexOf('?');
+  const pathname = queryStart >= 0 ? beforeHash.slice(0, queryStart) : beforeHash;
+  const query = queryStart >= 0 ? beforeHash.slice(queryStart + 1) : '';
+  const tab = /(?:^|&)tab=([^&]*)/.exec(query)?.[1];
+  const base = pathname.replace(/\/+$/, '') || '/';
+  return tab ? `${base}?tab=${tab}` : base;
+}
 
 /**
  * `/store/status` has always returned which of the three checks failed, and no
@@ -315,19 +338,31 @@ function getTrustedAliasPath(target: string): { type: 'profile' | 'brand'; value
   }
 }
 
-export default function StudioWebViewScreen() {
+function StudioWebViewContent() {
   const params = useLocalSearchParams<{
     routeKey?: string;
     studioRouteReport?: string;
     productId?: string;
     orderId?: string;
+    /** `catalog` when the Catalogue opened this page — see `catalogEntryRef`. */
+    from?: string;
   }>();
-  const { status, user, signOut } = useAuth();
+  const { status, token, user, signOut } = useAuth();
+  const actorId = user?.id;
+  const activeBrandId = getActiveBrandId(user);
+  const nativeIdentity = securityIdentityFromToken(token, value => String.fromCharCode(...toByteArray(value)));
+  const studioScope = `${actorId ?? ''}:${activeBrandId ?? ''}:${nativeIdentity ?? ''}`;
+  const currentStudioScopeRef = useRef(studioScope);
+  currentStudioScopeRef.current = studioScope;
+  const documentStudioScopeRef = useRef<string | null>(null);
   const { scheme, theme } = useTheme();
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { standardScreenBottomPadding } = useScreenChrome();
   const webViewRef = useRef<WebView>(null);
+  const deferredProfileSetupRef = useRef<{ scope: string; message: NativeMessage } | null>(null);
+  const phoneVerification = useRef<{ controller: AbortController; requestId: string; parentSessionId: string } | null>(null);
+  useEffect(() => () => phoneVerification.current?.controller.abort(), []);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('booting');
   const [webUrl, setWebUrl] = useState<string | null>(null);
@@ -355,10 +390,19 @@ export default function StudioWebViewScreen() {
   const brandTitle = user?.brandFullName?.trim() || (user?.username ? `@${user.username.replace(/^@/, '')}` : 'Store');
   const dashboardTitleNode = (
     <View style={styles.dashboardTitleRow}>
-      {/* Name and LIVE share one row. The name yields width (one line, then
-          an ellipsis) so the header's controls stay beside it; LIVE never
-          shrinks and never drops under the name. */}
-      <AppText variant="subtitle" numberOfLines={1} style={styles.dashboardTitleText}>
+      {/* Name and LIVE share one row; LIVE never shrinks and never drops
+          under the name. The name is never cut off (owner, Nov 2026: "there
+          is still truncation of the brand name on the store navbar") — on
+          Store, Upgrade and the QR button leave it about half the header, so
+          it takes a second line and shrinks a little before it would ever
+          need an ellipsis. */}
+      <AppText
+        variant="subtitle"
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+        style={styles.dashboardTitleText}
+      >
         {brandTitle}
       </AppText>
       <View style={[styles.livePill, { borderColor: theme.colors.success }]}>
@@ -397,6 +441,8 @@ export default function StudioWebViewScreen() {
   const queryClient = useQueryClient();
   const commerce = useBrandCommerceAccess();
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
+  const setupCompleteRef = useRef(storeSetupComplete);
+  setupCompleteRef.current = storeSetupComplete;
   // One nudge per visit. The redirect below re-runs the effect, and without this
   // the toast would stack on every pass.
   const setupRedirectNotifiedRef = useRef(false);
@@ -411,6 +457,16 @@ export default function StudioWebViewScreen() {
     productId?: string;
     orderId?: string;
   } | null>(null);
+  useEffect(() => {
+    if (documentStudioScopeRef.current === studioScope) return;
+    phoneVerification.current?.controller.abort();
+    sessionEstablishedRef.current = false;
+    documentStudioScopeRef.current = null;
+    deferredProfileSetupRef.current = null;
+    lastInjectedRouteRef.current = null;
+    pendingRouteRef.current = null;
+    setWebUrl(null); setCanGoBack(false); setLoadState('booting');
+  }, [studioScope]);
   const loadStateRef = useRef(loadState);
   loadStateRef.current = loadState;
   // A web Back was sent and the page has not answered yet — see the BackHandler.
@@ -434,6 +490,42 @@ export default function StudioWebViewScreen() {
 
   // The page's own location, from its ROUTE_CHANGED reports.
   const lastWebPathRef = useRef<string | null>(null);
+
+  /*
+    A Studio page the Catalogue opened goes BACK to the Catalogue.
+
+    Tapping a product on the Catalogue's Shop tab opens the Studio editor. The
+    Studio WebView stays alive all session, so its web history still held the
+    pages of earlier visits, and 👈 walked back through those and then the
+    Dashboard instead of returning to the card the brand tapped (owner, Nov
+    2026: "whenever i route into screens on the studio while i am on
+    catalogue, the back emoji … is not smart enough to take me back").
+
+    The Catalogue marks its links `from: 'catalog'`. While the brand is still
+    on that page, Back leaves Studio for the Catalogue. If they went deeper
+    from it, Back first steps back to it, then out. Leaving Studio ends it.
+  */
+  const catalogEntryRef = useRef<{ path: string; reached: boolean; left: boolean } | null>(null);
+  const entryFrom = asString(params.from);
+  useEffect(() => {
+    if (entryFrom !== 'catalog') return;
+    let path = '';
+    try {
+      path = normalizeStudioEntryPath(buildStudioPath(resolvedRouteKey, { productId, orderId }));
+    } catch {
+      // A route missing its id never matches a page report, so Back still
+      // returns to the Catalogue — the one thing the mark promises.
+    }
+    // Already showing that page (same product again): the page sends no new
+    // report, so it counts as reached now.
+    const showing = lastWebPathRef.current ? normalizeStudioEntryPath(lastWebPathRef.current) : null;
+    catalogEntryRef.current = { path, reached: Boolean(path) && showing === path, left: false };
+    // Consumed: a later island hop to the same screen must not inherit it.
+    router.setParams({ from: undefined } as never);
+  }, [entryFrom, orderId, productId, resolvedRouteKey]);
+  useFocusEffect(useCallback(() => () => {
+    catalogEntryRef.current = null;
+  }, []));
 
   const retry = useCallback(() => {
     sessionEstablishedRef.current = false;
@@ -495,7 +587,7 @@ export default function StudioWebViewScreen() {
 
   const navigateStudioInPlace = useCallback(
     (route: StudioRouteKey, params?: { productId?: string; orderId?: string }) => {
-      if (!webViewRef.current) return false;
+      if (!webViewRef.current || resolveStudioSetupAccess(route, setupCompleteRef.current) !== 'allow') return false;
       try {
         const path = buildStudioPath(route, params);
         const signature = getStudioRouteSignature(route, params);
@@ -551,6 +643,7 @@ export default function StudioWebViewScreen() {
         setLoadState('error');
         return;
       }
+      if (!nativeIdentity || nativeIdentity.split(':')[0] !== actorId || getApiSecurityIdentity() !== nativeIdentity) return;
       if (!isStudioEligible) {
         setErrorMessage(
           hasBrandWorkspace
@@ -616,15 +709,21 @@ export default function StudioWebViewScreen() {
       }
 
       try {
-        const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
+        // Establish the web session through the allowlisted Studio entry, then
+        // navigate to settings inside the authenticated SPA.
+        const settingsEntry = ['storeProfile', 'privateDesignAccess', 'payoutSettings'].includes(resolvedRouteKey);
+        const entryRoute = settingsEntry ? 'overview' : resolvedRouteKey;
+        if (settingsEntry) pendingRouteRef.current = { routeKey: resolvedRouteKey };
+        const intendedPath = buildStudioPath(entryRoute, { productId, orderId });
         const handoff = await StudioApi.createHandoff(intendedPath);
-        if (!mounted) return;
+        if (!mounted || currentStudioScopeRef.current !== studioScope || getApiSecurityIdentity() !== nativeIdentity) return;
+        documentStudioScopeRef.current = studioScope;
         sessionEstablishedRef.current = true;
         sessionBootedForRef.current = sessionOwnerNowRef.current;
-        lastInjectedRouteRef.current = getStudioRouteSignature(resolvedRouteKey, { productId, orderId });
+        lastInjectedRouteRef.current = getStudioRouteSignature(entryRoute, { productId, orderId });
         setWebUrl(
           buildStudioWebUrl({
-            routeKey: resolvedRouteKey,
+            routeKey: entryRoute,
             params: { productId, orderId },
             handoffCode: handoff.code,
             theme: schemeRef.current,
@@ -668,6 +767,9 @@ export default function StudioWebViewScreen() {
     reportedRouteSignature,
     retryKey,
     status,
+    actorId,
+    studioScope,
+    nativeIdentity,
     storeSetupComplete,
     toast,
   ]);
@@ -754,6 +856,15 @@ export default function StudioWebViewScreen() {
     Back can never be swallowed.
   */
   const handleStudioBack = useCallback(() => {
+    // Opened from the Catalogue and still on that page (or never got there):
+    // back to the Catalogue, not through Studio's older history.
+    const catalogEntry = catalogEntryRef.current;
+    if (catalogEntry && !catalogEntry.left) {
+      catalogEntryRef.current = null;
+      webBackPendingRef.current = false;
+      closeStudio();
+      return;
+    }
     const ready = loadStateRef.current === 'ready' && Boolean(webViewRef.current);
     const webPathname = (lastWebPathRef.current ?? '/studio').split('?')[0].replace(/\/+$/, '') || '/';
     const onStudioSubPage = webPathname.startsWith('/studio/');
@@ -914,6 +1025,10 @@ export default function StudioWebViewScreen() {
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
+      // Queued messages from an old retained document cannot affect the next
+      // account/workspace. Ordinary route changes keep the same scope/cache.
+      if (currentStudioScopeRef.current !== studioScope || documentStudioScopeRef.current !== studioScope ||
+        getApiSecurityIdentity() !== nativeIdentity) return;
       // Any message proves the page is alive, so a pending web Back is answered.
       webBackPendingRef.current = false;
       lastPageSignalRef.current = Date.now();
@@ -942,6 +1057,35 @@ export default function StudioWebViewScreen() {
       });
 
       switch (message?.type) {
+        case 'CANCEL_PHONE_SESSION_VERIFICATION': {
+          let origin: string;
+          try { origin = new URL(event.nativeEvent.url).origin; } catch { break; }
+          const pending = phoneVerification.current;
+          if (trustedOrigins.has(origin) && pending && pending.requestId === message.requestId && pending.parentSessionId === message.parentSessionId)
+            pending.controller.abort();
+          break;
+        }
+        case 'VERIFY_PHONE_SESSION': {
+          let origin: string;
+          try { origin = new URL(event.nativeEvent.url).origin; } catch { break; }
+          const { requestId, parentSessionId } = message;
+          const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!trustedOrigins.has(origin) || !uuid.test(requestId ?? '') || !uuid.test(parentSessionId ?? '') || phoneVerification.current) break;
+          const identity = getApiSecurityIdentity();
+          const controller = new AbortController(); phoneVerification.current = { controller, requestId: requestId!, parentSessionId: parentSessionId! };
+          void (async () => {
+            let verified = false;
+            try { await verifyStudioParentSession(parentSessionId!, controller.signal); verified = true; } catch { /* The web prompt offers a bounded retry. */ }
+            finally {
+              if (phoneVerification.current?.controller === controller) phoneVerification.current = null;
+              if (!controller.signal.aborted && identity === getApiSecurityIdentity()) {
+                const detail = JSON.stringify({ requestId, parentSessionId, verified });
+                webViewRef.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent('wiez:phone-session-verification', {detail:${detail}}));true;`);
+              }
+            }
+          })();
+          break;
+        }
         case 'BOOT_FAILED':
           sessionEstablishedRef.current = false;
           setErrorMessage('Studio could not start. Please try again shortly.');
@@ -985,6 +1129,11 @@ export default function StudioWebViewScreen() {
           setLoadState('error');
           break;
         case 'PROFILE_SETUP_REQUIRED':
+          if (!isFocusedRef.current) {
+            deferredProfileSetupRef.current = { scope: studioScope, message };
+            break;
+          }
+          deferredProfileSetupRef.current = null;
           /**
            * The gate itself is right: Studio needs a description, at least one
            * tag and a location before it can open (`isBrandProfileComplete`).
@@ -1035,6 +1184,15 @@ export default function StudioWebViewScreen() {
           if (message.path && message.path === lastWebPathRef.current) break;
           if (message.path) {
             lastWebPathRef.current = message.path;
+            const catalogEntry = catalogEntryRef.current;
+            if (catalogEntry) {
+              if (normalizeStudioEntryPath(message.path) === catalogEntry.path) {
+                catalogEntry.reached = true;
+                catalogEntry.left = false;
+              } else if (catalogEntry.reached) {
+                catalogEntry.left = true;
+              }
+            }
             if (!openNavigationTarget(message.path, 'route-report')) break;
             const report = getStudioRouteReport(message.path);
             if (report) {
@@ -1062,13 +1220,13 @@ export default function StudioWebViewScreen() {
            * mounted observer at this instant.
            */
           if (message.action === 'STORE_SETUP_COMPLETE') {
-            queryClient.setQueryData(queryKeys.store.status(), (previous: any) =>
+            queryClient.setQueryData(queryKeys.store.status(actorId, activeBrandId), (previous: any) =>
               previous
                 ? { ...previous, isSetupComplete: true, isPublished: true, isStoreOpen: true }
                 : previous,
             );
             void queryClient.invalidateQueries({
-              queryKey: queryKeys.store.status(),
+              queryKey: queryKeys.store.status(actorId, activeBrandId),
               refetchType: 'all',
             });
 
@@ -1093,8 +1251,17 @@ export default function StudioWebViewScreen() {
           break;
       }
     },
-    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast],
+    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast, trustedOrigins,
+      actorId, activeBrandId, studioScope, nativeIdentity],
   );
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const deferred = deferredProfileSetupRef.current;
+    deferredProfileSetupRef.current = null;
+    if (!deferred || deferred.scope !== studioScope) return;
+    handleMessage({ nativeEvent: { data: JSON.stringify(deferred.message) } } as WebViewMessageEvent);
+  }, [isFocused, studioScope, handleMessage]);
 
   const openSearch = useCallback(() => {
     if (loadState === 'ready' && webViewRef.current) {
@@ -1123,9 +1290,7 @@ export default function StudioWebViewScreen() {
    *      `/(tabs)` — whose `initialRouteName` is `index`. So a brand who opened
    *      Notifications from their own Store and pressed back landed on Runway.
    *   2. It unmounted the WebView and with it the warm Studio session, so
-   *      coming back re-ran the whole handoff and reload. `handleMenuStaff`
-   *      right below already documents that exact cost as the reason it stays
-   *      in-place.
+   *      coming back re-ran the whole handoff and reload.
    *
    * `drillDownPush` is what every other caller of these routes uses
    * (`catalog/index.tsx`, `me.tsx`, `RunwayFeedScreen`), so this also makes the
@@ -1145,22 +1310,6 @@ export default function StudioWebViewScreen() {
     setProfileMenuVisible(false);
     drillDownPush('/orders' as any);
   }, []);
-
-  const handleMenuFinance = useCallback(() => {
-    setProfileMenuVisible(false);
-    drillDownPush('/studio/finance' as any);
-  }, []);
-
-  const handleMenuStaff = useCallback(() => {
-    setProfileMenuVisible(false);
-    // Stay in the WebView shell — native /studio/staff unmounted the session
-    // and forced a full re-handoff when returning to Store.
-    if (sessionEstablishedRef.current && loadState === 'ready') {
-      navigateStudioInPlace('staff');
-      return;
-    }
-    drillDownPush({ pathname: '/studio', params: { routeKey: 'staff' } } as any);
-  }, [loadState, navigateStudioInPlace]);
 
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);
@@ -1247,11 +1396,11 @@ export default function StudioWebViewScreen() {
           injected script), so the page's own background runs to the edge and
           there is nothing to see under the island. */}
       <View style={[styles.webHost, { backgroundColor: studioShellBackground }]}>
-        {webUrl ? (
+        {webUrl && documentStudioScopeRef.current === studioScope ? (
           <WebView
             textZoom={100}
             ref={webViewRef}
-            key={String(retryKey)}
+            key={`${studioScope}:${retryKey}`}
             source={{ uri: webUrl }}
             originWhitelist={originWhitelist}
             onNavigationStateChange={handleNavigationStateChange}
@@ -1515,8 +1664,6 @@ export default function StudioWebViewScreen() {
         onOpenProfile={handleMenuProfile}
         onOpenNotifications={handleMenuNotifications}
         onOpenOrders={handleMenuOrders}
-        onOpenFinance={handleMenuFinance}
-        onOpenStaff={handleMenuStaff}
         onOpenHelp={openHelp}
         onSignOut={handleStudioSignOut}
       />
@@ -1677,3 +1824,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
 });
+
+export default function StudioWebViewScreen() {
+  return <StudioSetupGate><StudioWebViewContent /></StudioSetupGate>;
+}

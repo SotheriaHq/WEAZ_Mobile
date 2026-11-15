@@ -234,7 +234,7 @@ const NotificationRow = React.memo(function NotificationRow({
   item: MobileNotification;
   onOpen: (item: MobileNotification) => void;
 }) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const unread = !item.isRead;
   const onPress = useCallback(() => onOpen(item), [item, onOpen]);
   const entityLinks = bagEntityLinks(item);
@@ -251,8 +251,10 @@ const NotificationRow = React.memo(function NotificationRow({
       style={({ pressed }) => [
         styles.row,
         // The background marks UNREAD, edge to edge (owner, Nov 2026). Read
-        // rows sit on the page, so the tint is the signal, not a card.
-        { backgroundColor: unread ? theme.colors.surface : 'transparent' },
+        // rows sit on the page, so the tint is the signal, not a card. On
+        // light, `surface` is the same white as the page — unread did not
+        // show at all — so light takes the soft brand tint.
+        { backgroundColor: unread ? (scheme === 'dark' ? theme.colors.surface : theme.colors.primarySoft) : 'transparent' },
         pressed ? styles.pressed : null,
       ]}
     >
@@ -481,14 +483,29 @@ export default function NotificationsScreen() {
           badge floating on its own. */}
       <Header wrapText title="Notifications" left={<AppBackButton fallbackHref="/(tabs)" />}
         right={unreadCount > 0 ? (
-          <Button
-            title={`Mark all as read · ${unreadCount > 99 ? '99+' : unreadCount}`}
-            size="xs"
-            variant="ghost"
+          // The count is the system colour, bold — the same convention as the
+          // bell badges (owner, Nov 2026). A ghost Button paints its whole
+          // label `secondary`, which left the number grey on light theme.
+          <Pressable
             onPress={() => void handleMarkAllRead()}
-            loading={markingAll}
+            disabled={markingAll}
+            hitSlop={8}
+            accessibilityRole="button"
             accessibilityLabel={`Mark all ${unreadCount} notifications as read`}
-          />
+            accessibilityState={{ busy: markingAll, disabled: markingAll }}
+            style={({ pressed }) => [styles.markAll, pressed ? styles.pressed : null]}
+          >
+            {markingAll ? (
+              <MuseLoader size={14} />
+            ) : (
+              <AppText variant="caption" tone="secondary">
+                Mark all as read ·{' '}
+                <AppText variant="captionBold" tone="primary">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </AppText>
+              </AppText>
+            )}
+          </Pressable>
         ) : undefined} />
 
       {loading ? (
@@ -628,6 +645,11 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     marginTop: 4,
+  },
+  markAll: {
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.sm,
   },
   pressed: {
     opacity: 0.82,

@@ -21,7 +21,10 @@ export type StudioRouteKey =
   | 'customers'
   | 'analytics'
   | 'reviews'
-  | 'finance';
+  | 'finance'
+  | 'storeProfile'
+  | 'privateDesignAccess'
+  | 'payoutSettings';
 
 export type StudioRouteParams = {
   productId?: string;
@@ -38,6 +41,9 @@ export type StudioRouteConfig = {
 };
 
 export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
+  storeProfile: { key: 'storeProfile', title: 'Store profile', subtitle: 'Public brand details', emoji: '🏪', path: '/settings?tab=store-general' },
+  privateDesignAccess: { key: 'privateDesignAccess', title: 'Private design access', subtitle: 'Requests and approved viewers', emoji: '🗂️', path: '/settings/collections' },
+  payoutSettings: { key: 'payoutSettings', title: 'Payout settings', subtitle: 'Bank and settlement settings', emoji: '🏦', path: '/settings?tab=billing' },
   overview: {
     key: 'overview',
     title: 'Dashboard',
@@ -186,7 +192,7 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
 };
 
 export function isStudioRouteKey(value: string | undefined): value is StudioRouteKey {
-  return Boolean(value && value in STUDIO_ROUTES);
+  return Boolean(value && Object.prototype.hasOwnProperty.call(STUDIO_ROUTES, value));
 }
 
 export function isStudioFocusedFlow(routeKey?: string | null): boolean {
@@ -200,6 +206,12 @@ export function isStudioFocusedFlow(routeKey?: string | null): boolean {
 export function deriveStudioRouteKeyFromPath(pathValue?: string | null): StudioRouteKey | null {
   if (!pathValue) return null;
   const normalized = pathValue.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  if (normalized === '/settings/collections') return 'privateDesignAccess';
+  if (normalized === '/settings') {
+    const tab = new URL(pathValue, 'https://wiez.local').searchParams.get('tab');
+    if (tab === 'store-general') return 'storeProfile';
+    if (tab === 'billing') return 'payoutSettings';
+  }
   if (normalized === '/studio/store/products/new') return 'createProduct';
   if (/^\/studio\/store\/products\/[^/]+\/edit$/.test(normalized)) return 'editProduct';
   if (/^\/studio\/store\/products\/[^/]+$/.test(normalized)) return 'productDetail';

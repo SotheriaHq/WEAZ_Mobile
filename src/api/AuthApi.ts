@@ -1,4 +1,4 @@
-import { apiClient } from '@/src/api/httpClient';
+import { apiClient, changePasswordWithSessionRotation } from '@/src/api/httpClient';
 import type { LegalAcceptancePayload } from '@/src/api/LegalApi';
 
 export type AuthUserType = 'REGULAR' | 'BRAND';
@@ -171,8 +171,7 @@ export async function changePassword(params: {
   currentPassword: string;
   newPassword: string;
 }) {
-  const response = await apiClient.post<MessageResponse>('/auth/change-password', params);
-  return unwrapData<MessageResponse>(response.data);
+  return changePasswordWithSessionRotation(params);
 }
 
 export async function requestEmailChange(params: {

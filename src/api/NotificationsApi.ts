@@ -1,4 +1,4 @@
-import { apiClient, type AccountBoundRequestConfig } from '@/src/api/httpClient';
+import { apiClient, type SessionRequestConfig, type AccountBoundRequestConfig } from '@/src/api/httpClient';
 import type {
   NotificationSettings,
   NotificationSettingsPatch,
@@ -125,13 +125,13 @@ export const NotificationsApi = {
     };
   },
 
-  async getSettings(): Promise<NotificationSettings> {
-    const response = await apiClient.get('/notifications/settings');
+  async getSettings(config?: SessionRequestConfig): Promise<NotificationSettings> {
+    const response = await apiClient.get('/notifications/settings', config);
     return unwrap<NotificationSettings>(response.data);
   },
 
-  async updateSettings(settingsPatch: NotificationSettingsPatch): Promise<NotificationSettings> {
-    const response = await apiClient.patch('/notifications/settings', settingsPatch);
+  async updateSettings(settingsPatch: NotificationSettingsPatch, config?: SessionRequestConfig): Promise<NotificationSettings> {
+    const response = await apiClient.patch('/notifications/settings', settingsPatch, config);
     return unwrap<NotificationSettings>(response.data);
   },
 
