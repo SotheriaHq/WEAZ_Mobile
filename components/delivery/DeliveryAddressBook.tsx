@@ -7,6 +7,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { ProfileApi, type SavedDeliveryAddress } from '@/src/api/ProfileApi';
 import {
   displayNameOf,
@@ -28,7 +29,6 @@ import {
   type ProfileAddressSeed,
 } from '@/src/features/delivery/deliveryAddressCache';
 import { tokens } from '@/src/styles/tokens';
-import { useTheme } from '@/src/theme/ThemeProvider';
 
 /**
  * The saved-address book, as web has it: pick one, edit it, add another.
@@ -80,7 +80,6 @@ export function DeliveryAddressBook({
   title = 'Delivery address',
   subtitle,
 }: DeliveryAddressBookProps) {
-  const { theme } = useTheme();
   const snapshot = useSyncExternalStore(
     subscribeDeliveryAddressCache,
     getDeliveryAddressSnapshot,
@@ -276,16 +275,11 @@ export function DeliveryAddressBook({
                 accessibilityState={{ selected, disabled: saving || form !== null }}
                 accessibilityLabel={`${displayNameOf(address)}, ${formatAddressLine(address)}`}
               >
-                <Card
-                  padding="md"
-                  style={[
-                    styles.card,
-                    {
-                      borderColor: selected ? theme.colors.primary : theme.colors.border,
-                      backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
-                    },
-                  ]}
-                >
+                <View style={styles.card}>
+                  <LiquidGlassFill
+                    glassRole={selected ? 'brandSoft' : 'control'}
+                    borderRadius={tokens.radius.lg}
+                  />
                   <View style={styles.cardTop}>
                     <AppText
                       variant="bodyBold"
@@ -328,7 +322,7 @@ export function DeliveryAddressBook({
                       />
                     </View>
                   ) : null}
-                </Card>
+                </View>
               </Pressable>
             );
           })}
@@ -444,9 +438,12 @@ const styles = StyleSheet.create({
   head: {
     gap: tokens.spacing.xs,
   },
+  // Borderless Strong Lens glass (selected = brand-tinted glass, not a border).
   card: {
     gap: tokens.spacing.xs,
-    borderWidth: 2,
+    padding: tokens.spacing.md,
+    borderRadius: tokens.radius.lg,
+    overflow: 'hidden',
   },
   cardTop: {
     flexDirection: 'row',

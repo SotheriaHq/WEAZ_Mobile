@@ -18,6 +18,7 @@ import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { BuyerOrdersApi, type BuyerOrderDetail, type BuyerOrderItem } from '@/src/api/BuyerOrdersApi';
@@ -730,19 +731,17 @@ export default function BuyerOrderDetailScreen() {
         <Card variant="elevated" padding="lg" style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.badgeRow}>
-              <View style={[styles.pill, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }]}>
+              <View style={styles.pill}>
+                <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
                 <AppText variant="badgeLabel" tone="primary">{order.kind === 'STANDARD' ? 'Standard' : 'Custom'}</AppText>
               </View>
-              <View style={[styles.pill, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
+              <View style={styles.pill}>
+                <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.full} />
                 <AppText variant="badgeLabel" tone="muted">Buyer view</AppText>
               </View>
             </View>
-            <View
-              style={[
-                styles.statusPill,
-                { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt },
-              ]}
-            >
+            <View style={styles.statusPill}>
+              <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.full} />
               <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
               <AppText variant="badgeLabel" tone={statusTextTone}>
                 {humanizeToken(order.status)}
@@ -957,8 +956,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
-    borderWidth: 2,
     borderRadius: tokens.radius.full,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
     maxWidth: '55%',
@@ -1028,11 +1027,12 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     flex: 1,
   },
+  // Badges are borderless Strong Lens glass.
   pill: {
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 4,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    overflow: 'hidden',
   },
   heroTitleRow: {
     flexDirection: 'row',

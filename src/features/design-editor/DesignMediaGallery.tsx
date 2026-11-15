@@ -13,6 +13,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
 import {
   DESIGN_MEDIA_SLOTS,
@@ -90,7 +91,8 @@ export function DesignMediaGallery({ visible, assets, initialIndex, coverAssetId
         />
 
         <View style={[styles.topBar, { paddingTop: insets.top + tokens.spacing.sm }]} pointerEvents="box-none">
-          <View style={[styles.pill, { backgroundColor: STAGE.surfaceOverlay }]}>
+          <View style={styles.pill}>
+            <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
             <AppText variant="captionBold" onDarkStage>
               {assets.length > 0 ? `${index + 1} / ${assets.length} · ${slotLabel}` : ''}
             </AppText>
@@ -100,11 +102,9 @@ export function DesignMediaGallery({ visible, assets, initialIndex, coverAssetId
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Close gallery"
-            style={({ pressed }) => [
-              styles.closeButton,
-              { backgroundColor: STAGE.surfaceOverlay, transform: [{ scale: pressed ? 0.94 : 1 }] },
-            ]}
+            style={({ pressed }) => [styles.closeButton, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}
           >
+            <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
             <AppText variant="bodyBold" onDarkStage>✕</AppText>
           </Pressable>
         </View>
@@ -119,12 +119,10 @@ export function DesignMediaGallery({ visible, assets, initialIndex, coverAssetId
               accessibilityLabel={isCover ? `${slotLabel} is the cover` : `Set ${slotLabel} as the cover`}
               style={({ pressed }) => [
                 styles.coverButton,
-                {
-                  backgroundColor: isCover ? STAGE.surfaceOverlay : STAGE.primary,
-                  transform: [{ scale: pressed && !isCover ? 0.96 : 1 }],
-                },
+                { transform: [{ scale: pressed && !isCover ? 0.96 : 1 }] },
               ]}
             >
+              <LiquidGlassFill glassRole={isCover ? 'stage' : 'brand'} borderRadius={tokens.radius.full} />
               <AppText variant="bodyBold" onDarkStage tone={isCover ? 'secondary' : 'inverse'}>
                 {isCover ? 'Cover photo ✓' : 'Set as cover'}
               </AppText>
@@ -150,10 +148,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: tokens.spacing.lg,
   },
+  // Stage chrome is borderless Strong Lens glass (dark in both themes).
   pill: {
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
+    overflow: 'hidden',
   },
   closeButton: {
     width: 44,
@@ -161,6 +161,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   bottomBar: {
     position: 'absolute',
@@ -176,5 +177,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
 });

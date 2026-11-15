@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
@@ -302,11 +303,12 @@ export const CollectionCard = React.memo(function CollectionCard({
           {isOwner && !collection.clientStatus ? (
             <Pressable
               onPress={() => setMenuVisible((current) => !current)}
-              style={[styles.menuButton, { backgroundColor: 'transparent' }]}
+              style={styles.menuButton}
               hitSlop={tokens.spacing.sm}
               accessibilityRole="button"
               accessibilityLabel={copy.ownerActionsLabel}
             >
+              <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
               {/* Emoji marker per Rule 5. `textShadow*` is legal on AppText —
                   only typography and colour are forbidden overrides — and the
                   shadow is what keeps the glyph legible over any cover image. */}
@@ -317,7 +319,8 @@ export const CollectionCard = React.memo(function CollectionCard({
           ) : null}
 
           {menuVisible ? (
-            <View style={[styles.menu, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={styles.menu}>
+              <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.md} />
               {onEdit ? (
                 <Pressable
                   onPress={() => {
@@ -378,7 +381,8 @@ export const CollectionCard = React.memo(function CollectionCard({
                     </View>
                   ) : (
                     <>
-                      <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
+                      <View style={styles.statusPill}>
+                        <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
                         <AppText variant="badgeLabel" tone="danger" numberOfLines={1}>
                           {isDraft ? 'DRAFT SAVE FAILED' : 'PUBLISH FAILED'}
                         </AppText>
@@ -394,6 +398,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                             accessibilityRole="button"
                             accessibilityLabel={`Retry or edit ${displayTitle}`}
                           >
+                            <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
                             <AppText variant="captionBold" tone="inverse">Retry / Edit</AppText>
                           </Pressable>
                         ) : null}
@@ -404,6 +409,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                             accessibilityRole="button"
                             accessibilityLabel={`Dismiss failed upload ${displayTitle}`}
                           >
+                            <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
                             <AppText variant="captionBold" tone="inverse">Dismiss</AppText>
                           </Pressable>
                         ) : null}
@@ -414,7 +420,8 @@ export const CollectionCard = React.memo(function CollectionCard({
               ) : isDraft && !statusIsImplied ? (
                 // Suppressed on the Drafts tab: the heading has already said it,
                 // so the chip only restates where the user is standing.
-                <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
+                <View style={styles.statusPill}>
+                  <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
                   <AppText variant="badgeLabel" tone="primary" numberOfLines={1}>
                     DRAFT
                   </AppText>
@@ -422,10 +429,11 @@ export const CollectionCard = React.memo(function CollectionCard({
               ) : isOwner && reviewStatusLabel && !statusIsImplied ? (
                 <Pressable
                   onPress={needsReviewDecision ? () => setReviewDecisionOpen(true) : undefined}
-                  style={[styles.statusPill, { backgroundColor: 'transparent' }]}
+                  style={styles.statusPill}
                   accessibilityRole={needsReviewDecision ? 'button' : undefined}
                   accessibilityLabel={needsReviewDecision ? `View ${reviewStatusLabel} feedback` : reviewStatusLabel}
                 >
+                  <LiquidGlassFill glassRole="stage" borderRadius={tokens.radius.full} />
                   <AppText
                     variant="badgeLabel"
                     tone={backendStatus === 'CHANGES_REQUESTED' ? 'primary' : backendStatus === 'REJECTED' ? 'danger' : 'primary'}
@@ -583,6 +591,7 @@ function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: 
   if (!onPress) {
     return (
       <View style={styles.socialMetric} accessibilityLabel={`${value} ${label}`}>
+        <LiquidGlassFill glassRole="stageGhost" borderRadius={tokens.radius.full} />
         {content}
       </View>
     );
@@ -596,6 +605,7 @@ function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: 
       accessibilityRole="button"
       accessibilityLabel={`${value} ${label}`}
     >
+      <LiquidGlassFill glassRole="stageGhost" borderRadius={tokens.radius.full} />
       {content}
     </Pressable>
   );
@@ -669,14 +679,15 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     zIndex: 4,
   },
+  // Card chrome over cover photography is borderless Strong Lens glass.
   menu: {
     position: 'absolute',
     top: 48,
     right: tokens.spacing.sm,
     borderRadius: tokens.radius.md,
-    borderWidth: 2,
     overflow: 'hidden',
     minWidth: 96,
     zIndex: 5,
@@ -726,7 +737,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,
-    backgroundColor: tokens.tintLight(0.12),
+    overflow: 'hidden',
   },
   socialMetricContent: {
     flexDirection: 'row',
@@ -739,6 +750,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     alignSelf: 'flex-start',
+    overflow: 'hidden',
   },
   clientStatusBlock: {
     gap: tokens.spacing.xs,
@@ -760,11 +772,9 @@ const styles = StyleSheet.create({
   clientActionButton: {
     minHeight: 28,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
-    borderColor: tokens.tintLight(0.45),
     paddingHorizontal: tokens.spacing.sm,
     justifyContent: 'center',
-    backgroundColor: tokens.tintLight(0.14),
+    overflow: 'hidden',
   },
   clientActionPressed: {
     opacity: 0.72,

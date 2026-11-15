@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { QuickPressable } from '@/components/ui/QuickPressable';
 import { useSyncedThemePreference } from '@/src/hooks/useSyncedThemePreference';
 import { tokens } from '@/src/styles/tokens';
@@ -37,12 +38,12 @@ const DARK = tokens.themes.dark.colors;
  */
 function ThemePreview({ palette }: { palette: typeof LIGHT }) {
   return (
-    <View style={[styles.preview, { backgroundColor: palette.bg, borderColor: palette.border }]}>
+    <View style={[styles.preview, { backgroundColor: palette.bg }]}>
       <View style={[styles.previewBar, { backgroundColor: palette.surfaceAlt }]}>
         <View style={[styles.previewDot, { backgroundColor: palette.primary }]} />
         <View style={[styles.previewBarLine, { backgroundColor: palette.textMuted }]} />
       </View>
-      <View style={[styles.previewCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+      <View style={[styles.previewCard, { backgroundColor: palette.surface }]}>
         <View style={[styles.previewLine, styles.previewLineWide, { backgroundColor: palette.text }]} />
         <View style={[styles.previewLine, { backgroundColor: palette.textMuted }]} />
         <View style={[styles.previewLine, styles.previewLineShort, { backgroundColor: palette.textMuted }]} />
@@ -122,15 +123,11 @@ export default function ThemeSettingsScreen() {
                 accessibilityLabel={option.label}
                 style={({ pressed }) => [styles.option, pressed ? styles.pressed : null]}
               >
-                <View
-                  style={[
-                    styles.previewFrame,
-                    {
-                      borderColor: selected ? theme.colors.primary : theme.colors.border,
-                      borderWidth: selected ? 2 : 2,
-                    },
-                  ]}
-                >
+                <View style={styles.previewFrame}>
+                  <LiquidGlassFill
+                    glassRole={selected ? 'brandSoft' : 'control'}
+                    borderRadius={tokens.radius.lg}
+                  />
                   {option.value === 'system' ? (
                     <SystemPreview />
                   ) : (
@@ -195,16 +192,16 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.78,
   },
+  // Borderless Strong Lens glass frame; selection is brand-tinted glass.
   previewFrame: {
     borderRadius: tokens.radius.lg,
-    padding: 3,
+    padding: 5,
     overflow: 'hidden',
     aspectRatio: 0.62,
   },
   preview: {
     flex: 1,
     borderRadius: tokens.radius.md,
-    borderWidth: 2,
     padding: 8,
     gap: 4,
     overflow: 'hidden',
@@ -231,7 +228,6 @@ const styles = StyleSheet.create({
   previewCard: {
     flex: 1,
     borderRadius: 6,
-    borderWidth: 2,
     padding: 8,
     gap: 5,
   },

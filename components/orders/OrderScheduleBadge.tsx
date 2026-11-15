@@ -12,9 +12,9 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import type { BuyerOrderSchedule } from '@/src/api/BuyerOrdersApi';
 import { tokens } from '@/src/styles/tokens';
-import { useTheme } from '@/src/theme/ThemeProvider';
 
 export type OrderScheduleBadgeVariant = 'row' | 'detail';
 
@@ -77,7 +77,6 @@ export function OrderScheduleBadge({
   schedule: BuyerOrderSchedule;
   variant?: OrderScheduleBadgeVariant;
 }) {
-  const { theme } = useTheme();
   const countdown = formatOrderCountdown(schedule, variant);
   if (!countdown) return null;
 
@@ -113,21 +112,13 @@ export function OrderScheduleBadge({
     );
   }
 
-  const borderColor =
-    countdown.tone === 'danger'
-      ? theme.colors.danger
-      : countdown.tone === 'warning'
-        ? theme.colors.warning
-        : theme.colors.border;
-
+  // Borderless glass; the label's own tone (and marker) carries the urgency.
   return (
-    <View
-      style={[
-        styles.badge,
-        styles.plainBadge,
-        { backgroundColor: theme.colors.surfaceAlt, borderColor },
-      ]}
-    >
+    <View style={[styles.badge, styles.plainBadge]}>
+      <LiquidGlassFill
+        glassRole={countdown.tone === 'warning' ? 'warningSoft' : 'control'}
+        borderRadius={tokens.radius.md}
+      />
       {content}
     </View>
   );
@@ -141,7 +132,7 @@ const styles = StyleSheet.create({
   },
   plainBadge: {
     borderRadius: tokens.radius.md,
-    borderWidth: 2,
+    overflow: 'hidden',
     padding: tokens.spacing.sm,
   },
   labelRow: {

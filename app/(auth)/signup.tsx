@@ -31,6 +31,7 @@ import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
 import { useAuthFlowLock } from '@/src/auth/useAuthFlowLock';
 import {
@@ -318,8 +319,6 @@ export default function SignupScreen() {
   // Theme-derived colors
   const bgGradient = [theme.colors.bg, theme.colors.bg, theme.colors.bg] as const;
   const accentGradient = [theme.colors.surface, theme.colors.surfaceAlt, theme.colors.surface] as const;
-  const formBg = theme.colors.surface;
-  const formBorder = theme.colors.border;
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
@@ -397,8 +396,16 @@ export default function SignupScreen() {
             },
           ]}
         >
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.surfaceAlt }]} />
-          <View style={[styles.formPanelBorder, { borderColor: formBorder }]} />
+          {/* Borderless Strong Lens glass (same material as Card liquidGlass). */}
+          <WiezLiquidGlass
+            mode="lightweight"
+            intensity="prominent"
+            tintAlpha={scheme === 'dark' ? tokens.liquidGlass.fallbackTint.cardDark : tokens.liquidGlass.fallbackTint.cardLight}
+            highlightIntensity={tokens.liquidGlass.fallbackTint.surfaceHighlight}
+            borderRadius={tokens.radius.xl}
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+          />
 
           {/* Purple → Gold accent line (reflects journey: Shopper → Brand) */}
           <LinearGradient
@@ -408,7 +415,7 @@ export default function SignupScreen() {
             style={styles.gradientAccentLine}
           />
 
-          <View style={[styles.formInner, { backgroundColor: formBg }]}>
+          <View style={styles.formInner}>
             {/* Account type selector */}
             <AppText variant="caption" tone="muted" style={styles.sectionLabel}>I AM A...</AppText>
             <AccountTypeSelector
@@ -647,16 +654,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: tokens.spacing.xs,
+    // iOS keeps the lift; Android draws no elevation behind translucent glass.
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.40,
     shadowRadius: 24,
-    elevation: 16,
-  },
-  formPanelBorder: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: tokens.radius.xl,
-    borderWidth: 2,
   },
   gradientAccentLine: {
     position: 'absolute',

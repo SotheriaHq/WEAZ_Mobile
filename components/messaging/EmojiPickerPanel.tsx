@@ -38,6 +38,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import {
   ALL_EMOJIS,
   EMOJI_GROUPS,
@@ -276,21 +277,19 @@ export function EmojiPickerPanel({
       {/* Category tabs sit at the BOTTOM, within thumb reach, which is where
           every reference app puts them on a phone. */}
       {!query.trim() ? (
-        <View style={[styles.tabs, { borderTopColor: theme.colors.border }]}>
+        <View style={styles.tabs}>
           {EMOJI_GROUPS.map((group) => {
             const active = group.key === activeGroup;
             return (
               <Pressable
                 key={group.key}
                 onPress={() => setActiveGroup(group.key)}
-                style={[
-                  styles.tab,
-                  active && { backgroundColor: theme.colors.primarySoft },
-                ]}
+                style={styles.tab}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={group.label}
               >
+                {active ? <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} /> : null}
                 <AppText variant="bodyReadable">{group.icon}</AppText>
               </Pressable>
             );
@@ -336,7 +335,6 @@ const styles = StyleSheet.create({
   },
   tabs: {
     flexDirection: 'row',
-    borderTopWidth: 2,
     paddingVertical: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
     gap: tokens.spacing.xs,
@@ -347,6 +345,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
+    // Active tab = brand-tinted Strong Lens glass.
+    overflow: 'hidden',
   },
 });
 

@@ -37,6 +37,12 @@ function load(file) {
     if (name === '@/components/ui/AppText') return {
       AppText: props => React.createElement('Text', props, props.children),
     };
+    // The glass fill is absolutely positioned behind the label, so it never
+    // takes part in layout (nodeFor skips absolute children). Stub it rather
+    // than pull the native glass module graph into a pure layout test.
+    if (name === '@/components/ui/LiquidGlassFill') return {
+      LiquidGlassFill: () => React.createElement('View', { style: { position: 'absolute' } }),
+    };
     if (name === '@/components/ui/MuseLoader') return {
       MuseLoader: ({ size }) => React.createElement('View', { style: { width: size, height: size } }),
     };

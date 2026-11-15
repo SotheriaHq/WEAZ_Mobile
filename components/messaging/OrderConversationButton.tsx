@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { MessagingApi, type OrderConversationRef } from '@/src/api/MessagingApi';
 import { cachePolicies, useCachedQuery } from '@/src/cache';
 import { queryKeys } from '@/src/query/queryKeys';
@@ -72,10 +73,11 @@ export function OrderConversationButton({
       onPress={handlePress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: theme.colors.primary, shadowColor: theme.colors.primary },
+        { shadowColor: theme.colors.primary },
         pressed ? styles.pressed : null,
       ]}
     >
+      <LiquidGlassFill glassRole="brand" borderRadius={tokens.radius.full} />
       <View style={[styles.chip, { backgroundColor: tokens.tintLight(0.18) }]}>
         <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
           <Path
@@ -119,10 +121,12 @@ const styles = StyleSheet.create({
     paddingLeft: tokens.spacing.sm,
     paddingRight: tokens.spacing.md,
     borderRadius: tokens.radius.full,
+    // Brand-tinted Strong Lens glass (primary CTA). No Android elevation: a
+    // shadow behind translucent glass shows through it.
+    overflow: 'hidden',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28,
     shadowRadius: 12,
-    elevation: 6,
   },
   pressed: {
     opacity: 0.9,

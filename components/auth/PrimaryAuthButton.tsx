@@ -1,8 +1,7 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
-import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
 interface PrimaryAuthButtonProps {
@@ -13,6 +12,11 @@ interface PrimaryAuthButtonProps {
   ghost?: boolean;
 }
 
+/**
+ * The auth screens' main call to action. The solid form is the shared primary
+ * Button, which is brand-tinted Strong Lens glass (and inert glass when
+ * disabled), so login and signup match every other primary CTA in the app.
+ */
 export function PrimaryAuthButton({
   title,
   onPress,
@@ -20,65 +24,33 @@ export function PrimaryAuthButton({
   disabled = false,
   ghost = false,
 }: PrimaryAuthButtonProps) {
-  const { theme } = useTheme();
-
-  if (ghost) {
-    return (
-      <Button
-        title={title}
-        onPress={onPress}
-        loading={loading}
-        disabled={disabled}
-        variant="outline"
-        size="lg"
-        fullWidth
-        style={styles.button}
-        textStyle={styles.label}
-      />
-    );
-  }
-
   return (
-    <View
-      style={[
-        styles.button,
-        styles.solidContainer,
-        {
-          backgroundColor: disabled ? theme.colors.primarySoft : theme.colors.primary,
-          shadowColor: theme.colors.backdropStrong,
-        },
-      ]}
-    >
-      <Button
-        title={title}
-        onPress={onPress}
-        loading={loading}
-        disabled={disabled}
-        variant="ghost"
-        size="lg"
-        fullWidth
-        style={styles.innerButton}
-        textStyle={styles.label}
-      />
-    </View>
+    <Button
+      title={title}
+      onPress={onPress}
+      loading={loading}
+      disabled={disabled}
+      variant={ghost ? 'outline' : 'primary'}
+      size="lg"
+      fullWidth
+      style={styles.button}
+      textStyle={styles.label}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  solidContainer: {
     borderRadius: tokens.radius.lg,
-    overflow: 'hidden',
-  },
-  innerButton: {
-    shadowOpacity: 0,
-    elevation: 0,
-    borderWidth: 0,
+    // iOS keeps the soft lift; Android draws no elevation behind translucent glass.
+    ...(Platform.OS === 'ios'
+      ? {
+          shadowColor: tokens.colors.shadow,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.18,
+          shadowRadius: 18,
+        }
+      : null),
   },
   label: {
     letterSpacing: 2.5,

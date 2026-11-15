@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import type { ReviewSummaryDto } from '@/src/api/ReviewApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -60,8 +61,9 @@ export default function ReviewSummary({ summary }: Props) {
         {SATISFACTION_OPTIONS.map((option) => (
           <View
             key={option.value}
-            style={[styles.moodPill, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+            style={styles.moodPill}
           >
+            <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.full} />
             <AppText variant="captionBold" tone={option.tone}>
               {option.emoji} {summary.satisfactionDistribution[option.value] ?? 0}
             </AppText>
@@ -119,9 +121,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: tokens.spacing.sm,
   },
+  // Borderless Strong Lens glass badge.
   moodPill: {
-    borderWidth: 2,
     borderRadius: tokens.radius.full,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 4,
   },

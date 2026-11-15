@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { useTheme } from '@/src/theme/ThemeProvider';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { tokens } from '@/src/styles/tokens';
 
 type AccountType = 'REGULAR' | 'BRAND' | null;
@@ -22,7 +22,6 @@ interface TypeCardProps {
 
 function TypeCard({ type, selected, onSelect, emoji, title }: TypeCardProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const { theme } = useTheme();
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -44,11 +43,6 @@ function TypeCard({ type, selected, onSelect, emoji, title }: TypeCardProps) {
     }).start();
   };
 
-  const cardStyle = {
-    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-    borderColor: selected ? theme.colors.primary : theme.colors.border,
-  };
-
   return (
     <Animated.View
       style={[
@@ -65,7 +59,8 @@ function TypeCard({ type, selected, onSelect, emoji, title }: TypeCardProps) {
         accessibilityLabel={`${title} account type`}
         accessibilityState={{ selected }}
       >
-        <View style={[styles.card, cardStyle]}>
+        <View style={styles.card}>
+          <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} borderRadius={tokens.radius.lg} />
           <AppText style={styles.cardEmoji}>{emoji}</AppText>
           <AppText
             variant="caption"
@@ -116,9 +111,10 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
   },
+  // Borderless Strong Lens glass; the selected type is brand-tinted glass.
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
+    overflow: 'hidden',
     height: 72,
     flexDirection: 'row',
     alignItems: 'center',

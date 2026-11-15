@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import type { ReviewDto } from '@/src/api/ReviewApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -30,7 +31,8 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }: 
           <View style={styles.nameRow}>
             <AppText variant="bodyBold" numberOfLines={1}>Verified buyer</AppText>
             {review.verifiedPurchase ? (
-              <View style={[styles.verifiedPill, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+              <View style={styles.verifiedPill}>
+                <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
                 <AppText variant="captionBold" tone="success">Verified</AppText>
               </View>
             ) : null}
@@ -73,24 +75,18 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }: 
             {canEdit ? (
               <Pressable
                 onPress={() => onEdit?.(review)}
-                style={({ pressed }) => [
-                  styles.actionButton,
-                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt },
-                  pressed ? styles.pressed : null,
-                ]}
+                style={({ pressed }) => [styles.actionButton, pressed ? styles.pressed : null]}
               >
+                <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.full} />
                 <AppText variant="captionBold">Edit</AppText>
               </Pressable>
             ) : null}
             {canDelete ? (
               <Pressable
                 onPress={() => onDelete?.(review)}
-                style={({ pressed }) => [
-                  styles.actionButton,
-                  { borderColor: theme.colors.danger, backgroundColor: theme.colors.surface },
-                  pressed ? styles.pressed : null,
-                ]}
+                style={({ pressed }) => [styles.actionButton, pressed ? styles.pressed : null]}
               >
+                <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.full} />
                 <AppText variant="captionBold" tone="danger">Delete</AppText>
               </Pressable>
             ) : null}
@@ -104,7 +100,6 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }: 
 const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.md,
   },
@@ -125,9 +120,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: tokens.spacing.sm,
   },
+  // Badges and small actions are borderless Strong Lens glass.
   verifiedPill: {
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 2,
   },
@@ -154,8 +150,8 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   actionButton: {
-    borderWidth: 2,
     borderRadius: tokens.radius.full,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },

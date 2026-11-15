@@ -13,8 +13,8 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { tokens } from '@/src/styles/tokens';
-import { useTheme } from '@/src/theme/ThemeProvider';
 
 import type { ComputedSizeState } from '@/src/features/sizing/computedSize';
 
@@ -35,7 +35,6 @@ export function ComputedSizeChip({
   state: ComputedSizeState;
   onPress: () => void;
 }) {
-  const { theme } = useTheme();
 
   /*
     The one non-ready state the header does speak to.
@@ -63,12 +62,9 @@ export function ComputedSizeChip({
             ? `${state.problems.length} measurement${state.problems.length === 1 ? '' : 's'} need checking. Open my fittings.`
             : 'Your measurements disagree about your size. Open my fittings.'
         }
-        style={({ pressed }) => [
-          styles.chip,
-          { backgroundColor: 'transparent', borderColor: theme.colors.border },
-          pressed ? styles.pressed : null,
-        ]}
+        style={({ pressed }) => [styles.chip, pressed ? styles.pressed : null]}
       >
+        <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.lg} />
         <AppText variant="captionBold" tone="muted" numberOfLines={1}>
           {SIZE_EMOJI} Your size
         </AppText>
@@ -88,20 +84,18 @@ export function ComputedSizeChip({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Your size is ${state.size}. Open my fittings.`}
-      style={({ pressed }) => [
-        styles.chip,
-        { backgroundColor: 'transparent', borderColor: theme.colors.border },
-        pressed ? styles.pressed : null,
-      ]}
+      style={({ pressed }) => [styles.chip, pressed ? styles.pressed : null]}
     >
-      <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+      {/* The computed size is the answer: strong brand-purple glass, white text. */}
+      <LiquidGlassFill glassRole="brand" borderRadius={tokens.radius.lg} />
+      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
         {SIZE_EMOJI} Your size
       </AppText>
-      <AppText variant="h2" tone="primary" numberOfLines={1}>
+      <AppText variant="h2" tone="inverse" numberOfLines={1}>
         {state.size}
       </AppText>
       {state.regionLabel ? (
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+        <AppText variant="captionRegular" tone="inverse" numberOfLines={1}>
           {state.regionLabel}
         </AppText>
       ) : null}
@@ -117,16 +111,13 @@ export function ComputedSizeChip({
  * otherwise sends them back through measurements they already gave us.
  */
 export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
-  const { theme } = useTheme();
-
-  const frame = [
-    styles.panel,
-    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-  ];
+  const frame = styles.panel;
+  const glass = <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.lg} />;
 
   if (state.kind === 'ready') {
     return (
       <View style={frame}>
+        {glass}
         <AppText variant="captionBold" tone="muted">
           {SIZE_EMOJI} Your size
         </AppText>
@@ -139,13 +130,8 @@ export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
         {state.categories.length > 0 ? (
           <View style={styles.categoryWrap}>
             {state.categories.map((entry) => (
-              <View
-                key={entry.category}
-                style={[
-                  styles.categoryPill,
-                  { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
-                ]}
-              >
+              <View key={entry.category} style={styles.categoryPill}>
+                <LiquidGlassFill glassRole="ghost" borderRadius={tokens.radius.full} />
                 <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
                   {entry.label}
                 </AppText>
@@ -168,6 +154,7 @@ export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
   if (state.kind === 'charts-unavailable') {
     return (
       <View style={frame}>
+        {glass}
         <AppText variant="captionBold" tone="muted">
           {SIZE_EMOJI} Your size
         </AppText>
@@ -197,6 +184,7 @@ export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
   if (state.kind === 'bad-measurements') {
     return (
       <View style={frame}>
+        {glass}
         <AppText variant="captionBold" tone="muted">
           {SIZE_EMOJI} Your size
         </AppText>
@@ -218,6 +206,7 @@ export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
 
   return (
     <View style={frame}>
+      {glass}
       <AppText variant="captionBold" tone="muted">
         {SIZE_EMOJI} Your size
       </AppText>
@@ -240,20 +229,21 @@ function formatList(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+// All size surfaces are borderless Strong Lens glass.
 const styles = StyleSheet.create({
   chip: {
     alignItems: 'flex-start',
     gap: tokens.spacing.xs,
     minWidth: 96,
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },
   panel: {
     gap: tokens.spacing.xs,
     borderRadius: tokens.radius.lg,
-    borderWidth: 2,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.lg,
   },
@@ -270,7 +260,7 @@ const styles = StyleSheet.create({
     minHeight: 32,
     maxWidth: '100%',
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.md,
   },
   pressed: {
