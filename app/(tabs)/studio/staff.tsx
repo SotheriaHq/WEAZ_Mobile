@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -237,12 +238,13 @@ export default function StudioStaffScreen() {
                     style={({ pressed }) => [
                       styles.roleChip,
                       {
-                        backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-                        borderColor: selected ? theme.colors.primary : theme.colors.border,
+                        backgroundColor: 'transparent',
+                        borderColor: 'transparent',
                         opacity: pressed ? 0.82 : 1,
                       },
                     ]}
                   >
+                    <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                     <AppText variant="captionBold" tone={selected ? 'primary' : 'secondary'}>
                       {roleLabel(item)}
                     </AppText>
@@ -427,6 +429,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   roleChip: {
+    overflow: 'hidden',
     minHeight: 36,
     borderWidth: 2,
     borderRadius: tokens.radius.full,

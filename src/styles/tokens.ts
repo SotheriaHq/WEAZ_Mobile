@@ -571,6 +571,25 @@ export const tokens = {
       islandDark: 0.56,
       /** Highlight scalar for large lightweight surfaces (cards, viewers, island). */
       surfaceHighlight: 0.85,
+      /** Neutral control glass (secondary/outline buttons, chips, tabs, tags) on app surfaces. */
+      controlLight: 0.5,
+      controlDark: 0.4,
+      /** Minimal ghost controls in dense UI. */
+      ghostLight: 0.2,
+      ghostDark: 0.18,
+      /** Brand/danger-tinted glass: primary CTAs (strong) and selected/active states (soft). */
+      tintedStrong: 0.86,
+      tintedSoft: 0.24,
+    },
+    /**
+     * Strong Lens material for surfaces that cannot refract (lightweight): the
+     * same character as the AGSL highlights (top-left key-light shoulder,
+     * bottom-right exit caustic, inboard edge shade, Fresnel filament), drawn
+     * with one SVG so every glass control looks like the same material.
+     */
+    lensMaterial: {
+      light: { specular: 0.3, caustic: 0.14, shade: 0.12, rimWidth: 1.2 },
+      dark: { specular: 0.22, caustic: 0.1, shade: 0.2, rimWidth: 1.2 },
     },
     /** Label halo under a refracting lens (tint is only `optics.lensTintAlpha`). */
     lensLegibility: {

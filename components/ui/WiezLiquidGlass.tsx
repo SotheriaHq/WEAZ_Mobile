@@ -11,10 +11,10 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Defs,
   LinearGradient as SvgLinearGradient,
+  RadialGradient,
   Rect,
   Stop,
 } from 'react-native-svg';
@@ -34,15 +34,24 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 const ANDROID_HARDWARE_BLUR_MIN_API = 31;
 const ANDROID_AGSL_REFRACTION_MIN_API = 33;
 
-// Confine the static reflection highlight to a tight top-left outer crescent
-// so the central core of the glass lens remains clear and unobstructed.
-const REFLECTION_START = { x: 0.04, y: 0.0 } as const;
-const REFLECTION_END = { x: 0.62, y: 0.62 } as const;
-const REFLECTION_LOCATIONS = [0, 0.14, 0.34] as const;
+/** Neutral charcoal for the inboard edge shade (same as the AGSL shader). */
+const LENS_SHADE_HEX = '#0E0E10';
 
-const DEPTH_START = { x: 0.5, y: 0.0 } as const;
-const DEPTH_END = { x: 0.5, y: 1.0 } as const;
-const DEPTH_LOCATIONS = [0, 0.25, 0.72, 1] as const;
+/** `rgba(...)` for a hex/rgb(a) colour at `alpha`; null when the colour cannot be parsed. */
+export function withGlassAlpha(color: string, alpha: number): string | null {
+  const a = Math.round(clamp(alpha, 0, 1) * 1000) / 1000;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(color.trim());
+  if (hex) {
+    let digits = hex[1];
+    if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
+    const r = Number.parseInt(digits.slice(0, 2), 16);
+    const g = Number.parseInt(digits.slice(2, 4), 16);
+    const b = Number.parseInt(digits.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(color.trim());
+  return rgb ? `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${a})` : null;
+}
 
 const DEFAULT_CURVATURE = tokens.liquidGlass.optics.curvature;
 const DEFAULT_OPTICAL_THICKNESS = tokens.liquidGlass.optics.opticalThickness;
@@ -105,6 +114,11 @@ export type WiezLiquidGlassProps = AccessibilityProps & {
    * Use a `tokens.liquidGlass.fallbackTint.*` role, never a literal.
    */
   fallbackTintAlpha?: number;
+  /**
+   * Glass colour (theme brand/danger colour for tinted glass). Defaults to the neutral
+   * theme tint. Alpha still comes from `tintAlpha` / `fallbackTintAlpha` / intensity.
+   */
+  tintColor?: string;
   /** Optional chromatic dispersion (`0..1`). Defaults to `0` (disabled). */
   chromaticAberration?: number;
   /** Sibling backdrop ref paired with `WiezLiquidGlassBackdrop` via `useLiquidGlassBlurTarget()` on Android. Never attach to an ancestor containing this lens. */
@@ -372,6 +386,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   reflectionIntensity,
   tintAlpha,
   fallbackTintAlpha,
+  tintColor,
   chromaticAberration = DEFAULT_CHROMA,
   blurTarget,
   initialSize,
@@ -454,12 +469,16 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
 
   const hasExplicitTint = typeof tintAlpha === 'number' && Number.isFinite(tintAlpha);
   const nonRefractingTint = hasExplicitTint ? tintAlpha : fallbackTintAlpha;
-  const transmissionColor = resolveTransmissionColor(
+  const neutralTransmission = resolveTransmissionColor(
     effectiveScheme,
     intensity,
     liveOpticalBackdropActive,
     nonRefractingTint,
   );
+  const transmissionColor = tintColor
+    ? (withGlassAlpha(tintColor, resolveTintAlpha(effectiveScheme, intensity, nonRefractingTint)) ??
+      neutralTransmission)
+    : neutralTransmission;
   // The refracting (AGSL) path always uses the Strong Lens tint from tokens unless a caller
   // explicitly overrides it; API 31-32 blur, iOS and lightweight use the fallback tint.
   const tintAlphaValue =
@@ -499,14 +518,16 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
       ? Math.min(Math.max(0, borderRadius), Math.min(surfaceWidth, surfaceHeight) / 2)
       : Math.max(0, borderRadius);
 
-  const tintColorInt = toAndroidColorInt(palette.tintHex);
+  const tintColorInt = toAndroidColorInt(tintColor ?? palette.tintHex);
 
-  // When Android API 33+ AGSL is active, refraction + blur + sheer tint + rim + corner
-  // gloss all composite inside one hardware fragment shader pass; avoid stacking extra JS
-  // gradient/SVG layers on top. API 31-32, iOS, and lightweight render the JS rim stack.
+  // When Android API 33+ AGSL is active, refraction + tint + Fresnel + specular all
+  // composite inside one hardware fragment shader pass; no JS layers on top. Everywhere
+  // else (lightweight, API < 33, iOS) the Strong Lens material is drawn with one SVG.
   const renderJsGlassOverlays = !androidAgslActive;
-  const canRenderRimSvg =
-    renderJsGlassOverlays && effectiveRimStrength > 0 && surfaceWidth > 6 && surfaceHeight > 6;
+  const canRenderMaterialSvg = renderJsGlassOverlays && surfaceWidth > 6 && surfaceHeight > 6;
+  const material = tokens.liquidGlass.lensMaterial[effectiveScheme];
+  const reflectionLevel = clamp(effectiveReflectionStrength, 0, 1.5);
+  const materialInset = material.rimWidth / 2;
 
   return (
     <View
@@ -583,38 +604,6 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
             ]}
           />
 
-          {/* Subtle internal surface balance (zero dark bottom mud) */}
-          <ExpoLinearGradient
-            colors={palette.depthColors}
-            locations={DEPTH_LOCATIONS}
-            start={DEPTH_START}
-            end={DEPTH_END}
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { borderRadius: clampedBorderRadius }]}
-          />
-
-          {/* Tight top-left outer crescent reflection highlight */}
-          {effectiveReflectionStrength > 0 ? (
-            <View
-              pointerEvents="none"
-              accessible={false}
-              importantForAccessibility="no-hide-descendants"
-              style={[
-                StyleSheet.absoluteFill,
-                { opacity: clamp(effectiveReflectionStrength, 0, 1), borderRadius: clampedBorderRadius },
-              ]}
-            >
-              <ExpoLinearGradient
-                colors={palette.reflectionColors}
-                locations={REFLECTION_LOCATIONS}
-                start={REFLECTION_START}
-                end={REFLECTION_END}
-                pointerEvents="none"
-                style={StyleSheet.absoluteFill}
-              />
-            </View>
-          ) : null}
-
           {/* Interactive press sheen without opaque fill jumps */}
           {pressed ? (
             <View
@@ -630,8 +619,9 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
         </>
       ) : null}
 
-      {/* Hairline curved directional specular rim (single stroke, no metallic bezel) */}
-      {canRenderRimSvg ? (
+      {/* Strong Lens material (no refraction): key-light shoulder, exit caustic,
+          inboard edge shade and Fresnel filament, all following the shape. */}
+      {canRenderMaterialSvg ? (
         <View
           pointerEvents="none"
           accessible={false}
@@ -645,13 +635,21 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
             pointerEvents="none"
           >
             <Defs>
-              <SvgLinearGradient
-                id={rimGradientId}
-                x1="12%"
-                y1="0%"
-                x2="88%"
-                y2="100%"
-              >
+              <RadialGradient id={`${rimGradientId}-spec`} cx="26%" cy="8%" rx="64%" ry="80%">
+                <Stop offset="0" stopColor={palette.specularHex} stopOpacity={clamp(material.specular * reflectionLevel, 0, 1)} />
+                <Stop offset="0.45" stopColor={palette.specularHex} stopOpacity={clamp(material.specular * 0.28 * reflectionLevel, 0, 1)} />
+                <Stop offset="1" stopColor={palette.specularHex} stopOpacity={0} />
+              </RadialGradient>
+              <RadialGradient id={`${rimGradientId}-caustic`} cx="80%" cy="96%" rx="46%" ry="58%">
+                <Stop offset="0" stopColor={palette.specularHex} stopOpacity={clamp(material.caustic * reflectionLevel, 0, 1)} />
+                <Stop offset="1" stopColor={palette.specularHex} stopOpacity={0} />
+              </RadialGradient>
+              <SvgLinearGradient id={`${rimGradientId}-shade`} x1="12%" y1="0%" x2="88%" y2="100%">
+                <Stop offset="0" stopColor={LENS_SHADE_HEX} stopOpacity={0} />
+                <Stop offset="0.6" stopColor={LENS_SHADE_HEX} stopOpacity={material.shade * 0.4} />
+                <Stop offset="1" stopColor={LENS_SHADE_HEX} stopOpacity={material.shade} />
+              </SvgLinearGradient>
+              <SvgLinearGradient id={rimGradientId} x1="12%" y1="0%" x2="88%" y2="100%">
                 {palette.rimStops.map((stop) => (
                   <Stop
                     key={stop.offset}
@@ -662,17 +660,48 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
                 ))}
               </SvgLinearGradient>
             </Defs>
+            {reflectionLevel > 0 ? (
+              <>
+                <Rect
+                  width={surfaceWidth}
+                  height={surfaceHeight}
+                  rx={clampedBorderRadius}
+                  ry={clampedBorderRadius}
+                  fill={`url(#${rimGradientId}-spec)`}
+                />
+                <Rect
+                  width={surfaceWidth}
+                  height={surfaceHeight}
+                  rx={clampedBorderRadius}
+                  ry={clampedBorderRadius}
+                  fill={`url(#${rimGradientId}-caustic)`}
+                />
+              </>
+            ) : null}
             <Rect
-              x={0.5}
-              y={0.5}
-              width={surfaceWidth - 1}
-              height={surfaceHeight - 1}
-              rx={Math.max(0, clampedBorderRadius - 0.5)}
-              ry={Math.max(0, clampedBorderRadius - 0.5)}
+              x={1.6}
+              y={1.6}
+              width={Math.max(0, surfaceWidth - 3.2)}
+              height={Math.max(0, surfaceHeight - 3.2)}
+              rx={Math.max(0, clampedBorderRadius - 1.6)}
+              ry={Math.max(0, clampedBorderRadius - 1.6)}
               fill="none"
-              stroke={`url(#${rimGradientId})`}
-              strokeWidth={0.85}
+              stroke={`url(#${rimGradientId}-shade)`}
+              strokeWidth={2.2}
             />
+            {effectiveRimStrength > 0 ? (
+              <Rect
+                x={materialInset}
+                y={materialInset}
+                width={surfaceWidth - material.rimWidth}
+                height={surfaceHeight - material.rimWidth}
+                rx={Math.max(0, clampedBorderRadius - materialInset)}
+                ry={Math.max(0, clampedBorderRadius - materialInset)}
+                fill="none"
+                stroke={`url(#${rimGradientId})`}
+                strokeWidth={material.rimWidth}
+              />
+            ) : null}
           </Svg>
         </View>
       ) : null}

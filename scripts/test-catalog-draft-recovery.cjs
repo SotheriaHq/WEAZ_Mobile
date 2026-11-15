@@ -48,7 +48,8 @@ mocks.set('expo-router', { router: { replace: value => navigations.push(value), 
   useLocalSearchParams: () => ({ recoveryTaskId: 'task', blank: '1' }) });
 for (const name of ['AppBackButton', 'AppBottomSheet', 'AppFloatingMenu', 'AppLoader',
   'AppSelectSheet', 'AppText', 'Button', 'Card', 'Chip', 'Input', 'OptionRow',
-  'RequiredFieldLabel', 'StableImage', 'ThemedSwitch', 'KeyboardAwareFormScroll', 'KeyboardStickyFooter']) {
+  'RequiredFieldLabel', 'StableImage', 'ThemedSwitch', 'KeyboardAwareFormScroll', 'KeyboardStickyFooter',
+  'LiquidGlassFill']) {
   mocks.set(`@/components/ui/${name}`, new Proxy({}, { get: (_, key) => host(String(key)) }));
 }
 for (const name of ['DesignTaxonomyProposalField', 'DesignMediaStrip']) {

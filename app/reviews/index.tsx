@@ -7,6 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import DeleteReviewConfirmSheet from '@/components/reviews/DeleteReviewConfirmSheet';
@@ -245,12 +246,13 @@ export default function MyReviewsScreen() {
                 style={({ pressed }) => [
                   styles.filterChip,
                   {
-                    backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: 'transparent',
+                    borderColor: 'transparent',
                   },
                   pressed ? styles.pressed : null,
                 ]}
               >
+                <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                 <AppText variant="captionBold" tone={selected ? 'inverse' : 'secondary'}>
                   {item.label}
                 </AppText>
@@ -305,6 +307,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.md,
   },
   filterChip: {
+    overflow: 'hidden',
     borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,

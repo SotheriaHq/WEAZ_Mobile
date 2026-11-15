@@ -24,7 +24,7 @@ import Reanimated, {
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { AppText } from '@/components/ui/AppText';
-import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
+import { LiquidGlassFill, type GlassRole } from '@/components/ui/LiquidGlassFill';
 
 type Props = {
   label: string;
@@ -85,25 +85,22 @@ function OptionChip({
   disabled,
 }: Pick<Props, 'label' | 'selected' | 'onPress' | 'style' | 'disabled'>) {
   const { theme } = useTheme();
-  const { primary, primarySoft, border, focusRing, disabledSurface, disabledBorder } = theme.colors;
-  const restFill = withZeroAlpha(primarySoft);
+  const { primary } = theme.colors;
   const progress = useSharedValue(selected ? 1 : 0);
   const press = useSharedValue(0);
+  const [pressed, setPressed] = React.useState(false);
 
   React.useEffect(() => {
     progress.value = withTiming(selected ? 1 : 0, OPTION_SELECT_TIMING);
   }, [progress, selected]);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    const idleFill = interpolateColor(press.value, [0, 1], [restFill, primarySoft]);
-    const idleEdge = interpolateColor(press.value, [0, 1], [border, focusRing]);
-    return {
-      backgroundColor: interpolateColor(progress.value, [0, 1], [idleFill, primary]),
-      borderColor: interpolateColor(progress.value, [0, 1], [idleEdge, primary]),
-      shadowOpacity: progress.value * 0.28,
-      transform: [{ scale: 1 - press.value * 0.05 }],
-    };
-  });
+  // The glass carries the fill now (neutral at rest, system purple when chosen);
+  // the UI thread still owns the give under the finger and the selection glow.
+  const animatedStyle = useAnimatedStyle(() => ({
+    shadowOpacity: progress.value * 0.28,
+    transform: [{ scale: 1 - press.value * 0.05 }],
+  }));
+  const glassRole: GlassRole = disabled ? 'disabled' : selected ? 'brand' : 'control';
 
   return (
     <Reanimated.View layout={LinearTransition.duration(160)} style={styles.touchTarget}>
@@ -111,9 +108,11 @@ function OptionChip({
         onPress={onPress}
         onPressIn={() => {
           press.value = withTiming(1, OPTION_PRESS_IN);
+          setPressed(true);
         }}
         onPressOut={() => {
           press.value = withSpring(0, OPTION_PRESS_OUT);
+          setPressed(false);
         }}
         disabled={disabled}
         hitSlop={4}
@@ -124,13 +123,18 @@ function OptionChip({
           style={[
             styles.base,
             styles.optionBase,
+            styles.glassHost,
             { shadowColor: primary, elevation: selected ? 3 : 0 },
-            disabled
-              ? { backgroundColor: disabledSurface, borderColor: disabledBorder }
-              : animatedStyle,
+            disabled ? null : animatedStyle,
             style,
           ]}
         >
+          <LiquidGlassFill
+            glassRole={glassRole}
+            inset={2}
+            borderRadius={tokens.radius.full}
+            pressed={pressed && !disabled}
+          />
           {selected ? (
             <Reanimated.View entering={ZoomIn.duration(160)} exiting={ZoomOut.duration(110)}>
               <AppText variant="smallBold" tone="inverse">
@@ -190,6 +194,27 @@ function LegacyChip({
   // Pending custom tags use a warning-tinted outline over a soft surface instead
   // of the solid selected fill, so "added but not yet globally approved" is legible.
   const usePendingTreatment = pending && !isNav && !isSwatch;
+  // Strong Lens glass role. Runway-stage nav chips stay text-only until selected
+  // (chrome over video, not plates); everything else is glass in every state.
+  const glassRole: GlassRole | null = disabled
+    ? 'disabled'
+    : isStageNav
+      ? selected
+        ? 'stage'
+        : null
+      : isNav
+        ? selected
+          ? 'brandSoft'
+          : 'ghost'
+        : usePendingTreatment
+          ? 'warningSoft'
+          : isSwatch
+            ? selected
+              ? 'brandSoft'
+              : 'control'
+            : selected
+              ? 'brand'
+              : 'control';
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -219,40 +244,13 @@ function LegacyChip({
           isNav && selected && styles.navSelected,
           isNav && !selected && styles.navInactive,
           isStageNav && styles.stageNavBase,
+          styles.glassHost,
           {
-            backgroundColor: isSwatch
-              ? selected
-                ? theme.colors.primarySoft
-                : 'transparent'
-              : (isStageNav || isNav)
-                  ? 'transparent'
-                  : usePendingTreatment
-                    ? theme.colors.surfaceAlt
-                    : selected
-                      ? theme.colors.primary
-                      : disabled
-                        ? theme.colors.disabledSurface
-                        : // Unselected is an OFFER, not a plate.
-                          //
-                          // It used to be the same `surfaceAlt` fill the
-                          // selected chip's neighbours, cards and inputs all
-                          // use, so a row of options read as a row of grey
-                          // blocks with one purple one — the unselected chips
-                          // looked like disabled chrome rather than choices.
-                          // Clear ground with a defined edge reads as
-                          // "available": the ring is the affordance, the fill
-                          // is the answer.
-                          'transparent',
-            borderColor: (isStageNav || isNav)
-              ? 'transparent'
-              : usePendingTreatment
-                ? theme.colors.warning
-                : selected
-                  ? theme.colors.primary
-                  : disabled
-                    ? theme.colors.disabledBorder
-                    : theme.colors.border,
-            // The nav underline is gone — the pill is the indicator now.
+            // The glass is the fill and its density change is the edge, so the
+            // box itself is clear. (Unselected stays an offer: neutral glass,
+            // not a grey plate; selected is system-purple glass.)
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
             borderBottomColor: 'transparent',
             borderWidth: 0,
             // Pressed tints the ring instead of fading the whole chip, so the
@@ -268,16 +266,8 @@ function LegacyChip({
           disabled: Boolean(disabled),
         }}
       >
-        {isNav && selected ? (
-          <WiezLiquidGlass
-            mode="lightweight"
-            intensity="prominent"
-            tintMode={isStageNav ? 'dark' : 'auto'}
-            tintAlpha={isStageNav ? tokens.liquidGlass.fallbackTint.stageChrome : undefined}
-            borderRadius={tokens.radius.full}
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-          />
+        {glassRole ? (
+          <LiquidGlassFill glassRole={glassRole} borderRadius={tokens.radius.full} />
         ) : null}
         {isSwatch ? (
           <View
@@ -385,6 +375,11 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     flexShrink: 1,
+  },
+  /** Clips the glass fill to the pill. */
+  glassHost: {
+    overflow: 'hidden',
+    position: 'relative',
   },
   /**
    * Runway filter chips. Rounded pill, no plate.

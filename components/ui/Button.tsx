@@ -9,9 +9,8 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill, type GlassRole } from '@/components/ui/LiquidGlassFill';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { MuseLoader } from '@/components/ui/MuseLoader';
@@ -215,84 +214,40 @@ export function Button({
   }, [scale, translateY]);
 
   const isInert = Boolean(disabled) && !isBusy;
-  const buttonTokens = theme.colors.button;
+  const effectiveVariant = variant === 'neumorphic' ? 'secondary' : variant;
+  const isTextOnly = effectiveVariant === 'link';
 
-  // ── Container style per variant (theme-adaptive + tactile pressed states) ───
-  const variantContainer: ViewStyle = (() => {
-    const base: ViewStyle = {
-      borderRadius: tokens.radius.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: tokens.spacing.sm,
-      borderWidth: 2,
-    };
-
-    if (isInert) {
-      return {
-        ...base,
-        backgroundColor:
-          variant === 'outline' || variant === 'ghost' || variant === 'link'
-            ? 'transparent'
-            : buttonTokens.surface.disabled,
-        borderColor:
-          variant === 'ghost' || variant === 'link'
-            ? 'transparent'
-            : buttonTokens.border.disabled,
-        borderWidth: variant === 'ghost' || variant === 'link' ? 0 : 2,
-      };
-    }
-
-    const effectiveVariant = variant === 'neumorphic' ? 'secondary' : variant;
-
-    switch (effectiveVariant) {
-      case 'brand':
-      case 'primary':
-        // Native primary maps to brand color for backward compatibility
-        return {
-          ...base,
-          backgroundColor: isPressed ? buttonTokens.surface.brandPressed : buttonTokens.surface.brand,
-          borderColor: isPressed ? buttonTokens.surface.brandPressed : buttonTokens.surface.brand,
-        };
-      case 'secondary':
-        return {
-          ...base,
-          backgroundColor: isPressed ? buttonTokens.surface.secondaryPressed : buttonTokens.surface.secondary,
-          borderTopColor: isPressed ? buttonTokens.border.secondaryTopPressed : buttonTokens.border.secondaryTop,
-          borderLeftColor: isPressed ? buttonTokens.border.secondaryTopPressed : buttonTokens.border.secondaryTop,
-          borderBottomColor: isPressed ? buttonTokens.border.secondaryBottomPressed : buttonTokens.border.secondaryBottom,
-          borderRightColor: isPressed ? buttonTokens.border.secondaryBottomPressed : buttonTokens.border.secondaryBottom,
-        };
-      case 'outline':
-        return {
-          ...base,
-          backgroundColor: isPressed ? buttonTokens.surface.outlinePressed : buttonTokens.surface.outline,
-          borderColor: isPressed ? buttonTokens.border.outlinePressed : buttonTokens.border.outline,
-        };
-      case 'ghost':
-        return {
-          ...base,
-          backgroundColor: isPressed ? theme.colors.surfaceSubtle : 'transparent',
-          borderColor: 'transparent',
-          borderWidth: 0,
-        };
-      case 'link':
-        return {
-          ...base,
-          backgroundColor: 'transparent',
-          borderColor: 'transparent',
-          borderWidth: 0,
-        };
-      case 'danger':
-        return {
-          ...base,
-          backgroundColor: isPressed ? buttonTokens.surface.dangerPressed : buttonTokens.surface.danger,
-          borderColor: isPressed ? buttonTokens.surface.dangerPressed : buttonTokens.surface.danger,
-        };
-      default:
-        return base;
-    }
-  })();
+  /*
+    Strong Lens glass for every button (owner decision, 15 Nov 2026): primary
+    and danger are system-coloured glass at high tint so white labels keep their
+    contrast; secondary/outline are neutral glass; ghost is barely-there glass;
+    link stays text. The 2px border is kept (transparent) so no button changes
+    size, and the glass bleeds under it.
+  */
+  const glassRole: GlassRole | null = isTextOnly
+    ? null
+    : isInert
+      ? effectiveVariant === 'ghost' || effectiveVariant === 'outline'
+        ? 'ghost'
+        : 'disabled'
+      : effectiveVariant === 'brand' || effectiveVariant === 'primary'
+        ? 'brand'
+        : effectiveVariant === 'danger'
+          ? 'danger'
+          : effectiveVariant === 'ghost'
+            ? 'ghost'
+            : 'control';
+  const borderWidth = effectiveVariant === 'ghost' || isTextOnly ? 0 : 2;
+  const variantContainer: ViewStyle = {
+    borderRadius: tokens.radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    borderWidth,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
+  };
 
   const variantTone = (() => {
     if (isInert) return 'disabled' as const;
@@ -310,27 +265,6 @@ export function Button({
       default:
         return 'inverse' as const;
     }
-  })();
-
-  // ── Tactile Inset Depth Overlay (calibrated dual-tone depth emulation) ─────
-  const isSecondary = variant === 'secondary' || variant === 'neumorphic';
-  const showTactileOverlay =
-    !isInert &&
-    !isBusy &&
-    (isSecondary ||
-      (isPressed &&
-        (variant === 'brand' || variant === 'primary' || variant === 'danger' || variant === 'outline')));
-
-  const tactileOverlayColors: readonly [string, string, ...string[]] = (() => {
-    if (isSecondary) {
-      return isPressed
-        ? buttonTokens.tactile.secondaryPressedOverlay
-        : buttonTokens.tactile.secondaryRestOverlay;
-    }
-    if (variant === 'outline') {
-      return buttonTokens.tactile.outlineOverlay;
-    }
-    return buttonTokens.tactile.primaryOverlay;
   })();
 
   return (
@@ -362,15 +296,14 @@ export function Button({
           appearance,
         ]}
       >
-        {showTactileOverlay && (
-          <LinearGradient
-            colors={tactileOverlayColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.tactileOverlay}
-            pointerEvents="none"
+        {glassRole ? (
+          <LiquidGlassFill
+            glassRole={glassRole}
+            inset={borderWidth}
+            borderRadius={tokens.radius.lg}
+            pressed={isPressed && !isInert}
           />
-        )}
+        ) : null}
         <View style={[styles.content, sizesToLabel && styles.noShrink]}>
           {left}
           <View style={[styles.labelSlot, sizesToLabel && styles.noShrink]}>
@@ -411,15 +344,6 @@ const styles = StyleSheet.create({
     minWidth: 44,
     overflow: 'hidden',
     position: 'relative',
-  },
-  tactileOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 10,
-    borderTopLeftRadius: tokens.radius.lg - 2,
-    borderTopRightRadius: tokens.radius.lg - 2,
   },
   content: {
     flexDirection: 'row',

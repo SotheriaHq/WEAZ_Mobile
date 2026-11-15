@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { tokens } from '@/src/styles/tokens';
@@ -52,14 +53,15 @@ function OptionChip({
       style={({ pressed }) => [
         styles.chip,
         {
-          backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt,
-          borderColor: selected ? theme.colors.primary : theme.colors.border,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
         },
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
       accessibilityState={{ selected }}
     >
+      <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
       <AppText variant="captionBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
         {label}
       </AppText>
@@ -218,6 +220,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   chip: {
+    overflow: 'hidden',
     minHeight: 38,
     borderRadius: tokens.radius.full,
     borderWidth: 2,

@@ -47,6 +47,7 @@ import {
   type SelectSheetOption,
 } from '@/components/ui/AppSelectSheet';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
@@ -1332,13 +1333,14 @@ export default function CreateDesignComposerScreen() {
                 style={({ pressed }) => [
                   styles.categoryOption,
                   {
-                    backgroundColor: selected ? theme.colors.primarySoft : (theme.colors.surfaceCard ?? theme.colors.surfaceAlt),
-                    borderColor: selected ? theme.colors.primary : 'transparent',
-                    borderWidth: selected ? 2 : 0,
+                    backgroundColor: 'transparent',
+                    borderColor: 'transparent',
+                    borderWidth: 0,
                   },
                   pressed ? styles.optionPressed : null,
                 ]}
               >
+                <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} borderRadius={tokens.radius.lg} />
                 <AppText variant="bodyBold" tone={selected ? 'primary' : 'default'}>
                   {option.label}
                 </AppText>
@@ -1560,14 +1562,15 @@ export default function CreateDesignComposerScreen() {
                     style={[
                       styles.segmentButton,
                       {
-                        backgroundColor: isSelected ? theme.colors.primary : (theme.colors.surfaceCard ?? theme.colors.surfaceAlt),
-                        borderColor: isSelected ? theme.colors.primary : 'transparent',
-                        borderWidth: isSelected ? 2 : 0,
+                        backgroundColor: 'transparent',
+                        borderColor: 'transparent',
+                        borderWidth: 0,
                       },
                     ]}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                   >
+                    <LiquidGlassFill glassRole={isSelected ? 'brand' : 'control'} borderRadius={tokens.radius.md} />
                     <AppText
                       variant="captionBold"
                       tone={isSelected ? 'inverse' : 'default'}
@@ -1976,6 +1979,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   segmentButton: {
+    overflow: 'hidden',
     flex: 1,
     minHeight: 40,
     paddingHorizontal: tokens.spacing.xs,
@@ -2004,6 +2008,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   categoryOption: {
+    overflow: 'hidden',
     minHeight: tokens.button.md.height,
     borderRadius: tokens.radius.lg,
     borderWidth: 0,

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { tokens } from '@/src/styles/tokens';
@@ -327,12 +328,13 @@ export default function ProductBagSelectorSheet({
                       style={[
                         styles.chip,
                         {
-                          borderColor: selected ? theme.colors.actionBrand : theme.colors.border,
-                          backgroundColor: selected ? theme.colors.actionBrand : theme.colors.surface,
+                          borderColor: 'transparent',
+                          backgroundColor: 'transparent',
                           opacity: disabled ? 0.4 : 1,
                         },
                       ]}
                     >
+                      <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                       <AppText variant="caption" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
                         {size}
                       </AppText>
@@ -365,12 +367,13 @@ export default function ProductBagSelectorSheet({
                       style={[
                         styles.chip,
                         {
-                          borderColor: selected ? theme.colors.actionBrand : theme.colors.border,
-                          backgroundColor: selected ? theme.colors.actionBrand : theme.colors.surface,
+                          borderColor: 'transparent',
+                          backgroundColor: 'transparent',
                           opacity: disabled ? 0.4 : 1,
                         },
                       ]}
                     >
+                      <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                       <AppText variant="caption" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
                         {color}
                       </AppText>
@@ -416,6 +419,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   chip: {
+    overflow: 'hidden',
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,

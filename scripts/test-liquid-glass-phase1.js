@@ -193,6 +193,8 @@ function createHarness() {
           G: (props) => React.createElement('SvgG', props, props.children),
           LinearGradient: (props) =>
             React.createElement('SvgLinearGradient', props, props.children),
+          RadialGradient: (props) =>
+            React.createElement('SvgRadialGradient', props, props.children),
           Circle: (props) => React.createElement('SvgCircle', props, props.children),
           Rect: (props) => React.createElement('SvgRect', props, props.children),
           Stop: (props) => React.createElement('SvgStop', props, props.children),
@@ -488,12 +490,17 @@ async function runTests() {
       'Full border radius must clamp cleanly to min(120,40)/2 = 20',
     );
     assert.equal(flattenStyle(first.props.style).elevation, 0);
-    assert.equal(collectNodes(first, (n) => n.type === 'ExpoLinearGradient').length, 2);
-
-    // Must render ONLY ONE hairline specular Rect (0.85dp) — never 2-ring metallic bezel
+    // Strong Lens material (no refraction): one SVG with key-light shoulder, exit
+    // caustic, inboard edge shade and a single Fresnel filament — no gradient haze layers.
+    assert.equal(collectNodes(first, (n) => n.type === 'ExpoLinearGradient').length, 0);
+    assert.equal(collectNodes(first, (n) => n.type === 'Svg').length, 1);
+    assert.equal(collectNodes(first, (n) => n.type === 'SvgRadialGradient').length, 2, 'Specular shoulder + exit caustic');
     const rects = collectNodes(first, (n) => n.type === 'SvgRect');
-    assert.equal(rects.length, 1, 'Lightweight rim must use 1 single hairline stroke, never a 2-ring bezel');
-    assert.ok(rects[0].props.strokeWidth < 1, 'Hairline rim strokeWidth must be sub-1dp');
+    assert.equal(rects.length, 4, 'Material = specular, caustic, edge shade, Fresnel filament');
+    const filaments = rects.filter((r) => r.props.fill === 'none' && /-shade\)$/.test(String(r.props.stroke)) === false);
+    assert.equal(filaments.length, 1, 'Exactly one Fresnel filament (never a 2-ring metallic bezel)');
+    assert.equal(filaments[0].props.strokeWidth, tokens.liquidGlass.lensMaterial[scheme].rimWidth);
+    assert.ok(filaments[0].props.strokeWidth <= 1.5, 'Fresnel filament stays a fine line');
 
     assert.equal(
       collectNodes(
@@ -506,8 +513,9 @@ async function runTests() {
     );
 
     const noHi = collectNodes(json, (n) => n.props?.testID === `lw-${scheme}-no-hi`)[0];
-    assert.equal(collectNodes(noHi, (n) => n.type === 'Svg').length, 0);
-    assert.equal(collectNodes(noHi, (n) => n.type === 'ExpoLinearGradient').length, 1);
+    // highlightIntensity={false}: no reflections, only the neutral inboard edge shade.
+    assert.equal(collectNodes(noHi, (n) => n.type === 'ExpoLinearGradient').length, 0);
+    assert.equal(collectNodes(noHi, (n) => n.type === 'SvgRect').length, 1);
     assert.equal(
       collectNodes(
         noHi,
@@ -562,9 +570,11 @@ async function runTests() {
     assert.equal(flattenStyle(dynamicMeasured.props.style).borderRadius, 20);
     assert.equal(collectNodes(dynamicMeasured, (n) => n.type === 'Svg').length, 1);
 
-    const grads = collectNodes(tree.toJSON(), (n) => n.type === 'SvgLinearGradient');
-    assert.equal(grads.length, 3);
-    assert.notEqual(grads[1].props.id, grads[2].props.id);
+    // Each glass owns its gradients (edge shade + Fresnel filament); ids never collide.
+    const grads = collectNodes(tree.toJSON(), (n) => n.type === 'SvgLinearGradient' || n.type === 'SvgRadialGradient');
+    assert.equal(grads.filter((g) => g.type === 'SvgLinearGradient').length, 6);
+    const gradIds = grads.map((g) => g.props.id);
+    assert.equal(new Set(gradIds).size, gradIds.length, 'Gradient ids must be unique per glass instance');
     await renderer.act(async () => tree.unmount());
   }
 
@@ -783,7 +793,7 @@ async function runTests() {
       4,
       'API 31-32 RenderEffect fallback must derive non-zero blur from blurIntensity / blurReductionFactor (12 / 3 = 4)',
     );
-    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 1, 'API 31-32 renders single thin SVG directional rim');
+    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 4, 'API 31-32 renders the Strong Lens material SVG over the blur');
     await renderer.act(async () => tree.unmount());
   }
 
@@ -799,7 +809,7 @@ async function runTests() {
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView').length, 0);
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
     assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
-    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 1);
+    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 4);
     await renderer.act(async () => tree.unmount());
   }
 
@@ -812,7 +822,7 @@ async function runTests() {
       tree = renderer.create(React.createElement(HarnessEnhanced, {}), { createNodeMock });
     });
     assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
-    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'SvgRect').length, 1);
+    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'SvgRect').length, 4);
     await renderer.act(async () => tree.unmount());
   }
 
@@ -1013,6 +1023,17 @@ async function runTests() {
     /tintAlpha=\{scheme === 'dark' \? 0\.\d+/,
     'Island must not hard-code tint alphas',
   );
+  // The active indicator glides (one shared brand-soft glass droplet), it never jumps.
+  assert.match(islandSource, /const IslandActiveIndicator = React\.memo/, 'Island has one shared active indicator');
+  assert.equal(
+    (islandSource.match(/^\s+showPill=\{false\}\s*$/gm) || []).length,
+    2,
+    'Both docks turn off the per-chip crossfading pill',
+  );
+  assert.match(islandSource, /pressedKey\.value \?\? settled\.value/, 'Indicator follows the press on the UI thread at touch-down');
+  assert.match(islandSource, /withSpring\(next\[0\], INDICATOR_SPRING\)/, 'Indicator glides with a spring');
+  assert.match(islandSource, /glassRoleProps\('brandSoft'/, 'Indicator is brand-tinted Strong Lens glass from the role map');
+  assert.equal((islandSource.match(/\{activeIndicator\}/g) || []).length, 2, 'Indicator mounts in both docks');
   const tabsLayoutSource = fs.readFileSync(path.join(ROOT, 'app', '(tabs)', '_layout.tsx'), 'utf8');
   assert.match(
     tabsLayoutSource,

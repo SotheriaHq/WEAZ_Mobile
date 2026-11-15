@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
@@ -343,12 +344,11 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                       style={[
                         styles.tabPill,
                         {
-                          backgroundColor: isSelected
-                            ? theme.colors.primarySoft
-                            : theme.colors.surfaceCard,
+                          backgroundColor: 'transparent',
                         },
                       ]}
                     >
+                      <LiquidGlassFill glassRole={isSelected ? 'brandSoft' : 'control'} borderRadius={tokens.radius.full} />
                       <AppText
                         variant={isSelected ? 'bodyBold' : 'body'}
                         tone={isSelected ? 'primary' : 'default'}
@@ -1208,6 +1208,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   tabPill: {
+    overflow: 'hidden',
     minHeight: 40,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,

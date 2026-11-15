@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import type { ReviewSatisfaction } from '@/src/api/ReviewApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -30,13 +31,14 @@ export default function SatisfactionSelector({ value, onChange, disabled = false
             style={({ pressed }) => [
               styles.option,
               {
-                borderColor: selected ? theme.colors.primary : theme.colors.border,
-                backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                borderColor: 'transparent',
+                backgroundColor: 'transparent',
               },
               pressed && !disabled ? styles.pressed : null,
               disabled ? styles.disabled : null,
             ]}
           >
+            <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.full} />
             <AppText variant="captionBold" tone={option.tone}>
               {option.emoji} {option.label}
             </AppText>
@@ -54,6 +56,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   option: {
+    overflow: 'hidden',
     borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,

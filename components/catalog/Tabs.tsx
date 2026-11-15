@@ -1,12 +1,13 @@
 /**
  * Tabs - Mobile
- * Tab navigation component with smooth underline animation.
- * The underline initialises immediately on first layout (no flicker),
- * then transitions with spring-eased timing on subsequent changes.
+ * Tab navigation with a gliding Strong Lens glass pill behind the active tab.
+ * The pill initialises immediately on first layout (no flicker), then glides
+ * on subsequent changes and follows page swipes on the UI thread.
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { QuickPressable } from '@/components/ui/QuickPressable';
 import Animated, {
   Easing,
@@ -187,30 +188,49 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
     underlineW.value = withTiming(layout.width, { duration: 200, easing: Easing.out(Easing.cubic) });
   }, [activeTab, underlineX, underlineW]);
 
-  const underlineStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX:
-          swipeProgress && indicatorLayouts.value.length === tabs.length
-            ? interpolate(
-                swipeProgress.value,
-                indicatorLayouts.value.map((_, index) => index),
-                indicatorLayouts.value.map((layout) => layout.x),
-                Extrapolation.CLAMP,
-              )
-            : underlineX.value,
-      },
-    ],
-    width:
-      swipeProgress && indicatorLayouts.value.length === tabs.length
-            ? interpolate(
-                swipeProgress.value,
-                indicatorLayouts.value.map((_, index) => index),
-                indicatorLayouts.value.map((layout) => layout.width),
-                Extrapolation.CLAMP,
-              )
-            : underlineW.value,
-  }));
+  /*
+    The active indicator is a Strong Lens glass pill (system purple, low tint)
+    behind the active tab, gliding like the island's. Position and width stay
+    on the UI thread (including the finger-driven swipe interpolation); the
+    glass itself is laid out once at the active tab's width (`pillBase`) and
+    scaleX bridges any width difference mid-glide, so a swipe never re-lays-out
+    the glass per frame.
+  */
+  const [pillBase, setPillBase] = useState(0);
+  const pillBaseSV = useSharedValue(0);
+  useEffect(() => {
+    const layout = tabLayouts.current[activeTab];
+    if (layout && layout.width > 0 && layout.width !== pillBase) {
+      setPillBase(layout.width);
+      pillBaseSV.value = layout.width;
+    }
+  });
+
+  const underlineStyle = useAnimatedStyle(() => {
+    const swiping = swipeProgress && indicatorLayouts.value.length === tabs.length;
+    const x = swiping
+      ? interpolate(
+          swipeProgress.value,
+          indicatorLayouts.value.map((_, index) => index),
+          indicatorLayouts.value.map((layout) => layout.x),
+          Extrapolation.CLAMP,
+        )
+      : underlineX.value;
+    const w = swiping
+      ? interpolate(
+          swipeProgress.value,
+          indicatorLayouts.value.map((_, index) => index),
+          indicatorLayouts.value.map((layout) => layout.width),
+          Extrapolation.CLAMP,
+        )
+      : underlineW.value;
+    const base = pillBaseSV.value > 0 ? pillBaseSV.value : Math.max(w, 1);
+    return {
+      opacity: w > 0 ? 1 : 0,
+      width: base,
+      transform: [{ translateX: x + (w - base) / 2 }, { scaleX: w > 0 ? w / base : 1 }],
+    };
+  });
 
   const TabContainer = scrollable ? ScrollView : View;
   const containerProps: any = scrollable
@@ -226,6 +246,12 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
 
   return (
     <View style={[styles.container, { borderBottomColor: theme.colors.borderDefault ?? theme.colors.border }]}>
+      {/* Gliding glass pill behind the active tab (painted first, so labels sit on it). */}
+      <Animated.View pointerEvents="none" style={[styles.activePill, underlineStyle]}>
+        {pillBase > 0 ? (
+          <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
+        ) : null}
+      </Animated.View>
       <TabContainer {...containerProps}>
         {tabs.map((tab, index) => (
           <TabItem
@@ -241,11 +267,6 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
           />
         ))}
       </TabContainer>
-
-      {/* Animated underline — semantic interactive accent */}
-      <Animated.View
-        style={[styles.underline, { backgroundColor: theme.colors.actionBrand ?? theme.colors.primary }, underlineStyle]}
-      />
     </View>
   );
 }
@@ -306,12 +327,13 @@ const styles = StyleSheet.create({
   badgeText: {
     letterSpacing: 0.1,
   },
-  underline: {
+  activePill: {
     position: 'absolute',
-    bottom: 0,
-    height: 2.5,
-    borderRadius: 2,
+    top: 6,
+    bottom: 6,
     left: 0,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
   },
 });
 

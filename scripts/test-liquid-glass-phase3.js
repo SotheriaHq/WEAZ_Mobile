@@ -275,6 +275,8 @@ function createPhase3Harness(initialOS = 'android', initialVersion = 36) {
           G: (props) => React.createElement('SvgG', props, props.children),
           LinearGradient: (props) =>
             React.createElement('SvgLinearGradient', props, props.children),
+          RadialGradient: (props) =>
+            React.createElement('SvgRadialGradient', props, props.children),
           Circle: (props) => React.createElement('SvgCircle', props, props.children),
           Rect: (props) => React.createElement('SvgRect', props, props.children),
           Stop: (props) => React.createElement('SvgStop', props, props.children),
@@ -300,6 +302,12 @@ function createPhase3Harness(initialOS = 'android', initialVersion = 36) {
           interpolateColor: (_val, _range, colors) => colors[0],
           useAnimatedStyle: (fn) => fn(),
           useSharedValue: (v) => ({ value: v }),
+          // The island's gliding indicator reacts on the UI thread; in the harness
+          // it simply runs once so the indicator's frame logic is exercised.
+          useAnimatedReaction: (prepare, react) => {
+            react(prepare(), null);
+          },
+          useReducedMotion: () => false,
           withSpring: (v) => v,
           withTiming: (v) => v,
         };
@@ -908,14 +916,21 @@ async function runTests() {
 
       assert.equal(flattenStyle(selectedNav.props.style).backgroundColor, 'transparent');
       assert.equal(flattenStyle(selectedNav.props.style).borderWidth, 0);
-      assert.ok(
-        collectNodes(selectedNav, (n) => n.type === 'ExpoLinearGradient').length >= 1,
-        'Selected nav Chip must mount lightweight Liquid Glass depth/reflection gradients',
-      );
-      assert.equal(collectNodes(unselectedNav, (n) => n.type === 'ExpoLinearGradient').length, 0);
+      // Strong Lens everywhere (15 Nov 2026): no legacy gradient haze on any chip.
+      assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0);
+      // Runway-stage nav chips stay text-only until selected (chrome over video);
+      // off the stage, unselected nav chips are ghost glass.
       assert.equal(collectNodes(unselectedNav, (n) => n.type === 'Svg').length, 0);
-      assert.equal(collectNodes(optionChip, (n) => n.type === 'ExpoLinearGradient').length, 0);
-      assert.equal(collectNodes(optionChip, (n) => n.type === 'Svg').length, 0);
+      assert.equal(
+        collectNodes(unselectedNav, (n) => n.type === 'View' && typeof n.props?.onLayout === 'function').length,
+        onDarkStage ? 0 : 1,
+        onDarkStage ? 'Unselected stage nav chip carries no glass' : 'Unselected nav chip is ghost glass',
+      );
+      // Option chips (every design-creation picker) are glass in every state.
+      assert.ok(
+        collectNodes(optionChip, (n) => n.type === 'View' && typeof n.props?.onLayout === 'function').length >= 1,
+        'Option chip must mount Strong Lens glass',
+      );
       const selectedNavGlassRoot = collectNodes(
         selectedNav,
         (n) => n.type === 'View' && typeof n.props?.onLayout === 'function',
@@ -960,8 +975,8 @@ async function runTests() {
     assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
     assert.equal(
       collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length,
-      2,
-      'Android IslandGlass must use lightweight WiezLiquidGlass depth + reflection gradients (no separate legacy sheen)',
+      0,
+      'Android IslandGlass uses the Strong Lens material SVG (no legacy gradient sheen)',
     );
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView').length, 0);
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
@@ -1137,9 +1152,13 @@ async function runTests() {
       assert.equal(flattenStyle(androidInitialJson.props.style).overflow, 'hidden');
       assert.equal(collectNodes(androidInitialJson, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
       assert.equal(collectNodes(androidInitialJson, (n) => n.type === 'BlurView').length, 0);
+      assert.equal(collectNodes(androidInitialJson, (n) => n.type === 'ExpoLinearGradient').length, 0);
       assert.ok(
-        collectNodes(androidInitialJson, (n) => n.type === 'ExpoLinearGradient').length >= 1,
-        'Card liquidGlass must render lightweight Liquid Glass transmission/depth gradients',
+        collectNodes(
+          androidInitialJson,
+          (n) => n.type === 'View' && /^rgba\(/.test(String(flattenStyle(n.props?.style).backgroundColor ?? '')),
+        ).length >= 1,
+        'Card liquidGlass must render the Strong Lens transmission fill',
       );
       const cardGlassRoot = collectNodes(
         androidInitialJson,

@@ -14,6 +14,7 @@ import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { SeeMoreLink } from '@/components/ui/InlineNavLink';
 import { ScreenState } from '@/components/ui/ScreenState';
 import {
@@ -465,15 +466,12 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
               style={[
                 styles.chip,
                 {
-                  backgroundColor: isActive
-                    ? theme.colors.text
-                    : theme.colors.surface,
-                  borderColor: isActive
-                    ? theme.colors.text
-                    : theme.colors.border,
+                  backgroundColor: 'transparent',
+                  borderColor: 'transparent',
                 },
               ]}
             >
+              <LiquidGlassFill glassRole={isActive ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
               <AppText
                 variant="captionBold"
                 tone={isActive ? 'inverse' : 'default'}
@@ -723,6 +721,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   chip: {
+    overflow: 'hidden',
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.full,

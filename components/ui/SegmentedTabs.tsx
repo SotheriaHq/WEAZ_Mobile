@@ -14,9 +14,8 @@
  * is exactly where a tab press already competes with the work the new tab is
  * starting.
  *
- * `scaleX` is taken about the view's centre, which is why the bar is laid out
- * at a fixed `INDICATOR_BASIS` and the translation targets the centre of the
- * segment rather than its left edge.
+ * The indicator is a glass pill laid out at the active segment's width;
+ * `scaleX` (about the centre) bridges width changes while it glides.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -30,11 +29,9 @@ import {
 } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-
-/** The indicator's laid-out width; every real width is a scale of this. */
-const INDICATOR_BASIS = 100;
 
 export type SegmentedTabItem<TKey extends string> = {
   key: TKey;
@@ -78,16 +75,27 @@ export function SegmentedTabs<TKey extends string>({
 
   const active = segments[value];
 
+  /*
+    The indicator is a Strong Lens glass pill (system purple, low tint) behind
+    the active segment, gliding like the island's indicator. The glass is laid
+    out once at the active segment's width; while gliding between segments of a
+    different width, scaleX bridges the difference so nothing re-lays-out per
+    frame.
+  */
+  const [pillWidth, setPillWidth] = useState(0);
+  const pillWidthRef = useRef(0);
+  pillWidthRef.current = pillWidth;
   useEffect(() => {
     if (!active || active.width <= 0) return;
-    const nextScale = active.width / INDICATOR_BASIS;
-    // scaleX pivots on the centre, so aim the centre and back off half a basis.
-    const nextTranslate = active.x + active.width / 2 - INDICATOR_BASIS / 2;
+    const base = pillWidthRef.current > 0 ? pillWidthRef.current : active.width;
+    // scaleX pivots on the centre, so aim the centre and back off half the base.
+    const nextTranslate = active.x + active.width / 2 - base / 2;
 
     if (!placedRef.current) {
       placedRef.current = true;
-      translateX.setValue(nextTranslate);
-      scaleX.setValue(nextScale);
+      setPillWidth(active.width);
+      translateX.setValue(active.x);
+      scaleX.setValue(1);
       return;
     }
 
@@ -100,20 +108,41 @@ export function SegmentedTabs<TKey extends string>({
         mass: 0.7,
       }),
       Animated.spring(scaleX, {
-        toValue: nextScale,
+        toValue: active.width / base,
         useNativeDriver: true,
         damping: 20,
         stiffness: 220,
         mass: 0.7,
       }),
-    ]).start();
+    ]).start(({ finished }) => {
+      if (!finished || active.width === base) return;
+      // Re-lay the glass at the exact width once the glide lands.
+      setPillWidth(active.width);
+      translateX.setValue(active.x);
+      scaleX.setValue(1);
+    });
   }, [active, scaleX, translateX]);
 
   return (
     <View
       accessibilityRole="tablist"
-      style={[styles.root, { borderBottomColor: theme.colors.borderDefault ?? theme.colors.border }, style]}
+      style={[styles.root, { borderBottomColor: 'transparent' }, style]}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.indicator,
+          {
+            width: pillWidth,
+            opacity: active && pillWidth > 0 ? 1 : 0,
+            transform: [{ translateX }, { scaleX }],
+          },
+        ]}
+      >
+        {pillWidth > 0 ? (
+          <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
+        ) : null}
+      </Animated.View>
       {items.map((item) => {
         const selected = item.key === value;
         return (
@@ -137,17 +166,6 @@ export function SegmentedTabs<TKey extends string>({
           </Pressable>
         );
       })}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.indicator,
-          {
-            backgroundColor: theme.colors.actionBrand ?? theme.colors.primary,
-            opacity: active ? 1 : 0,
-            transform: [{ translateX }, { scaleX }],
-          },
-        ]}
-      />
     </View>
   );
 }
@@ -170,11 +188,11 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: 'absolute',
-    bottom: 0,
+    top: 5,
+    bottom: 5,
     left: 0,
-    height: 2,
-    width: INDICATOR_BASIS,
-    borderRadius: 1,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
   },
   pressed: {
     opacity: 0.7,

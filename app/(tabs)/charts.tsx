@@ -5,6 +5,7 @@ import { router, useFocusEffect, type Href } from 'expo-router';
 
 import { MeasurementSilhouette } from '@/components/sizing/MeasurementSilhouette';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ProfileApi, type SizeFitProfile } from '@/src/api/ProfileApi';
@@ -254,12 +255,13 @@ export default function ChartsScreen() {
                 style={({ pressed }) => [
                   styles.chip,
                   {
-                    backgroundColor: selected ? theme.colors.primary : 'transparent',
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: 'transparent',
+                    borderColor: 'transparent',
                   },
                   pressed && styles.pressed,
                 ]}
               >
+                <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                 <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
                   {entry.label}
                 </AppText>
@@ -487,12 +489,13 @@ export default function ChartsScreen() {
                   style={({ pressed }) => [
                     styles.chip,
                     {
-                      backgroundColor: selected ? theme.colors.primarySoft : 'transparent',
-                      borderColor: selected ? theme.colors.primary : theme.colors.border,
+                      backgroundColor: 'transparent',
+                      borderColor: 'transparent',
                     },
                     pressed && styles.pressed,
                   ]}
                 >
+                  <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                   <AppText variant="smallBold" tone={selected ? 'primary' : 'secondary'} numberOfLines={1}>
                     {chart.measureLabels[measureIndex]}
                   </AppText>
@@ -587,6 +590,7 @@ const styles = StyleSheet.create({
     paddingRight: tokens.spacing.lg,
   },
   chip: {
+    overflow: 'hidden',
     borderRadius: tokens.radius.full,
     borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,

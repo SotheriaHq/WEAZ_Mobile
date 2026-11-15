@@ -17,6 +17,7 @@ import {
 } from '@/src/api/StoreApi';
 import { LoaderBlock } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Chip } from '@/components/ui/Chip';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
@@ -244,12 +245,13 @@ function SelectorTrigger({
       style={({ pressed }) => [
         styles.selectorTrigger,
         {
-          borderColor: active ? theme.colors.primary : theme.colors.border,
-          backgroundColor: active ? theme.colors.primarySoft : theme.colors.surfaceAlt,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
         },
         pressed && { opacity: 0.78 },
       ]}
     >
+      <LiquidGlassFill glassRole={active ? 'brandSoft' : 'control'} inset={2} borderRadius={12} />
       <AppText variant="captionRegular" tone="muted">{icon}</AppText>
       <AppText
         variant="captionBold"
@@ -1435,6 +1437,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   selectorTrigger: {
+    overflow: 'hidden',
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',

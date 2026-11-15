@@ -41,6 +41,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
@@ -438,12 +439,13 @@ export default function FittingsScreen() {
                   style={({ pressed }) => [
                     styles.unitPill,
                     {
-                      backgroundColor: selected ? theme.colors.primarySoft : 'transparent',
-                      borderColor: selected ? theme.colors.primary : theme.colors.border,
+                      backgroundColor: 'transparent',
+                      borderColor: 'transparent',
                     },
                     pressed ? styles.pressed : null,
                   ]}
                 >
+                  <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                   <AppText variant="bodyBold" tone={selected ? 'primary' : 'secondary'}>
                     {MEASUREMENT_UNIT_LABELS[option]}
                   </AppText>
@@ -655,6 +657,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   unitPill: {
+    overflow: 'hidden',
     flex: 1,
     minHeight: 44,
     borderRadius: tokens.radius.full,

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
@@ -195,12 +196,13 @@ function VisibilityOption({
       style={({ pressed }) => [
         styles.visibilityButton,
         {
-          borderColor: selected ? theme.colors.primary : theme.colors.border,
-          backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
           opacity: pressed ? 0.78 : 1,
         },
       ]}
     >
+      <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.md} />
       <AppText variant="smallBold" tone={selected ? 'primary' : 'default'}>
         {label}
       </AppText>
@@ -258,6 +260,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   visibilityButton: {
+    overflow: 'hidden',
     flex: 1,
     minHeight: tokens.button.md.height,
     borderRadius: tokens.radius.md,

@@ -2,6 +2,7 @@ import React from 'react';
 import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { QuickPressable } from '@/components/ui/QuickPressable';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -51,13 +52,15 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
         style={[
           styles.segment,
           {
-            backgroundColor: isActive ? (theme.colors.surfaceCard ?? theme.colors.surface) : 'transparent',
-            borderColor: isActive ? (theme.colors.borderDefault ?? theme.colors.border) : 'transparent',
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            overflow: 'hidden',
           },
         ]}
         accessibilityRole="button"
         accessibilityState={{ selected: isActive }}
       >
+        {isActive ? <LiquidGlassFill glassRole="brandSoft" inset={2} borderRadius={tokens.radius.full} /> : null}
         <AppText
           variant={isActive ? 'captionBold' : 'captionRegular'}
           tone={isActive ? 'default' : 'muted'}
@@ -94,7 +97,8 @@ export function VisibilityFilter({
           prevents the Android bug where borderRadius on a ScrollView content container
           renders as a rectangle. nestedScrollEnabled allows this horizontal scroll
           to work correctly inside the horizontal tab pager. */}
-      <View style={[styles.pillFrame, { backgroundColor: theme.colors.surfaceRecessed ?? theme.colors.primarySoft, borderColor: theme.colors.borderDefault ?? theme.colors.border }]}>
+      <View style={[styles.pillFrame, { backgroundColor: 'transparent', borderColor: 'transparent' }]}>
+        <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
         <ScrollView
           horizontal
           nestedScrollEnabled

@@ -12,6 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -529,11 +530,12 @@ export default function SearchScreen() {
             style={[
               styles.filterPill,
               {
-                backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-                borderColor: selected ? theme.colors.primary : theme.colors.border,
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
               },
             ]}
           >
+            <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
             <AppText variant="caption">{option.emoji}</AppText>
             <AppText variant="captionBold" tone={selected ? 'inverse' : 'secondary'}>
               {option.label}
@@ -693,11 +695,12 @@ export default function SearchScreen() {
                       style={[
                         styles.recentChip,
                         {
-                          backgroundColor: theme.colors.surface,
-                          borderColor: theme.colors.border,
+                          backgroundColor: 'transparent',
+                          borderColor: 'transparent',
                         },
                       ]}
                     >
+                      <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
                       <Pressable
                         onPress={() => runSubmittedSearch(entry.query)}
                         style={styles.recentChipContent}
@@ -754,12 +757,13 @@ export default function SearchScreen() {
                       style={({ pressed }) => [
                         styles.trendingPill,
                         {
-                          backgroundColor: theme.colors.surfaceAlt,
-                          borderColor: theme.colors.border,
+                          backgroundColor: 'transparent',
+                          borderColor: 'transparent',
                         },
                         pressed ? styles.pressed : null,
                       ]}
                     >
+                      <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
                       <AppText variant="caption">🔥</AppText>
                       <AppText variant="captionBold" tone="primary">
                         {trend.query}
@@ -815,12 +819,13 @@ export default function SearchScreen() {
                         style={({ pressed }) => [
                           styles.trendingPill,
                           {
-                            backgroundColor: theme.colors.surfaceAlt,
-                            borderColor: theme.colors.border,
+                            backgroundColor: 'transparent',
+                            borderColor: 'transparent',
                           },
                           pressed ? styles.pressed : null,
                         ]}
                       >
+                        <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
                         <AppText variant="captionBold" tone="primary">
                           #{tag}
                         </AppText>
@@ -895,6 +900,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
+    overflow: 'hidden',
     borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
@@ -920,6 +926,7 @@ const styles = StyleSheet.create({
   recentChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    overflow: 'hidden',
     borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingLeft: tokens.spacing.sm,
@@ -948,6 +955,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
+    overflow: 'hidden',
     borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,

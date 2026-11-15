@@ -24,6 +24,7 @@ import { readWarmScreenState } from '@/src/state/screenWarmState';
 
 import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { SeeMoreLink } from '@/components/ui/InlineNavLink';
 import { QuickPressable } from '@/components/ui/QuickPressable';
 import { MediaScrim } from '@/components/ui/MediaScrim';
@@ -1558,7 +1559,8 @@ function EditorialCard({
         card carries three lines of copy.
       */}
       <MediaScrim edges={['top', 'bottom']} reach={0.46} strength="strong" />
-      <View style={[styles.editorialTag, { backgroundColor: theme.colors.primary }]}>
+      <View style={styles.editorialTag}>
+        <LiquidGlassFill glassRole="brand" borderRadius={tokens.radius.full} />
         <AppText variant="captionBold" tone="inverse">Market Edit</AppText>
       </View>
       <View style={styles.editorialCopy}>
@@ -2923,12 +2925,13 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
           style={({ pressed }) => [
             styles.categoryChip,
             {
-              backgroundColor: !filters.category ? theme.colors.primary : theme.colors.surface,
-              borderColor: !filters.category ? theme.colors.primary : theme.colors.border,
+              backgroundColor: 'transparent',
+              borderColor: 'transparent',
             },
             pressed && styles.pressed,
           ]}
         >
+          <LiquidGlassFill glassRole={!filters.category ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
           <AppText variant="captionBold" tone={!filters.category ? 'inverse' : 'secondary'}>All</AppText>
         </Pressable>
         {categoryOptions.map((category) => {
@@ -2940,12 +2943,13 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
               style={({ pressed }) => [
                 styles.categoryChip,
                 {
-                  backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-                  borderColor: selected ? theme.colors.primary : theme.colors.border,
+                  backgroundColor: 'transparent',
+                  borderColor: 'transparent',
                 },
                 pressed && styles.pressed,
               ]}
             >
+              <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
               <AppText variant="captionBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
                 {category}
               </AppText>
@@ -2991,9 +2995,10 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
           <View
             style={[
               styles.activeFilterPill,
-              { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.focusRing },
+              { backgroundColor: 'transparent', borderColor: 'transparent' },
             ]}
           >
+            <LiquidGlassFill glassRole="brandSoft" inset={2} borderRadius={tokens.radius.full} />
             <AppText variant="captionBold" tone="primary">←</AppText>
             <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.activeFilterLabel}>
               Showing “{filters.category}” · Back to all
@@ -3112,6 +3117,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.spacing.sm,
   },
   activeFilterPill: {
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
@@ -3126,6 +3132,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   categoryChip: {
+    overflow: 'hidden',
     minHeight: 36,
     borderRadius: tokens.radius.full,
     borderWidth: 2,
@@ -3286,6 +3293,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
   },
   editorialTag: {
+    overflow: 'hidden',
     position: 'absolute',
     top: tokens.spacing.md,
     left: tokens.spacing.md,

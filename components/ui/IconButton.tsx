@@ -1,9 +1,8 @@
 import React from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { QuickPressable } from '@/components/ui/QuickPressable';
-import { useTheme } from '@/src/theme/ThemeProvider';
-import { tokens } from '@/src/styles/tokens';
 
 export type IconButtonVariant = 'solid' | 'ghost';
 
@@ -26,13 +25,9 @@ export function IconButton({
   style,
   testID,
 }: Props) {
-  const { theme } = useTheme();
-
-  const backgroundColor =
-    variant === 'solid' ? theme.colors.surfaceAlt : 'transparent';
-
-  const borderColor =
-    variant === 'solid' ? theme.colors.border : 'transparent';
+  // Strong Lens glass: solid = neutral control glass, ghost = barely-there glass.
+  // The 2px border is kept (transparent) on solid so its size is unchanged.
+  const borderWidth = variant === 'solid' ? 2 : 0;
 
   // Acts while the finger is down (see QuickPressable): 👈 and every header
   // icon used to wait for the finger to lift.
@@ -47,14 +42,19 @@ export function IconButton({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor,
-          borderColor,
-          borderWidth: variant === 'solid' ? 2 : 0,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          borderWidth,
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
           transform: pressed ? [{ scale: 0.96 }] : [],
         },
         style,
       ]}>
+      <LiquidGlassFill
+        glassRole={variant === 'solid' ? 'control' : 'ghost'}
+        inset={borderWidth}
+        borderRadius={size / 2}
+      />
       <View style={styles.inner}>{children}</View>
     </QuickPressable>
   );

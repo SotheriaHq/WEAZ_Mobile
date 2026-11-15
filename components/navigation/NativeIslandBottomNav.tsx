@@ -6,6 +6,8 @@ import {
   StyleSheet,
   View,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type LayoutRectangle,
   type TextStyle,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -18,14 +20,18 @@ import {
 import { scheduleOnRN } from 'react-native-worklets';
 import Animated, {
   Easing,
+  useAnimatedReaction,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
+import { glassRoleProps } from '@/components/ui/LiquidGlassFill';
 import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { measurePressHandler, useCommitCost } from '@/src/perf/commitCost';
@@ -178,6 +184,8 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   compact,
   itemKey,
   pressedKey,
+  showPill = true,
+  onChipLayout,
 }: {
   label: string;
   emoji: string;
@@ -185,6 +193,13 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   focused: boolean;
   badge?: number;
   compact?: boolean;
+  /**
+   * Per-chip crossfading fill. The docks pass `false`: one shared
+   * `IslandActiveIndicator` glides between chips instead of each chip fading.
+   */
+  showPill?: boolean;
+  /** Reports the chip's frame (relative to its dock button) for the gliding indicator. */
+  onChipLayout?: (event: LayoutChangeEvent) => void;
   /** This chip's identity, compared against `pressedKey` on the UI thread. */
   itemKey?: string;
   /**
@@ -335,11 +350,14 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   return (
     <View style={styles.tabIconWrap}>
       <View style={styles.tabGlyphWrap}>
-        <View style={chipStyle}>
+        <View style={chipStyle} onLayout={onChipLayout}>
           {/* The frosted fill, always mounted and crossfaded underneath the
               glyph. Absolutely filled so it cannot affect the stack's layout,
-              and clipped to the pill by the chip's own radius. */}
-          <Animated.View style={[styles.tabChipFill, pillStyle]} pointerEvents="none" />
+              and clipped to the pill by the chip's own radius. The docks use
+              the shared gliding indicator instead (`showPill={false}`). */}
+          {showPill ? (
+            <Animated.View style={[styles.tabChipFill, pillStyle]} pointerEvents="none" />
+          ) : null}
           <View style={styles.tabGlyphStack}>
             <Animated.View style={[styles.tabEmojiWrap, glyphStyle]}>
               {avatarUri ? (
@@ -401,7 +419,132 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
 type DockHandlers = {
   pressIn: (item: NativeIslandNavItem, event?: GestureResponderEvent) => void;
   press: (item: NativeIslandNavItem) => void;
+  /** Frame reports for the gliding indicator: the dock button and the chip inside it. */
+  layout: (key: string, part: 'item' | 'chip', rect: LayoutRectangle) => void;
 };
+
+/** A chip's pill frame in its dock layer's coordinates. */
+type ChipFrame = { x: number; y: number; w: number; h: number };
+
+/** Liquid but settled: a short glide with a hint of overshoot, never a bounce. */
+const INDICATOR_SPRING = { damping: 18, stiffness: 230, mass: 0.85 } as const;
+
+/** Stable layout reporters for one dock button (memo-friendly). */
+function useDockLayoutReporters(handlersRef: React.MutableRefObject<DockHandlers>, itemKey: string) {
+  const onItemLayout = React.useCallback(
+    (event: LayoutChangeEvent) => handlersRef.current.layout(itemKey, 'item', event.nativeEvent.layout),
+    [handlersRef, itemKey],
+  );
+  const onChipLayout = React.useCallback(
+    (event: LayoutChangeEvent) => handlersRef.current.layout(itemKey, 'chip', event.nativeEvent.layout),
+    [handlersRef, itemKey],
+  );
+  return { onItemLayout, onChipLayout };
+}
+
+/**
+ * The island's active indicator: ONE brand-tinted Strong Lens droplet that
+ * glides to whichever chip is pressed or active, instead of each chip fading
+ * its own pill in and out (which read as the selection jumping).
+ *
+ * Motion runs entirely on the UI thread: it follows `pressedKey` at
+ * touch-down, so it starts moving on the next frame even while JS is busy
+ * mounting the destination. Width morphs with `scaleX` during the glide and
+ * the glass re-renders at the exact width once (when React settles), so no
+ * layout or SVG work happens per frame.
+ */
+const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
+  frames,
+  framesTick,
+  getFrame,
+  pressedKey,
+  settledKey,
+}: {
+  frames: SharedValue<Record<string, ChipFrame>>;
+  /** Bumped when a frame is measured, so the glass re-sizes to the settled chip. */
+  framesTick: number;
+  getFrame: (key: string) => ChipFrame | undefined;
+  pressedKey: SharedValue<string | null>;
+  settledKey: string | null;
+}) {
+  const { theme, scheme } = useTheme();
+  const reduceMotion = useReducedMotion();
+  const glass = glassRoleProps('brandSoft', theme.colors, scheme);
+  const settled = useSharedValue<string | null>(settledKey);
+  React.useLayoutEffect(() => {
+    settled.value = settledKey;
+  }, [settledKey, settled]);
+
+  // Crisp glass geometry at the settled chip's exact size (JS, once per change).
+  const settledFrame = settledKey ? getFrame(settledKey) : undefined;
+  void framesTick;
+  const glassW = settledFrame?.w ?? 0;
+  const glassH = settledFrame?.h ?? 0;
+  const baseWidth = useSharedValue(glassW);
+  React.useLayoutEffect(() => {
+    if (glassW > 0) baseWidth.value = glassW;
+  }, [glassW, baseWidth]);
+
+  const x = useSharedValue(0);
+  const y = useSharedValue(0);
+  const w = useSharedValue(0);
+  const h = useSharedValue(0);
+  const visible = useSharedValue(0);
+
+  useAnimatedReaction(
+    () => {
+      const key = pressedKey.value ?? settled.value;
+      const frame = key ? frames.value[key] : undefined;
+      return frame ? [frame.x, frame.y, frame.w, frame.h] : null;
+    },
+    (next, previous) => {
+      if (!next) {
+        visible.value = withTiming(0, { duration: 120 });
+        return;
+      }
+      y.value = next[1];
+      h.value = next[3];
+      if (previous == null || visible.value === 0 || reduceMotion) {
+        x.value = next[0];
+        w.value = next[2];
+      } else {
+        x.value = withSpring(next[0], INDICATOR_SPRING);
+        w.value = withSpring(next[2], INDICATOR_SPRING);
+      }
+      visible.value = withTiming(1, { duration: 140 });
+    },
+    [reduceMotion],
+  );
+
+  const indicatorStyle = useAnimatedStyle(() => {
+    const base = baseWidth.value > 0 ? baseWidth.value : Math.max(w.value, 1);
+    return {
+      opacity: visible.value,
+      top: y.value,
+      height: h.value,
+      width: base,
+      transform: [
+        { translateX: x.value + (w.value - base) / 2 },
+        { scaleX: w.value > 0 ? w.value / base : 1 },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.activeIndicator, indicatorStyle]}>
+      {glassW > 0 && glassH > 0 ? (
+        <WiezLiquidGlass
+          mode="lightweight"
+          intensity="regular"
+          {...glass}
+          borderRadius={9999}
+          pointerEvents="none"
+          style={{ width: glassW, height: glassH }}
+        />
+      ) : null}
+    </Animated.View>
+  );
+});
 
 /**
  * One button of the fixed (non-scrolling) dock, memoized on what it SHOWS.
@@ -454,6 +597,7 @@ const FixedDockButton = React.memo(
         scheduleOnRN(routeFromTouchDown);
       },
     });
+    const { onItemLayout, onChipLayout } = useDockLayoutReporters(handlersRef, itemKey);
     return (
       <GestureDetector gesture={tap}>
         <Pressable
@@ -464,6 +608,7 @@ const FixedDockButton = React.memo(
           // Release and accessibility activation. A finger already routed on
           // touch-down above; `commitSelection` drops this repeat.
           onPress={disabled ? undefined : () => handlersRef.current.press(item)}
+          onLayout={onItemLayout}
           // No `android_ripple` — a bounded ripple paints a rectangle across a pill chip.
           style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
         >
@@ -476,6 +621,8 @@ const FixedDockButton = React.memo(
             pressedKey={pressedKey}
             badge={item.badge}
             compact={compact}
+            showPill={false}
+            onChipLayout={onChipLayout}
           />
         </Pressable>
       </GestureDetector>
@@ -801,15 +948,57 @@ function NativeIslandBottomNavImpl({
   // every route change) — only a button whose own fields changed. Both docks
   // share it: each decides on the UI thread WHEN a touch is a press, and both
   // route the same way once it is.
+  /*
+    Chip frames for the gliding indicator. A chip's frame is its dock button's
+    position in the dock layer plus the chip's position inside that button
+    (the icon wrappers fill the button, so the two offsets simply add). The UI
+    thread reads `chipFrames`; the JS copy sizes the indicator's glass.
+  */
+  const chipFrames = useSharedValue<Record<string, ChipFrame>>({});
+  const jsChipFramesRef = React.useRef<Record<string, ChipFrame>>({});
+  const itemRectsRef = React.useRef<Record<string, LayoutRectangle>>({});
+  const chipRectsRef = React.useRef<Record<string, LayoutRectangle>>({});
+  const [chipFramesTick, setChipFramesTick] = React.useState(0);
+  const reportDockLayout = React.useCallback(
+    (key: string, part: 'item' | 'chip', rect: LayoutRectangle) => {
+      (part === 'item' ? itemRectsRef : chipRectsRef).current[key] = rect;
+      const itemRect = itemRectsRef.current[key];
+      const chipRect = chipRectsRef.current[key];
+      if (!itemRect || !chipRect) return;
+      const next: ChipFrame = {
+        x: itemRect.x + chipRect.x,
+        y: itemRect.y + chipRect.y,
+        w: chipRect.width,
+        h: chipRect.height,
+      };
+      const previous = jsChipFramesRef.current[key];
+      if (
+        previous &&
+        Math.abs(previous.x - next.x) < 0.5 &&
+        Math.abs(previous.y - next.y) < 0.5 &&
+        Math.abs(previous.w - next.w) < 0.5 &&
+        Math.abs(previous.h - next.h) < 0.5
+      ) {
+        return;
+      }
+      jsChipFramesRef.current = { ...jsChipFramesRef.current, [key]: next };
+      chipFrames.value = jsChipFramesRef.current;
+      setChipFramesTick((tick) => tick + 1);
+    },
+    [chipFrames],
+  );
+  const getChipFrame = React.useCallback((key: string) => jsChipFramesRef.current[key], []);
+
   const dockHandlersRef = React.useRef<DockHandlers>({
     pressIn: handleFixedPressIn,
     press: handleFixedPress,
+    layout: reportDockLayout,
   });
-  dockHandlersRef.current = { pressIn: handleFixedPressIn, press: handleFixedPress };
-
-  if (items.length === 0) {
-    return null;
-  }
+  dockHandlersRef.current = {
+    pressIn: handleFixedPressIn,
+    press: handleFixedPress,
+    layout: reportDockLayout,
+  };
 
   // One key. `item.active` is the route; `immediateActiveKey` is the press
   // that has not been confirmed yet. ORing them lit both chips.
@@ -817,6 +1006,20 @@ function NativeIslandBottomNavImpl({
     immediateActiveKey ??
     items.find((item) => item.active && !item.disabled)?.key ??
     null;
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  const activeIndicator = (
+    <IslandActiveIndicator
+      frames={chipFrames}
+      framesTick={chipFramesTick}
+      getFrame={getChipFrame}
+      pressedKey={pressedKey}
+      settledKey={settledKey}
+    />
+  );
 
   // The island is permanently fixed and fully expanded — there is no collapse
   // state. A previous design collapsed the bar to a pill (and reset that pill on
@@ -862,6 +1065,7 @@ function NativeIslandBottomNavImpl({
                 contentContainerStyle={styles.scrollDockContent}
                 style={styles.scrollDock}
               >
+                {activeIndicator}
                 {items.map((item) => (
                   <ScrollDockButton
                     key={item.key}
@@ -874,6 +1078,7 @@ function NativeIslandBottomNavImpl({
               </ScrollView>
             ) : (
               <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
+                {activeIndicator}
                 {items.map((item) => (
                   <FixedDockButton
                     key={item.key}
@@ -947,6 +1152,7 @@ const ScrollDockButton = React.memo(
       },
     });
     const press = useCompetingGestures(hold, tap);
+    const { onItemLayout, onChipLayout } = useDockLayoutReporters(handlersRef, itemKey);
     return (
       <GestureDetector gesture={press}>
         <Pressable
@@ -957,6 +1163,7 @@ const ScrollDockButton = React.memo(
           // Accessibility activation. A finger already routed through the
           // gestures above; `commitSelection` drops this repeat.
           onPress={disabled ? undefined : () => handlersRef.current.press(item)}
+          onLayout={onItemLayout}
           /**
            * No `android_ripple`. A bounded ripple fills the PRESSABLE, and the
            * pressable is a full-height flex column — so it painted a rectangle
@@ -978,6 +1185,8 @@ const ScrollDockButton = React.memo(
             pressedKey={pressedKey}
             badge={item.badge}
             compact={false}
+            showPill={false}
+            onChipLayout={onChipLayout}
           />
         </Pressable>
       </GestureDetector>
@@ -1138,6 +1347,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     borderRadius: 9999,
+  },
+  // The shared gliding indicator. Positioned from the left edge of the dock
+  // layer; `IslandActiveIndicator` animates translateX/scaleX/top/height.
+  activeIndicator: {
+    position: 'absolute',
+    left: 0,
+    borderRadius: 9999,
+    overflow: 'hidden',
   },
   tabEmoji: {
     textAlign: 'center',

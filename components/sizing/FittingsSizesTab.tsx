@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -134,13 +135,14 @@ export function FittingsSizesTab({
                 style={({ pressed }) => [
                   styles.regionChip,
                   {
-                    backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: 'transparent',
+                    borderColor: 'transparent',
                     opacity: regionSaving && !selected ? 0.5 : 1,
                   },
                   pressed ? styles.pressed : null,
                 ]}
               >
+                <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
                 <AppText
                   variant="captionBold"
                   tone={selected ? 'inverse' : 'secondary'}
@@ -188,6 +190,7 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.sm,
   },
   regionChip: {
+    overflow: 'hidden',
     minHeight: 40,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,

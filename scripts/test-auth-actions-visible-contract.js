@@ -71,6 +71,8 @@ function load(file) {
       return { AppText: (props) => React.createElement('Text', props, props.children) };
     }
     if (name === '@/components/ui/MuseLoader') return { MuseLoader: () => React.createElement('View') };
+    // Glass is decoration here; this contract is about labels staying visible.
+    if (name === '@/components/ui/LiquidGlassFill') return { LiquidGlassFill: () => null };
     if (name === '@/src/theme/ThemeProvider') return { useTheme: () => ({ theme: tokens.themes.dark }) };
     const base = name.startsWith('@/') ? path.join(root, name.slice(2)) : path.resolve(path.dirname(file), name);
     for (const suffix of ['.ts', '.tsx', '/index.ts']) {
