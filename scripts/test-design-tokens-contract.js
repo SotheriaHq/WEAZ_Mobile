@@ -240,9 +240,9 @@ assert.strictEqual(tokensModule.tokens.themes.dark.colors.surfacePage, '#000000'
 assert.strictEqual(tokensModule.tokens.themes.light.colors.actionBrand, '#9333ea');
 assert.strictEqual(tokensModule.tokens.themes.dark.colors.actionBrand, '#9333ea');
 assert.ok(tokensModule.tokens.themes.light.colors.button, 'Mobile light theme must export button tokens');
-assert.strictEqual(tokensModule.tokens.themes.light.colors.button.surface.brandPressed, '#6b21a8');
+assert.strictEqual(tokensModule.tokens.themes.light.colors.button.surface.brandPressed, '#af87f4');
 assert.strictEqual(tokensModule.tokens.themes.light.colors.button.surface.secondary, '#e1e4de');
-assert.strictEqual(tokensModule.tokens.themes.dark.colors.button.surface.brandPressed, '#6b21a8');
+assert.strictEqual(tokensModule.tokens.themes.dark.colors.button.surface.brandPressed, '#af87f4');
 assert.strictEqual(tokensModule.tokens.themes.dark.colors.button.surface.secondary, '#1c1c1c');
 
 console.log('PASS test-design-tokens-contract: Web and Native design tokens are semantically synchronized.');
