@@ -444,6 +444,27 @@ export const tokens = {
   tintLight: (opacity: number): string => `rgba(255,255,255,${opacity})`,
 
   /**
+   * Any theme colour (hex or rgb/rgba) at an explicit opacity, e.g. the brand
+   * purple as tinted glass. Returns null when the colour cannot be parsed so the
+   * caller can fall back to a neutral tint.
+   */
+  withAlpha: (color: string, opacity: number): string | null => {
+    const a = Math.round(Math.min(1, Math.max(0, opacity)) * 1000) / 1000;
+    const value = color.trim();
+    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(value);
+    if (hex) {
+      let digits = hex[1];
+      if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
+      const r = Number.parseInt(digits.slice(0, 2), 16);
+      const g = Number.parseInt(digits.slice(2, 4), 16);
+      const b = Number.parseInt(digits.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(value);
+    return rgb ? `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${a})` : null;
+  },
+
+  /**
    * Third-party brand colours.
    *
    * Same status as `GoogleMark`'s exemption: these belong to Instagram, Meta
@@ -543,8 +564,6 @@ export const tokens = {
         fresnelGain: 0.7,
         specGain: 0.35,
         shininess: 30,
-        rimDp: 1.1,
-        shadeGain: 0.08,
         saturation: 1.15,
         bezelMaxDp: 36,
       },
@@ -584,12 +603,13 @@ export const tokens = {
     /**
      * Strong Lens material for surfaces that cannot refract (lightweight): the
      * same character as the AGSL highlights (top-left key-light shoulder,
-     * bottom-right exit caustic, inboard edge shade, Fresnel filament), drawn
-     * with one SVG so every glass control looks like the same material.
+     * bottom-right exit caustic), drawn with one SVG so every glass control
+     * looks like the same material. Deliberately borderless (no edge shade, no
+     * rim filament), like the system media island.
      */
     lensMaterial: {
-      light: { specular: 0.3, caustic: 0.14, shade: 0.12, rimWidth: 1.2 },
-      dark: { specular: 0.22, caustic: 0.1, shade: 0.2, rimWidth: 1.2 },
+      light: { specular: 0.3, caustic: 0.14 },
+      dark: { specular: 0.22, caustic: 0.1 },
     },
     /** Label halo under a refracting lens (tint is only `optics.lensTintAlpha`). */
     lensLegibility: {

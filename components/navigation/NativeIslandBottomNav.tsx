@@ -459,7 +459,10 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
   getFrame,
   pressedKey,
   settledKey,
+  goToRef,
 }: {
+  /** The dock calls this from its press handler so the glide starts with the route. */
+  goToRef: React.MutableRefObject<((key: string) => void) | null>;
   frames: SharedValue<Record<string, ChipFrame>>;
   /** Bumped when a frame is measured, so the glass re-sizes to the settled chip. */
   framesTick: number;
@@ -515,6 +518,39 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
     },
     [reduceMotion],
   );
+
+  /*
+    Belt and braces: besides the UI-thread reaction above, the glide is also
+    started imperatively (from the press handler, same tick as routing) and on
+    settle (route/frames changed). Any one path moves the droplet; none blocks
+    the press.
+  */
+  const animateTo = React.useCallback(
+    (key: string | null) => {
+      const frame = key ? getFrame(key) : undefined;
+      if (!frame) return;
+      y.value = frame.y;
+      h.value = frame.h;
+      if (visible.value === 0 || reduceMotion) {
+        x.value = frame.x;
+        w.value = frame.w;
+      } else {
+        x.value = withSpring(frame.x, INDICATOR_SPRING);
+        w.value = withSpring(frame.w, INDICATOR_SPRING);
+      }
+      visible.value = withTiming(1, { duration: 140 });
+    },
+    [getFrame, reduceMotion, x, y, w, h, visible],
+  );
+  React.useEffect(() => {
+    goToRef.current = animateTo;
+    return () => {
+      goToRef.current = null;
+    };
+  }, [animateTo, goToRef]);
+  React.useEffect(() => {
+    animateTo(settledKey);
+  }, [settledKey, framesTick, animateTo]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     const base = baseWidth.value > 0 ? baseWidth.value : Math.max(w.value, 1);
@@ -702,7 +738,6 @@ const IslandGlass = React.memo(function IslandGlass({
               styles.navGlassFill,
               {
                 backgroundColor: iosFillColor,
-                borderColor: theme.colors.glassBorder,
                 borderRadius: NATIVE_ISLAND_NAV.radius,
               },
             ]}
@@ -795,6 +830,7 @@ function NativeIslandBottomNavImpl({
    * render. See the note on `pressedKey` in `NativeIslandTabIcon`.
    */
   const pressedKey = useSharedValue<string | null>(null);
+  const indicatorGoToRef = React.useRef<((key: string) => void) | null>(null);
   const pressedKeyResetRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
 
@@ -843,6 +879,8 @@ function NativeIslandBottomNavImpl({
     // First, and outside React: this is the write the pill actually paints
     // from. Everything below it is bookkeeping that may take a commit to land.
     pressedKey.value = item.key;
+    // Start the glide in the same tick as the route (no added latency).
+    indicatorGoToRef.current?.(item.key);
     // Bounded, so a press that leads nowhere cannot leave the chip lit. See
     // `PRESSED_KEY_MAX_MS`.
     if (pressedKeyResetRef.current) clearTimeout(pressedKeyResetRef.current);
@@ -1018,6 +1056,7 @@ function NativeIslandBottomNavImpl({
       getFrame={getChipFrame}
       pressedKey={pressedKey}
       settledKey={settledKey}
+      goToRef={indicatorGoToRef}
     />
   );
 

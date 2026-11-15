@@ -104,7 +104,6 @@ export function SubscriptionNotice() {
             styles.cardContainer,
             {
               backgroundColor: theme.colors.surfaceCard,
-              borderColor: theme.colors.glassBorder,
               ...tokens.elevation.lg,
             },
           ]}
@@ -197,7 +196,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     borderRadius: 28,
-    borderWidth: 2,
     overflow: 'hidden',
     position: 'relative',
   },

@@ -34,24 +34,6 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 const ANDROID_HARDWARE_BLUR_MIN_API = 31;
 const ANDROID_AGSL_REFRACTION_MIN_API = 33;
 
-/** Neutral charcoal for the inboard edge shade (same as the AGSL shader). */
-const LENS_SHADE_HEX = '#0E0E10';
-
-/** `rgba(...)` for a hex/rgb(a) colour at `alpha`; null when the colour cannot be parsed. */
-export function withGlassAlpha(color: string, alpha: number): string | null {
-  const a = Math.round(clamp(alpha, 0, 1) * 1000) / 1000;
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(color.trim());
-  if (hex) {
-    let digits = hex[1];
-    if (digits.length === 3) digits = digits.split('').map((d) => d + d).join('');
-    const r = Number.parseInt(digits.slice(0, 2), 16);
-    const g = Number.parseInt(digits.slice(2, 4), 16);
-    const b = Number.parseInt(digits.slice(4, 6), 16);
-    return `rgba(${r},${g},${b},${a})`;
-  }
-  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(color.trim());
-  return rgb ? `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${a})` : null;
-}
 
 const DEFAULT_CURVATURE = tokens.liquidGlass.optics.curvature;
 const DEFAULT_OPTICAL_THICKNESS = tokens.liquidGlass.optics.opticalThickness;
@@ -476,7 +458,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
     nonRefractingTint,
   );
   const transmissionColor = tintColor
-    ? (withGlassAlpha(tintColor, resolveTintAlpha(effectiveScheme, intensity, nonRefractingTint)) ??
+    ? (tokens.withAlpha(tintColor, resolveTintAlpha(effectiveScheme, intensity, nonRefractingTint)) ??
       neutralTransmission)
     : neutralTransmission;
   // The refracting (AGSL) path always uses the Strong Lens tint from tokens unless a caller
@@ -524,10 +506,9 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
   // composite inside one hardware fragment shader pass; no JS layers on top. Everywhere
   // else (lightweight, API < 33, iOS) the Strong Lens material is drawn with one SVG.
   const renderJsGlassOverlays = !androidAgslActive;
-  const canRenderMaterialSvg = renderJsGlassOverlays && surfaceWidth > 6 && surfaceHeight > 6;
+  const canRenderMaterialSvg = renderJsGlassOverlays && surfaceWidth > 6 && surfaceHeight > 6 && effectiveReflectionStrength > 0;
   const material = tokens.liquidGlass.lensMaterial[effectiveScheme];
   const reflectionLevel = clamp(effectiveReflectionStrength, 0, 1.5);
-  const materialInset = material.rimWidth / 2;
 
   return (
     <View
@@ -644,21 +625,6 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
                 <Stop offset="0" stopColor={palette.specularHex} stopOpacity={clamp(material.caustic * reflectionLevel, 0, 1)} />
                 <Stop offset="1" stopColor={palette.specularHex} stopOpacity={0} />
               </RadialGradient>
-              <SvgLinearGradient id={`${rimGradientId}-shade`} x1="12%" y1="0%" x2="88%" y2="100%">
-                <Stop offset="0" stopColor={LENS_SHADE_HEX} stopOpacity={0} />
-                <Stop offset="0.6" stopColor={LENS_SHADE_HEX} stopOpacity={material.shade * 0.4} />
-                <Stop offset="1" stopColor={LENS_SHADE_HEX} stopOpacity={material.shade} />
-              </SvgLinearGradient>
-              <SvgLinearGradient id={rimGradientId} x1="12%" y1="0%" x2="88%" y2="100%">
-                {palette.rimStops.map((stop) => (
-                  <Stop
-                    key={stop.offset}
-                    offset={stop.offset}
-                    stopColor={palette.specularHex}
-                    stopOpacity={clamp(stop.opacity * effectiveRimStrength, 0, 1)}
-                  />
-                ))}
-              </SvgLinearGradient>
             </Defs>
             {reflectionLevel > 0 ? (
               <>
@@ -678,30 +644,7 @@ export const WiezLiquidGlass = React.memo(function WiezLiquidGlass({
                 />
               </>
             ) : null}
-            <Rect
-              x={1.6}
-              y={1.6}
-              width={Math.max(0, surfaceWidth - 3.2)}
-              height={Math.max(0, surfaceHeight - 3.2)}
-              rx={Math.max(0, clampedBorderRadius - 1.6)}
-              ry={Math.max(0, clampedBorderRadius - 1.6)}
-              fill="none"
-              stroke={`url(#${rimGradientId}-shade)`}
-              strokeWidth={2.2}
-            />
-            {effectiveRimStrength > 0 ? (
-              <Rect
-                x={materialInset}
-                y={materialInset}
-                width={surfaceWidth - material.rimWidth}
-                height={surfaceHeight - material.rimWidth}
-                rx={Math.max(0, clampedBorderRadius - materialInset)}
-                ry={Math.max(0, clampedBorderRadius - materialInset)}
-                fill="none"
-                stroke={`url(#${rimGradientId})`}
-                strokeWidth={material.rimWidth}
-              />
-            ) : null}
+            {/* No edge line or edge shade: glass reads by tint and soft highlight, never by an outline. */}
           </Svg>
         </View>
       ) : null}

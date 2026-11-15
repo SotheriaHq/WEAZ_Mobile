@@ -70,8 +70,6 @@ const float LENS_MAX_TILT_DEG = 70.0;
 const float LENS_FRESNEL_GAIN = 0.7;
 const float LENS_SPEC_GAIN = 0.35;
 const float LENS_SHININESS = 30.0;
-const float LENS_RIM_DP = 1.1;
-const float LENS_SHADE_GAIN = 0.08;
 const float LENS_SATURATION = 1.15;
 const float LENS_BEZEL_MAX_DP = 36.0;
 
@@ -92,7 +90,6 @@ half4 main(float2 fragCoord) {
   float density = max(uOpticalParams.y, 1.0);
   float refractStr = clamp(uOpticalParams.z, 0.0, 2.0);
 
-  float rimStr = clamp(uRimParams.x, 0.0, 1.5);
   float reflStr = clamp(uRimParams.y, 0.0, 1.5);
   float pressed = uRimParams.w;
 
@@ -104,8 +101,6 @@ half4 main(float2 fragCoord) {
   float r2 = min(max(cornerR, bezel), minHalf);
 
   float2 p = fragCoord - center;
-  float sdReal = sdRoundRect(p, halfSize - float2(cornerR, cornerR), cornerR);
-  float inwardReal = max(0.0, -sdReal);
 
   // Crease-free normals from the r2-rounded shape (exact for circles and capsules).
   float2 q = abs(p) - (halfSize - float2(r2, r2));
@@ -140,7 +135,7 @@ half4 main(float2 fragCoord) {
   float luma = dot(rgb, float3(0.299, 0.587, 0.114));
   rgb = clamp(mix(float3(luma, luma, luma), rgb, LENS_SATURATION), 0.0, 1.0);
 
-  // Reflection: 3D normal from the rim tilt, Schlick Fresnel, key-light specular and exit caustic.
+  // Reflection: 3D normal from the bezel tilt, Schlick Fresnel, key-light specular and exit caustic.
   float tilt = LENS_MAX_TILT_DEG * 0.0174533 * mix(0.75, 1.1, thickness) * pow(1.0 - t, 1.35);
   float st = sin(tilt);
   float ct = cos(tilt);
@@ -155,28 +150,18 @@ half4 main(float2 fragCoord) {
   float specExit = pow(max(0.0, dot(n3, h2)), LENS_SHININESS * 1.3);
   float spec = (specKey + specExit * 0.38) * LENS_SPEC_GAIN * reflStr;
 
-  float facing = dot(n, lightDir);
-  float rimT = clamp(1.0 - inwardReal / (LENS_RIM_DP * density), 0.0, 1.0);
-  float pressBoost = 1.0 + pressed * 0.22;
-  float rim = pow(rimT, 1.6)
-    * (0.1 + 0.65 * pow(max(facing, 0.0), 2.0) + 0.3 * pow(max(-facing, 0.0), 3.0))
-    * (LENS_FRESNEL_GAIN * rimStr / 0.9) * pressBoost;
-  float highlight = clamp(fres * LENS_FRESNEL_GAIN * reflStr * 0.9 + spec + rim, 0.0, 0.95);
-  float shade = clamp(
-    exp(-inwardReal / (2.4 * density)) * (0.45 + 0.55 * max(-facing, 0.0)) * LENS_SHADE_GAIN * mix(0.7, 1.3, thickness),
-    0.0,
-    0.3
-  );
+  // Borderless, like the system media island: no outline filament and no darkened
+  // edge ring. The edge reads only through the soft Fresnel falloff and refraction.
+  float highlight = clamp(fres * LENS_FRESNEL_GAIN * reflStr * 0.9 + spec, 0.0, 0.95);
   float tintAlpha = clamp(uTintColor.a, 0.0, 0.60);
 
   rgb = mix(rgb, uTintColor.rgb, tintAlpha);
-  rgb = mix(rgb, float3(0.055, 0.055, 0.063), shade);
   rgb = mix(rgb, float3(1.0, 1.0, 1.0), highlight);
   if (pressed > 0.5) {
     rgb = mix(rgb, float3(1.0, 1.0, 1.0), 0.08);
   }
 
-  float glassOverlayAlpha = clamp(tintAlpha + shade + highlight, 0.0, 1.0);
+  float glassOverlayAlpha = clamp(tintAlpha + highlight, 0.0, 1.0);
   float outAlpha = contentAlpha >= 0.995
     ? 1.0
     : clamp(contentAlpha + (1.0 - contentAlpha) * glassOverlayAlpha, 0.0, 1.0);

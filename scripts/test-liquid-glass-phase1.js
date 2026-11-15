@@ -490,17 +490,16 @@ async function runTests() {
       'Full border radius must clamp cleanly to min(120,40)/2 = 20',
     );
     assert.equal(flattenStyle(first.props.style).elevation, 0);
-    // Strong Lens material (no refraction): one SVG with key-light shoulder, exit
-    // caustic, inboard edge shade and a single Fresnel filament — no gradient haze layers.
+    // Strong Lens material (no refraction): one SVG with key-light shoulder and exit
+    // caustic only. Borderless like the system media island: no edge shade, no rim
+    // filament, no stroked outline of any kind, no gradient haze layers.
     assert.equal(collectNodes(first, (n) => n.type === 'ExpoLinearGradient').length, 0);
     assert.equal(collectNodes(first, (n) => n.type === 'Svg').length, 1);
     assert.equal(collectNodes(first, (n) => n.type === 'SvgRadialGradient').length, 2, 'Specular shoulder + exit caustic');
+    assert.equal(collectNodes(first, (n) => n.type === 'SvgLinearGradient').length, 0, 'No rim/shade gradients');
     const rects = collectNodes(first, (n) => n.type === 'SvgRect');
-    assert.equal(rects.length, 4, 'Material = specular, caustic, edge shade, Fresnel filament');
-    const filaments = rects.filter((r) => r.props.fill === 'none' && /-shade\)$/.test(String(r.props.stroke)) === false);
-    assert.equal(filaments.length, 1, 'Exactly one Fresnel filament (never a 2-ring metallic bezel)');
-    assert.equal(filaments[0].props.strokeWidth, tokens.liquidGlass.lensMaterial[scheme].rimWidth);
-    assert.ok(filaments[0].props.strokeWidth <= 1.5, 'Fresnel filament stays a fine line');
+    assert.equal(rects.length, 2, 'Material = specular + caustic only');
+    assert.equal(rects.filter((r) => r.props.stroke && r.props.stroke !== 'none').length, 0, 'No stroked edge (borderless glass)');
 
     assert.equal(
       collectNodes(
@@ -513,9 +512,9 @@ async function runTests() {
     );
 
     const noHi = collectNodes(json, (n) => n.props?.testID === `lw-${scheme}-no-hi`)[0];
-    // highlightIntensity={false}: no reflections, only the neutral inboard edge shade.
+    // highlightIntensity={false}: no reflections and no edge, so no material SVG at all.
     assert.equal(collectNodes(noHi, (n) => n.type === 'ExpoLinearGradient').length, 0);
-    assert.equal(collectNodes(noHi, (n) => n.type === 'SvgRect').length, 1);
+    assert.equal(collectNodes(noHi, (n) => n.type === 'Svg').length, 0);
     assert.equal(
       collectNodes(
         noHi,
@@ -570,9 +569,10 @@ async function runTests() {
     assert.equal(flattenStyle(dynamicMeasured.props.style).borderRadius, 20);
     assert.equal(collectNodes(dynamicMeasured, (n) => n.type === 'Svg').length, 1);
 
-    // Each glass owns its gradients (edge shade + Fresnel filament); ids never collide.
+    // Each glass owns its gradients (specular + caustic); ids never collide.
     const grads = collectNodes(tree.toJSON(), (n) => n.type === 'SvgLinearGradient' || n.type === 'SvgRadialGradient');
-    assert.equal(grads.filter((g) => g.type === 'SvgLinearGradient').length, 6);
+    assert.equal(grads.filter((g) => g.type === 'SvgLinearGradient').length, 0);
+    assert.equal(grads.filter((g) => g.type === 'SvgRadialGradient').length, 6);
     const gradIds = grads.map((g) => g.props.id);
     assert.equal(new Set(gradIds).size, gradIds.length, 'Gradient ids must be unique per glass instance');
     await renderer.act(async () => tree.unmount());
@@ -692,8 +692,6 @@ async function runTests() {
       LENS_FRESNEL_GAIN: 'fresnelGain',
       LENS_SPEC_GAIN: 'specGain',
       LENS_SHININESS: 'shininess',
-      LENS_RIM_DP: 'rimDp',
-      LENS_SHADE_GAIN: 'shadeGain',
       LENS_SATURATION: 'saturation',
       LENS_BEZEL_MAX_DP: 'bezelMaxDp',
     };
@@ -716,7 +714,9 @@ async function runTests() {
     assert.match(agsl, /float foldLimit = max\(0\.0, 0\.85 - magnify\) \* bezel \/ LENS_FALLOFF_K;/, 'Displacement must be hard-clamped so the sampling map never folds');
     assert.match(agsl, /fragCoord - n \* \(maxShift \* g\)/, 'Refraction must sample inward along the outward normal');
     assert.match(agsl, /float fres = 0\.04 \+ 0\.96 \* pow\(1\.0 - ct, 5\.0\);/, 'Reflection must use Schlick Fresnel on the tilted 3D normal');
-    assert.match(agsl, /rgb = mix\(rgb, float3\(0\.055, 0\.055, 0\.063\), shade\);/, 'Edge depth must stay neutral charcoal, never tinted');
+    // Borderless glass (owner, 15 Nov 2026): no rim filament and no edge shade ring.
+    assert.doesNotMatch(agsl, /\bshade\b|\brim\b|LENS_RIM_DP|LENS_SHADE_GAIN/, 'Lens must not draw a rim filament or an edge shade ring');
+    assert.match(agsl, /float highlight = clamp\(fres \* LENS_FRESNEL_GAIN \* reflStr \* 0\.9 \+ spec, 0\.0, 0\.95\);/, 'Highlight is Fresnel + specular only');
     assert.doesNotMatch(agsl, /float3\(0\.16,\s*0\.19,\s*0\.30\)/, 'Optical bevel shading must stay neutral achromatic instead of blue-lavender indigo');
     assert.doesNotMatch(agsl, /outerEdgeMask/, 'Lens must not draw a thin wireframe outerEdgeMask outline');
     assert.doesNotMatch(agsl, /uOpticalParams\.w/, 'Chromatic aberration stays disabled in the Strong Lens');
@@ -793,7 +793,7 @@ async function runTests() {
       4,
       'API 31-32 RenderEffect fallback must derive non-zero blur from blurIntensity / blurReductionFactor (12 / 3 = 4)',
     );
-    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 4, 'API 31-32 renders the Strong Lens material SVG over the blur');
+    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 2, 'API 31-32 renders the Strong Lens material SVG (specular + caustic) over the blur');
     await renderer.act(async () => tree.unmount());
   }
 
@@ -809,7 +809,7 @@ async function runTests() {
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassBackdropView').length, 0);
     assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
     assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
-    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 4);
+    assert.equal(collectNodes(json, (n) => n.type === 'SvgRect').length, 2);
     await renderer.act(async () => tree.unmount());
   }
 
@@ -822,7 +822,7 @@ async function runTests() {
       tree = renderer.create(React.createElement(HarnessEnhanced, {}), { createNodeMock });
     });
     assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
-    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'SvgRect').length, 4);
+    assert.equal(collectNodes(tree.toJSON(), (n) => n.type === 'SvgRect').length, 2);
     await renderer.act(async () => tree.unmount());
   }
 
