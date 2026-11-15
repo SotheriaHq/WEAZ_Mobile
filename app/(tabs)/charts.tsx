@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     height: ROW_HEIGHT,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   bodyRow: {
     flexDirection: 'row',

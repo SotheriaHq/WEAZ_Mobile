@@ -85,14 +85,13 @@ export function FittingsSizesTab({
                   style={({ pressed }) => [
                     styles.sizeRow,
                     {
-                      backgroundColor: selected
-                        ? theme.colors.primarySoft
-                        : theme.colors.surface,
-                      borderColor: selected ? theme.colors.primary : theme.colors.border,
+                      backgroundColor: 'transparent',
+                      borderColor: 'transparent',
                     },
                     pressed ? styles.pressed : null,
                   ]}
                 >
+                  <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.md} />
                   <View style={styles.sizeRowCopy}>
                     <AppText variant="bodyBold" numberOfLines={1}>
                       {entry.label}
@@ -168,6 +167,7 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.sm,
   },
   sizeRow: {
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

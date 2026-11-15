@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   content: {
     padding: tokens.spacing.lg,

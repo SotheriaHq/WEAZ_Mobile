@@ -17,6 +17,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * - danger      destructive glass at high tint (white text)
  * - warningSoft pending / caution states
  * - stage       dark media chrome over photography/video in both themes
+ * - stageGhost  faint dark glass for unselected chips over video (Runway)
  * - disabled    inert controls
  */
 export type GlassRole =
@@ -27,6 +28,7 @@ export type GlassRole =
   | 'danger'
   | 'warningSoft'
   | 'stage'
+  | 'stageGhost'
   | 'disabled';
 
 type ThemeColors = ReturnType<typeof useTheme>['theme']['colors'];
@@ -51,6 +53,8 @@ export function glassRoleProps(role: GlassRole, colors: ThemeColors, scheme: The
       return { tintColor: colors.warning, fallbackTintAlpha: t.tintedSoft, tintMode: 'auto' };
     case 'stage':
       return { fallbackTintAlpha: t.stageChrome, tintMode: 'dark' };
+    case 'stageGhost':
+      return { fallbackTintAlpha: t.ghostDark, tintMode: 'dark' };
     case 'ghost':
       return { fallbackTintAlpha: dark ? t.ghostDark : t.ghostLight, tintMode: 'auto' };
     case 'disabled':

@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   headerCopy: {
     flex: 1,

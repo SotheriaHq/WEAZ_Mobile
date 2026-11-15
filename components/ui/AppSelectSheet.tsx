@@ -15,6 +15,7 @@ import Animated, {
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { Input } from '@/components/ui/Input';
@@ -113,19 +114,17 @@ function AnimatedOptionCard({
           styles.optionCard,
           animatedStyle,
           {
-            backgroundColor: selected
-              ? theme.colors.primarySoft
-              : (theme.colors.surfaceCard ?? theme.colors.surface),
-            borderColor: selected
-              ? theme.colors.primary
-              : option.pending
-                ? theme.colors.warning
-                : 'transparent',
-            borderWidth: selected || option.pending ? 2 : 0,
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            borderWidth: 0,
           },
           option.disabled && styles.optionDisabled,
         ]}
       >
+        <LiquidGlassFill
+          glassRole={selected ? 'brandSoft' : option.pending ? 'warningSoft' : 'control'}
+          borderRadius={tokens.radius.lg}
+        />
         {/*
           One row per option, always. A label that breaks — "Women's tops &" on
           one line and "dresses" on the next — reads as two options. It shrinks
@@ -717,6 +716,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
   },
   optionCard: {
+    overflow: 'hidden',
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',

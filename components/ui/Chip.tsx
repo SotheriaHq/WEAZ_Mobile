@@ -194,14 +194,14 @@ function LegacyChip({
   // Pending custom tags use a warning-tinted outline over a soft surface instead
   // of the solid selected fill, so "added but not yet globally approved" is legible.
   const usePendingTreatment = pending && !isNav && !isSwatch;
-  // Strong Lens glass role. Runway-stage nav chips stay text-only until selected
-  // (chrome over video, not plates); everything else is glass in every state.
+  // Strong Lens glass role. Runway-stage nav chips are faint dark glass until
+  // selected (stage glass); everything else is glass in every state.
   const glassRole: GlassRole | null = disabled
     ? 'disabled'
     : isStageNav
       ? selected
         ? 'stage'
-        : null
+        : 'stageGhost'
       : isNav
         ? selected
           ? 'brandSoft'

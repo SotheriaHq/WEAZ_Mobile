@@ -579,7 +579,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   panelHeaderText: {
     flex: 1,

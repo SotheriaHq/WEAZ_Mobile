@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   headerTop: {
     flexDirection: 'row',

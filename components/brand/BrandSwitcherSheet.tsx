@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { useAuth } from '@/src/auth/AuthContext';
 import { getActiveBrandMembership } from '@/src/auth/brandAccess';
@@ -73,12 +74,13 @@ export function BrandSwitcherSheet() {
               style={({ pressed }) => [
                 styles.row,
                 {
-                  backgroundColor: isSelected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-                  borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                  backgroundColor: 'transparent',
+                  borderColor: 'transparent',
                   opacity: pressed ? 0.82 : 1,
                 },
               ]}
             >
+              <LiquidGlassFill glassRole={isSelected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.lg} />
               <View style={styles.rowCopy}>
                 <AppText variant="bodyBold" numberOfLines={1}>
                   {membership.brandName || 'Brand workspace'}
@@ -117,6 +119,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   row: {
+    overflow: 'hidden',
     minHeight: 64,
     borderWidth: 2,
     borderRadius: tokens.radius.lg,

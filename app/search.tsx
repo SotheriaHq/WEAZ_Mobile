@@ -853,7 +853,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.md,
     paddingBottom: tokens.spacing.sm,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   searchInputWrap: {
     flex: 1,

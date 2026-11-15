@@ -918,13 +918,12 @@ async function runTests() {
       assert.equal(flattenStyle(selectedNav.props.style).borderWidth, 0);
       // Strong Lens everywhere (15 Nov 2026): no legacy gradient haze on any chip.
       assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0);
-      // Runway-stage nav chips stay text-only until selected (chrome over video);
-      // off the stage, unselected nav chips are ghost glass.
-      assert.equal(collectNodes(unselectedNav, (n) => n.type === 'Svg').length, 0);
+      // Unselected nav chips are glass too: faint dark stageGhost glass over the
+      // Runway stage, ghost glass elsewhere (owner, 15 Nov 2026).
       assert.equal(
         collectNodes(unselectedNav, (n) => n.type === 'View' && typeof n.props?.onLayout === 'function').length,
-        onDarkStage ? 0 : 1,
-        onDarkStage ? 'Unselected stage nav chip carries no glass' : 'Unselected nav chip is ghost glass',
+        1,
+        onDarkStage ? 'Unselected stage nav chip is stageGhost glass' : 'Unselected nav chip is ghost glass',
       );
       // Option chips (every design-creation picker) are glass in every state.
       assert.ok(
