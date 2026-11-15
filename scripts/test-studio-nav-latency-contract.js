@@ -49,9 +49,14 @@ assert.match(
   /registerStudioInPlaceHandler/,
   'The WebView screen must register its injector for the island to call.',
 );
-assert.match(
-  webview,
-  /key=\{String\(retryKey\)\}/,
+// The WebView remounts only on an explicit retry or an account/brand scope
+// change (a different workspace must not reuse the old document). The handoff
+// URL is never part of the key, so a URL change alone cannot remount it.
+const webviewKeyMatch = /key=\{(`\$\{studioScope\}:\$\{retryKey\}`|String\(retryKey\))\}/.exec(webview);
+assert.ok(webviewKeyMatch, 'The WebView instance must be keyed by retry (and workspace scope) only.');
+assert.doesNotMatch(
+  webviewKeyMatch[1],
+  /url|uri|handoff|source/i,
   'The WebView instance must not remount when the handoff URL string changes.',
 );
 
