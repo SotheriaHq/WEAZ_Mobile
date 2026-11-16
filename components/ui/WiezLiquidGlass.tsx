@@ -275,7 +275,10 @@ function resolveTintAlpha(
   tintAlphaOverride?: number,
 ): number {
   if (typeof tintAlphaOverride === 'number' && Number.isFinite(tintAlphaOverride)) {
-    return clamp(tintAlphaOverride, 0, 0.6);
+    // Up to 0.92: brand/danger CTAs ask for 0.86. The old 0.6 ceiling turned
+    // them into a pale lavender wash on the light theme (white page under 40%
+    // see-through) while looking right on dark, so light buttons read flat.
+    return clamp(tintAlphaOverride, 0, 0.92);
   }
   const palette = tokens.liquidGlass[scheme];
   if (typeof intensity === 'string') {

@@ -1,13 +1,13 @@
 /**
  * Tabs - Mobile
- * Tab navigation with a gliding Strong Lens glass pill behind the active tab.
- * The pill initialises immediately on first layout (no flicker), then glides
- * on subsequent changes and follows page swipes on the UI thread.
+ * Top-level tab navigation with a gliding brand underline under the active
+ * tab (sub-tab chip rows use the glass pill instead). The underline
+ * initialises immediately on first layout (no flicker), then glides on
+ * subsequent changes and follows page swipes on the UI thread.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
-import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { QuickPressable } from '@/components/ui/QuickPressable';
 import Animated, {
   Easing,
@@ -123,6 +123,9 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
 // Main Component
 // ─────────────────────────────────────────────────────────────
 
+/** The active underline spans this share of the tab, centred under the label. */
+const UNDERLINE_WIDTH_RATIO = 0.5;
+
 export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align = 'center', swipeProgress }: TabsProps) {
   const { theme } = useTheme();
 
@@ -189,12 +192,11 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
   }, [activeTab, underlineX, underlineW]);
 
   /*
-    The active indicator is a Strong Lens glass pill (system purple, low tint)
-    behind the active tab, gliding like the island's. Position and width stay
-    on the UI thread (including the finger-driven swipe interpolation); the
-    glass itself is laid out once at the active tab's width (`pillBase`) and
-    scaleX bridges any width difference mid-glide, so a swipe never re-lays-out
-    the glass per frame.
+    The active indicator is a brand underline under the active tab. Position
+    and width stay on the UI thread (including the finger-driven swipe
+    interpolation); the line is laid out once at the active tab's width
+    (`pillBase`) and scaleX bridges any width difference mid-glide, so a swipe
+    never re-lays-out the indicator per frame.
   */
   const [pillBase, setPillBase] = useState(0);
   const pillBaseSV = useSharedValue(0);
@@ -224,11 +226,13 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
           Extrapolation.CLAMP,
         )
       : underlineW.value;
-    const base = pillBaseSV.value > 0 ? pillBaseSV.value : Math.max(w, 1);
+    // The underline is half the tab's width, centred under its label.
+    const lineW = w * UNDERLINE_WIDTH_RATIO;
+    const base = pillBaseSV.value > 0 ? pillBaseSV.value * UNDERLINE_WIDTH_RATIO : Math.max(lineW, 1);
     return {
       opacity: w > 0 ? 1 : 0,
       width: base,
-      transform: [{ translateX: x + (w - base) / 2 }, { scaleX: w > 0 ? w / base : 1 }],
+      transform: [{ translateX: x + (w - base) / 2 }, { scaleX: lineW > 0 ? lineW / base : 1 }],
     };
   });
 
@@ -246,12 +250,16 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
 
   return (
     <View style={[styles.container, { borderBottomColor: theme.colors.borderDefault ?? theme.colors.border }]}>
-      {/* Gliding glass pill behind the active tab (painted first, so labels sit on it). */}
-      <Animated.View pointerEvents="none" style={[styles.activePill, underlineStyle]}>
-        {pillBase > 0 ? (
-          <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
-        ) : null}
-      </Animated.View>
+      {/* Gliding brand underline under the active tab (owner, 16 Nov 2026: top
+          tabs use a bottom indicator; only sub-tab chips use the glass pill). */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.activeUnderline,
+          { backgroundColor: theme.colors.actionBrand ?? theme.colors.primary },
+          underlineStyle,
+        ]}
+      />
       <TabContainer {...containerProps}>
         {tabs.map((tab, index) => (
           <TabItem
@@ -327,13 +335,12 @@ const styles = StyleSheet.create({
   badgeText: {
     letterSpacing: 0.1,
   },
-  activePill: {
+  activeUnderline: {
     position: 'absolute',
-    top: 6,
-    bottom: 6,
+    bottom: 0,
     left: 0,
+    height: 3,
     borderRadius: tokens.radius.full,
-    overflow: 'hidden',
   },
 });
 

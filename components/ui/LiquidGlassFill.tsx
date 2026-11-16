@@ -55,13 +55,20 @@ export function glassRoleProps(role: GlassRole, colors: ThemeColors, scheme: The
       return { fallbackTintAlpha: t.stageChrome, tintMode: 'dark' };
     case 'stageGhost':
       return { fallbackTintAlpha: t.ghostDark, tintMode: 'dark' };
+    // Light theme: neutral glass is a faint INK tint, not white. White glass on
+    // a white page disappears (the "Share does not look like a button" report);
+    // a soft grey pill reads as a control while staying borderless.
     case 'ghost':
-      return { fallbackTintAlpha: dark ? t.ghostDark : t.ghostLight, tintMode: 'auto' };
+      return dark
+        ? { fallbackTintAlpha: t.ghostDark, tintMode: 'auto' }
+        : { tintColor: colors.text, fallbackTintAlpha: t.ghostLightInk, tintMode: 'auto' };
     case 'disabled':
       return { tintColor: colors.disabledSurface, fallbackTintAlpha: t.tintedStrong, tintMode: 'auto' };
     case 'control':
     default:
-      return { fallbackTintAlpha: dark ? t.controlDark : t.controlLight, tintMode: 'auto' };
+      return dark
+        ? { fallbackTintAlpha: t.controlDark, tintMode: 'auto' }
+        : { tintColor: colors.text, fallbackTintAlpha: t.controlLightInk, tintMode: 'auto' };
   }
 }
 

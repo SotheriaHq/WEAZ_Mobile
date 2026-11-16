@@ -324,18 +324,17 @@ export default function TabLayout() {
     (inStudioIsland && isStudioFocusedFlow(studioRouteKeyParam));
 
   // Strong Lens island: the tab tree is the backdrop the island refracts on
-  // Android. Runway plays video in a SurfaceView and Studio hosts a WebView;
-  // neither can be recorded by a RenderNode capture, so those surfaces keep the
-  // lightweight island.
+  // Android, on EVERY shopper tab, Runway included, so the island is the same
+  // glass everywhere (owner, 16 Nov 2026). Runway renders photos with
+  // expo-image in a FlatList (no video surface is mounted), which a RenderNode
+  // capture records like any other tab. Only Studio keeps the lightweight
+  // island: it hosts a Chromium WebView, which a capture cannot record.
   const {
     targetRef: islandBackdropRef,
     blurTargetRef: islandLensTarget,
     onTargetLayout: onIslandBackdropLayout,
   } = useLiquidGlassBlurTarget();
-  const islandRefracts =
-    Platform.OS === 'android' &&
-    !inStudioIsland &&
-    activeIslandKey !== NATIVE_ISLAND_KEYS.designs;
+  const islandRefracts = Platform.OS === 'android' && !inStudioIsland;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     lastNotificationRefreshAttemptAtRef.current = Date.now();

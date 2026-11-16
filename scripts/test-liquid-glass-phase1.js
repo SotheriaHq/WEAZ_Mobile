@@ -1057,10 +1057,12 @@ async function runTests() {
     /<WiezLiquidGlassBackdrop[\s\S]*?\{tabNavigatorTree\}[\s\S]*?<\/WiezLiquidGlassBackdrop>/,
     'The tab navigator is the backdrop the island refracts',
   );
+  // Owner, 16 Nov 2026: the island is the same refracting glass on every
+  // shopper tab, Runway included; only Studio (WebView) stays lightweight.
   assert.match(
     tabsLayoutSource,
-    /!inStudioIsland &&\s*activeIslandKey !== NATIVE_ISLAND_KEYS\.designs/,
-    'Runway (SurfaceView video) and Studio (WebView) keep the lightweight island',
+    /const islandRefracts = Platform\.OS === 'android' && !inStudioIsland;/,
+    'Island refracts on every shopper tab including Runway; Studio (WebView) stays lightweight',
   );
   assert.match(
     tabsLayoutSource,

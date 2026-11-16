@@ -596,6 +596,13 @@ export const tokens = {
       /** Minimal ghost controls in dense UI. */
       ghostLight: 0.2,
       ghostDark: 0.18,
+      /**
+       * Light theme neutral glass is a faint ink tint (theme text colour), so a
+       * secondary button or chip reads as a control on a white page instead of
+       * vanishing into it.
+       */
+      controlLightInk: 0.07,
+      ghostLightInk: 0.045,
       /** Brand/danger-tinted glass: primary CTAs (strong) and selected/active states (soft). */
       tintedStrong: 0.86,
       tintedSoft: 0.24,
