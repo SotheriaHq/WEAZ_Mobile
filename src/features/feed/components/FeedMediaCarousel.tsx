@@ -21,12 +21,21 @@ const getAspectClass = (aspectRatio?: number | null) => {
   return 'square';
 };
 
-// Active page: mount two slides either side so the next angle is already
-// painted before a horizontal swipe. Inactive pages (above/below the vertical
-// feed): mount ONLY the current angle — five full-bleed pages each mounting
-// five images was the progressive "gets shakier after a few scrolls" tax.
-const shouldMountSlide = (index: number, activeIndex: number, isActivePage: boolean) =>
-  isActivePage ? Math.abs(index - activeIndex) <= 2 : index === activeIndex;
+/*
+  Active page: mount EVERY angle when the design has a normal count (a design
+  has ~5), so any swipe lands on an image that is already mounted and loading.
+  The old ±2 window moved only when a swipe "settled", and Android drops that
+  settle signal on some releases, so the 3rd-5th angle could still be
+  unmounted (blank / still loading) when the finger got there. Larger sets
+  keep the bounded ±2 window. Inactive pages (above/below the vertical feed):
+  mount ONLY the current angle — five full-bleed pages each mounting five
+  images was the progressive "gets shakier after a few scrolls" tax.
+*/
+const EAGER_MOUNT_MAX_ANGLES = 6;
+const shouldMountSlide = (index: number, activeIndex: number, isActivePage: boolean, count: number) => {
+  if (!isActivePage) return index === activeIndex;
+  return count <= EAGER_MOUNT_MAX_ANGLES || Math.abs(index - activeIndex) <= 2;
+};
 
 type FeedMediaCarouselProps = {
   collectionId: string;
@@ -130,7 +139,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       nextIndex: stableMediaItems.length > 1 ? Math.min(stableMediaItems.length - 1, safeActiveIndex + 1) : null,
       mountedIndices: stableMediaItems
         .map((_, index) => index)
-        .filter((index) => shouldMountSlide(index, safeActiveIndex, isActive)),
+        .filter((index) => shouldMountSlide(index, safeActiveIndex, isActive, stableMediaItems.length)),
     });
   }, [collectionId, isActive, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
 
@@ -139,12 +148,17 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   // shimmer that resolves seconds later.
   useEffect(() => {
     if (stableMediaItems.length < 2) return;
-    const candidateIndices = [
-      safeActiveIndex + 1,
-      safeActiveIndex - 1,
-      safeActiveIndex + 2,
-      safeActiveIndex - 2,
-    ].filter((index) => index >= 0 && index <= stableMediaItems.length - 1);
+    // On the page being viewed, warm EVERY angle (nearest first) so later
+    // angles are cached before the finger reaches them; off-screen pages only
+    // warm their immediate neighbours.
+    const candidateIndices = (
+      isActive && stableMediaItems.length <= EAGER_MOUNT_MAX_ANGLES
+        ? stableMediaItems
+            .map((_, index) => index)
+            .filter((index) => index !== safeActiveIndex)
+            .sort((a, b) => Math.abs(a - safeActiveIndex) - Math.abs(b - safeActiveIndex))
+        : [safeActiveIndex + 1, safeActiveIndex - 1, safeActiveIndex + 2, safeActiveIndex - 2]
+    ).filter((index) => index >= 0 && index <= stableMediaItems.length - 1);
     candidateIndices.forEach((candidateIndex) => {
       const candidate = stableMediaItems[candidateIndex];
       if (!candidate) return;
@@ -170,7 +184,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         },
       });
     });
-  }, [safeActiveIndex, stableMediaItems]);
+  }, [isActive, safeActiveIndex, stableMediaItems]);
 
   // Keep initialActiveIndex accessible in the reset effect without making it a dep.
   useEffect(() => {
@@ -238,7 +252,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         corrected: false,
         mountedIndices: stableMediaItems
           .map((_, index) => index)
-          .filter((index) => shouldMountSlide(index, nextIndex, true)),
+          .filter((index) => shouldMountSlide(index, nextIndex, true, stableMediaItems.length)),
       });
       if (nextIndex !== previousIndex) {
         const nextMedia = stableMediaItems[nextIndex] ?? null;
@@ -325,7 +339,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       >
         {stableMediaItems.map((item, index) => (
           <View key={item.id} style={slideFrameStyle}>
-            {shouldMountSlide(index, safeActiveIndex, isActive) ? (
+            {shouldMountSlide(index, safeActiveIndex, isActive, stableMediaItems.length) ? (
               <FeedMediaSlide
                 media={item}
                 exposureActive={isActive && index === safeActiveIndex}

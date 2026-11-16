@@ -128,7 +128,10 @@ for (const shim of ['src/features/feed/components/FeedActionRail.tsx', 'src/feat
 
 const carousel = 'src/features/feed/components/FeedMediaCarousel.tsx';
 expectIncludes(carousel, 'Math.abs(index - activeIndex) <= 2', 'carousel must mount a bounded window around the active media');
-expectIncludes(carousel, 'shouldMountSlide(index, safeActiveIndex, isActive)', 'off-window angle frames must not mount media');
+// Every angle of the page being viewed mounts (<= 6 angles) so a swipe never
+// lands on an unmounted slide; inactive pages still mount only their angle.
+expectIncludes(carousel, 'shouldMountSlide(index, safeActiveIndex, isActive, stableMediaItems.length)', 'angle frames mount through the bounded/eager window');
+expectIncludes(carousel, 'if (!isActivePage) return index === activeIndex;', 'inactive vertical pages must mount only their current angle');
 expectIncludes(carousel, 'scrollEnabled={isActive}', 'inactive vertical pages must not compete for horizontal pans');
 expectNotMatches(carousel, /scrollTo\(\{ x: nextIndex \* width, y: 0, animated: false \}\)/, 'horizontal settle must not visibly correct momentum');
 // The dot row is the only overlay outside the page's chrome layer. It must keep
