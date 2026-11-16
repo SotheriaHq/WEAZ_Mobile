@@ -31,13 +31,7 @@ import Animated, {
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import { glassRoleProps } from '@/components/ui/LiquidGlassFill';
-import {
-  supportsEnhancedLiquidGlass,
-  useLiquidGlassBlurTarget,
-  WiezLiquidGlass,
-  WiezLiquidGlassBackdrop,
-} from '@/components/ui/WiezLiquidGlass';
-import { isWiezLiquidGlassNativeAvailable } from '@/modules/wiez-liquid-glass/src';
+import { WiezLiquidGlass } from '@/components/ui/WiezLiquidGlass';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { measurePressHandler, useCommitCost } from '@/src/perf/commitCost';
 // Direct, not via `navPerf`: that facade reaches wiezPerf through
@@ -131,6 +125,8 @@ const ACTIVE_TRANSITION = { duration: 170, easing: Easing.out(Easing.cubic) } as
  * Applied as a transform, so it changes no layout box — see `glyphStyle`.
  */
 const ACTIVE_GLYPH_SCALE = 1.09;
+/** The active label grows with its emoji, slightly less (it nearly fills the chip). */
+const ACTIVE_LABEL_SCALE = 1.06;
 
 export type NativeIslandNavItem = {
   key: string;
@@ -345,6 +341,17 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
     return { opacity: withTiming(isActive ? 0 : 1, ACTIVE_TRANSITION) };
   }, [focusedValue, itemKey, pressedKey]);
 
+  /*
+    The active route's label grows a little with its emoji, so the pair reads
+    as "lifted" inside the glass droplet. Transform only (no layout), and a
+    touch less than the glyph because the label nearly fills the chip.
+  */
+  const labelScaleStyle = useAnimatedStyle(() => {
+    const pressed = pressedKey.value;
+    const isActive = pressed != null ? pressed === itemKey : focusedValue.value;
+    return { transform: [{ scale: withTiming(isActive ? ACTIVE_LABEL_SCALE : 1, ACTIVE_TRANSITION) }] };
+  }, [focusedValue, itemKey, pressedKey]);
+
   // Static now: the chip's box never changes, and the only animated thing
   // inside it is the frosted fill below.
   const chipStyle = [styles.tabChip, compact && styles.tabChipCompact];
@@ -375,7 +382,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
                 </AppText>
               )}
             </Animated.View>
-            <View style={styles.tabLabelWrap}>
+            <Animated.View style={[styles.tabLabelWrap, labelScaleStyle]}>
               <Animated.View style={inactiveLabelStyle}>
                 <AppText
                   variant="captionBold"
@@ -401,7 +408,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
                   {label}
                 </AppText>
               </Animated.View>
-            </View>
+            </Animated.View>
           </View>
         </View>
         {typeof badge === 'number' && badge > 0 ? (
@@ -429,7 +436,12 @@ type DockHandlers = {
 type ChipFrame = { x: number; y: number; w: number; h: number };
 
 /** Liquid but settled: a short glide with a hint of overshoot, never a bounce. */
-const INDICATOR_SPRING = { damping: 18, stiffness: 230, mass: 0.85 } as const;
+/*
+  Quick and smooth: a duration-based spring that lands in ~240ms with a hint of
+  liquid settle (damping ratio 0.85, no bounce). The previous mass/stiffness
+  spring took ~450ms to settle and read as sluggish.
+*/
+const INDICATOR_SPRING = { duration: 240, dampingRatio: 0.85 } as const;
 
 /**
  * The droplet wraps the whole tab (emoji AND label), centred in its cell:
@@ -475,13 +487,7 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
   getFrame,
   pressedKey,
   settledKey,
-  goToRef,
-  lensTarget,
 }: {
-  /** The dock calls this from its press handler so the glide starts with the route. */
-  goToRef: React.MutableRefObject<((key: string) => void) | null>;
-  /** The dock buttons' backdrop when the droplet refracts the tab beneath it (AGSL). */
-  lensTarget: React.RefObject<View | null> | null;
   frames: SharedValue<Record<string, ChipFrame>>;
   /** Bumped when a frame is measured, so the glass re-sizes to the settled chip. */
   framesTick: number;
@@ -513,6 +519,14 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
   const h = useSharedValue(0);
   const visible = useSharedValue(0);
 
+  /*
+    ONE source of motion, on the UI thread. It follows the press at touch-down
+    (`pressedKey`), the route once it settles (`settled`) and fresh
+    measurements (`frames`), so it starts on the next frame whatever JS is
+    doing. It only starts a spring when the TARGET actually changes: the route
+    confirming the same tab, or a re-measure to the same spot, never restarts a
+    glide mid-flight (that restart was the visible hitch).
+  */
   useAnimatedReaction(
     () => {
       const key = pressedKey.value ?? settled.value;
@@ -524,52 +538,28 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
         visible.value = withTiming(0, { duration: 120 });
         return;
       }
+      if (
+        previous &&
+        Math.abs(previous[0] - next[0]) < 0.5 &&
+        Math.abs(previous[1] - next[1]) < 0.5 &&
+        Math.abs(previous[2] - next[2]) < 0.5 &&
+        Math.abs(previous[3] - next[3]) < 0.5
+      ) {
+        return;
+      }
       y.value = next[1];
       h.value = next[3];
       if (previous == null || visible.value === 0 || reduceMotion) {
         x.value = next[0];
         w.value = next[2];
+        visible.value = withTiming(1, { duration: 140 });
       } else {
         x.value = withSpring(next[0], INDICATOR_SPRING);
         w.value = withSpring(next[2], INDICATOR_SPRING);
       }
-      visible.value = withTiming(1, { duration: 140 });
     },
     [reduceMotion],
   );
-
-  /*
-    Belt and braces: besides the UI-thread reaction above, the glide is also
-    started imperatively (from the press handler, same tick as routing) and on
-    settle (route/frames changed). Any one path moves the droplet; none blocks
-    the press.
-  */
-  const animateTo = React.useCallback(
-    (key: string | null) => {
-      const frame = key ? getFrame(key) : undefined;
-      if (!frame) return;
-      y.value = frame.y;
-      h.value = frame.h;
-      if (visible.value === 0 || reduceMotion) {
-        x.value = frame.x;
-        w.value = frame.w;
-      } else {
-        x.value = withSpring(frame.x, INDICATOR_SPRING);
-        w.value = withSpring(frame.w, INDICATOR_SPRING);
-      }
-      visible.value = withTiming(1, { duration: 140 });
-    },
-    [getFrame, reduceMotion, x, y, w, h, visible],
-  );
-  React.useEffect(() => {
-    goToRef.current = animateTo;
-    return () => {
-      goToRef.current = null;
-    };
-  }, [animateTo, goToRef]);
-  React.useEffect(() => {
-    animateTo(settledKey);
-  }, [settledKey, framesTick, animateTo]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     const base = baseWidth.value > 0 ? baseWidth.value : Math.max(w.value, 1);
@@ -588,16 +578,12 @@ const IslandActiveIndicator = React.memo(function IslandActiveIndicator({
   return (
     <Animated.View pointerEvents="none" style={[styles.activeIndicator, indicatorStyle]}>
       {glassW > 0 && glassH > 0 ? (
-        // A thick droplet: brighter Fresnel/specular than the island it sits
-        // on, and (where the AGSL lens exists) real refraction of the tab
-        // under it. The lens tracks the glide every frame (pre-draw location).
+        // Plain Strong Lens glass behind the labels (no refraction of the tab):
+        // the active route reads from the glass plus its lifted emoji/label.
         <WiezLiquidGlass
-          mode={lensTarget ? 'enhanced' : 'lightweight'}
-          blurTarget={lensTarget ?? undefined}
+          mode="lightweight"
           intensity="regular"
           {...glass}
-          highlightIntensity={tokens.liquidGlass.droplet.highlight}
-          opticalThickness={tokens.liquidGlass.droplet.thickness}
           borderRadius={9999}
           pointerEvents="none"
           style={{ width: glassW, height: glassH }}
@@ -855,7 +841,6 @@ function NativeIslandBottomNavImpl({
    * render. See the note on `pressedKey` in `NativeIslandTabIcon`.
    */
   const pressedKey = useSharedValue<string | null>(null);
-  const indicatorGoToRef = React.useRef<((key: string) => void) | null>(null);
   const pressedKeyResetRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
 
@@ -904,8 +889,6 @@ function NativeIslandBottomNavImpl({
     // First, and outside React: this is the write the pill actually paints
     // from. Everything below it is bookkeeping that may take a commit to land.
     pressedKey.value = item.key;
-    // Start the glide in the same tick as the route (no added latency).
-    indicatorGoToRef.current?.(item.key);
     // Bounded, so a press that leads nowhere cannot leave the chip lit. See
     // `PRESSED_KEY_MAX_MS`.
     if (pressedKeyResetRef.current) clearTimeout(pressedKeyResetRef.current);
@@ -1087,27 +1070,6 @@ function NativeIslandBottomNavImpl({
     measure: measureDockItem,
   };
 
-  /*
-    The droplet refracts the tab it sits on. Where the AGSL lens exists
-    (Android 13+ with the native module), the fixed dock's buttons render inside
-    a `WiezLiquidGlassBackdrop` and the droplet is drawn ABOVE them as a real
-    lens: the emoji and label bend through its curved edge like the system
-    media island. Everywhere else the droplet stays tinted glass BELOW the
-    labels so they remain crisp. The scrolling dock keeps the lightweight
-    droplet (capturing a scrolling row every frame is not worth it).
-  */
-  const {
-    targetRef: dockBackdropRef,
-    blurTargetRef: dockLensTarget,
-    onTargetLayout: onDockBackdropLayout,
-  } = useLiquidGlassBlurTarget();
-  const dropletRefracts =
-    Platform.OS === 'android' &&
-    !scrollableDock &&
-    !hidden &&
-    supportsEnhancedLiquidGlass() &&
-    isWiezLiquidGlassNativeAvailable();
-
   // One key. `item.active` is the route; `immediateActiveKey` is the press
   // that has not been confirmed yet. ORing them lit both chips.
   const settledKey =
@@ -1126,8 +1088,6 @@ function NativeIslandBottomNavImpl({
       getFrame={getChipFrame}
       pressedKey={pressedKey}
       settledKey={settledKey}
-      goToRef={indicatorGoToRef}
-      lensTarget={dropletRefracts ? dockLensTarget : null}
     />
   );
   const fixedDockButtons = scrollableDock
@@ -1203,19 +1163,9 @@ function NativeIslandBottomNavImpl({
               </ScrollView>
             ) : (
               <View ref={fixedLayerRef} onLayout={remeasureDock} style={styles.navModeLayer}>
-                {dropletRefracts ? null : activeIndicator}
-                {dropletRefracts ? (
-                  <WiezLiquidGlassBackdrop
-                    targetRef={dockBackdropRef}
-                    onLayout={onDockBackdropLayout}
-                    style={[styles.dockItemsRow, styles.expandedItemsLayer]}
-                  >
-                    {fixedDockButtons}
-                  </WiezLiquidGlassBackdrop>
-                ) : (
-                  <View style={[styles.dockItemsRow, styles.expandedItemsLayer]}>{fixedDockButtons}</View>
-                )}
-                {dropletRefracts ? activeIndicator : null}
+                {/* Droplet first, so the emoji and label sit on the glass. */}
+                {activeIndicator}
+                <View style={[styles.dockItemsRow, styles.expandedItemsLayer]}>{fixedDockButtons}</View>
               </View>
             )}
           </View>
@@ -1391,7 +1341,7 @@ const styles = StyleSheet.create({
   expandedItemsLayer: {
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
   },
-  /** The fixed dock's button row (plain View, or the droplet's lens backdrop). */
+  /** The fixed dock's button row, laid over the droplet. */
   dockItemsRow: {
     ...StyleSheet.absoluteFill,
     flexDirection: 'row',

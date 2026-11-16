@@ -27,8 +27,8 @@ interface VisibilityFilterProps {
 
 type SegmentFrame = { x: number; y: number; width: number; height: number };
 
-/** Same liquid-but-settled glide as the island's active droplet. */
-const DROPLET_SPRING = { damping: 18, stiffness: 230, mass: 0.85 } as const;
+/** Same quick, smooth glide as the island's active droplet (~240ms, no bounce). */
+const DROPLET_SPRING = { duration: 240, dampingRatio: 0.85 } as const;
 
 interface SegmentProps {
   label: VisibilityOption;

@@ -1033,12 +1033,7 @@ async function runTests() {
   assert.match(islandSource, /pressedKey\.value \?\? settled\.value/, 'Indicator follows the press on the UI thread at touch-down');
   assert.match(islandSource, /withSpring\(next\[0\], INDICATOR_SPRING\)/, 'Indicator glides with a spring');
   assert.match(islandSource, /glassRoleProps\('brandSoft'/, 'Indicator is brand-tinted Strong Lens glass from the role map');
-  assert.match(islandSource, /\{activeIndicator\}/, 'Indicator mounts in the scrolling dock');
-  assert.match(
-    islandSource,
-    /\{dropletRefracts \? null : activeIndicator\}[\s\S]*?\{dropletRefracts \? activeIndicator : null\}/,
-    'Indicator mounts in the fixed dock: under the labels, or above them as a lens when it refracts',
-  );
+  assert.equal((islandSource.match(/\{activeIndicator\}/g) || []).length, 2, 'Indicator mounts in both docks');
   // Regression (15 Nov 2026, droplet stuck on Runway): Gesture Handler v3 wraps
   // each dock button in a display:contents host, so onLayout offsets are ~0.
   // Buttons must be measured against the dock layer instead.
@@ -1049,10 +1044,11 @@ async function runTests() {
   assert.match(islandSource, /<View ref=\{scrollRowRef\} onLayout=\{remeasureDock\}/, 'Scrolling dock row is the measuring frame');
   // The droplet wraps the whole tab (emoji + label), centred in its cell.
   assert.match(islandSource, /x: cell\.x \+ \(cell\.width - w\) \/ 2/, 'Droplet is centred on its tab cell');
-  // Real refraction of the tab under the droplet where the AGSL lens exists.
-  assert.match(islandSource, /<WiezLiquidGlassBackdrop\s+targetRef=\{dockBackdropRef\}/, 'Dock buttons are the droplet lens backdrop');
-  assert.match(islandSource, /mode=\{lensTarget \? 'enhanced' : 'lightweight'\}/, 'Droplet refracts when a lens target is available');
-  assert.match(islandSource, /highlightIntensity=\{tokens\.liquidGlass\.droplet\.highlight\}/, 'Droplet reflection comes from tokens');
+  // Owner, 16 Nov 2026: the droplet is plain glass BEHIND the labels (it must
+  // not refract the tab); the active route lifts its emoji and label instead.
+  assert.doesNotMatch(islandSource, /dockBackdropRef|dropletRefracts|liquidGlass\.droplet/, 'Droplet does not refract the tab');
+  assert.match(islandSource, /scale: withTiming\(isActive \? ACTIVE_LABEL_SCALE : 1/, 'Active label scales up with its emoji');
+  assert.match(islandSource, /scale: withTiming\(isActive \? ACTIVE_GLYPH_SCALE : 1/, 'Active emoji scales up');
   const tabsLayoutSource = fs.readFileSync(path.join(ROOT, 'app', '(tabs)', '_layout.tsx'), 'utf8');
   assert.match(
     tabsLayoutSource,
