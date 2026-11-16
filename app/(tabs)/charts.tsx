@@ -231,13 +231,16 @@ export default function ChartsScreen() {
               </AppText>
             </>
           )}
+          {/* Full width: the hero's one action. (A label-sized button here grew
+              to the card's whole height on device, the "giant purple bar".) */}
           <Button
             title={
               !authenticated ? 'Sign in' : match ? 'Update my fittings' : 'Add my fittings'
             }
-            size="sm"
+            size="md"
             variant={match ? 'secondary' : 'primary'}
             onPress={openFittings}
+            fullWidth
             style={styles.heroButton}
           />
         </Card>
@@ -261,8 +264,8 @@ export default function ChartsScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
-                <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
+                <LiquidGlassFill glassRole={selected ? 'brandSoft' : 'control'} inset={2} borderRadius={tokens.radius.full} />
+                <AppText variant="smallBold" tone={selected ? 'primary' : 'secondary'} numberOfLines={1}>
                   {entry.label}
                 </AppText>
               </Pressable>
@@ -274,7 +277,8 @@ export default function ChartsScreen() {
           <AppText variant="caption" tone="muted">
             Tap a size to compare it with you, or a measurement to see where it goes.
           </AppText>
-          <View style={[styles.unitToggle, { borderColor: theme.colors.border }]}>
+          <View style={styles.unitToggle}>
+            <LiquidGlassFill glassRole="control" borderRadius={tokens.radius.full} />
             {(['CM', 'IN'] as LengthUnitPreference[]).map((option) => {
               const selected = unit === option;
               return (
@@ -286,9 +290,10 @@ export default function ChartsScreen() {
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
-                  style={[styles.unitOption, selected ? { backgroundColor: theme.colors.primary } : null]}
+                  style={styles.unitOption}
                 >
-                  <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
+                  {selected ? <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} /> : null}
+                  <AppText variant="smallBold" tone={selected ? 'primary' : 'secondary'} numberOfLines={1}>
                     {option}
                   </AppText>
                 </Pressable>
@@ -298,7 +303,7 @@ export default function ChartsScreen() {
         </View>
 
         {/* ── The table ──────────────────────────────────────────────── */}
-        <View style={[styles.table, { borderColor: theme.colors.border }]}>
+        <View style={[styles.table, { backgroundColor: theme.colors.surfaceCard ?? theme.colors.surface }]}>
           <View style={styles.tableRowWrap}>
             <View style={[styles.pinnedColumn, { borderRightColor: theme.colors.border }]}>
               <View style={[styles.headerRow, { borderBottomColor: theme.colors.border }]}>
@@ -319,7 +324,12 @@ export default function ChartsScreen() {
                     style={[
                       styles.bodyRow,
                       { borderBottomColor: theme.colors.border },
-                      focused ? { backgroundColor: theme.colors.primarySoft } : null,
+                      // Alternating tint separates rows (no thin divider lines).
+                      focused
+                        ? { backgroundColor: theme.colors.primarySoft }
+                        : index % 2 === 1
+                          ? { backgroundColor: theme.colors.surfaceAlt }
+                          : null,
                     ]}
                   >
                     <View style={[styles.cell, styles.sizeCell, { width: SIZE_COL_WIDTH }]}>
@@ -386,7 +396,12 @@ export default function ChartsScreen() {
                       style={[
                         styles.bodyRow,
                         { borderBottomColor: theme.colors.border },
-                        focused ? { backgroundColor: theme.colors.primarySoft } : null,
+                        // Alternating tint separates rows (no thin divider lines).
+                      focused
+                        ? { backgroundColor: theme.colors.primarySoft }
+                        : index % 2 === 1
+                          ? { backgroundColor: theme.colors.surfaceAlt }
+                          : null,
                       ]}
                     >
                       <View style={[styles.cell, { width: DATA_COL_WIDTH }]}>
@@ -582,17 +597,16 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
   heroButton: {
-    alignSelf: 'flex-start',
-    marginTop: tokens.spacing.xs,
+    marginTop: tokens.spacing.sm,
   },
   chips: {
     gap: tokens.spacing.sm,
     paddingRight: tokens.spacing.lg,
   },
+  // Borderless glass chips (selected = brand-soft glass), like every sub-tab row.
   chip: {
     overflow: 'hidden',
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },
@@ -605,18 +619,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
   },
+  // Glass segmented control: selected unit is brand-soft glass, no outline.
   unitToggle: {
     flexDirection: 'row',
-    borderWidth: 2,
     borderRadius: tokens.radius.full,
     overflow: 'hidden',
+    padding: 3,
   },
   unitOption: {
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
   },
+  // A soft card surface; rows separate with hairlines instead of a 2px frame.
   table: {
-    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
   },
@@ -624,7 +641,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   pinnedColumn: {
-    borderRightWidth: 2,
+    borderRightWidth: 0,
   },
   scrollColumns: {
     flexGrow: 1,
@@ -637,7 +654,7 @@ const styles = StyleSheet.create({
   bodyRow: {
     flexDirection: 'row',
     height: ROW_HEIGHT,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   cell: {
     justifyContent: 'center',
@@ -661,7 +678,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: 2,
+    borderBottomWidth: 0,
   },
   compareLabel: {
     flex: 1,
@@ -675,12 +692,12 @@ const styles = StyleSheet.create({
   },
   pointDetail: {
     gap: tokens.spacing.xs,
-    borderTopWidth: 2,
+    borderTopWidth: 0,
     paddingTop: tokens.spacing.md,
   },
   limits: {
     gap: tokens.spacing.sm,
-    borderTopWidth: 2,
+    borderTopWidth: 0,
     paddingTop: tokens.spacing.lg,
   },
 });

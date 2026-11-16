@@ -46,6 +46,17 @@ export type BrandHeaderContactItem = {
  */
 const BANNER_EDIT_CONTROL_CLEARANCE =
   tokens.spacing.lg + 34 + tokens.spacing.sm;
+/*
+  One grid for the identity row. The brand name (drawn over the banner) and
+  the handle / location / stats column (below it) both start at
+  IDENTITY_TEXT_LEFT, so the right-hand text reads as one aligned column at a
+  consistent distance from the profile picture. The name used to sit at a
+  hard-coded 132 (the avatar's edge, no gap) while the column sat 12 further
+  right, so the name looked jammed against the photo.
+*/
+const AVATAR_SIZE = 116;
+const IDENTITY_GAP = tokens.spacing.lg;
+const IDENTITY_TEXT_LEFT = tokens.spacing.lg + AVATAR_SIZE + IDENTITY_GAP;
 const HEADER_ICON_GLASS_SIZE = { width: 48, height: 48 } as const;
 const BANNER_EDIT_GLASS_SIZE = { width: 34, height: 34 } as const;
 
@@ -1004,7 +1015,7 @@ export function BrandProfileHeaderSkeleton() {
     <View style={[styles.root, { backgroundColor: theme.colors.surface }]}>
       <Skeleton width="100%" height={200} borderRadius={0} />
       <View style={styles.identityRow}>
-        <Skeleton width={116} height={116} borderRadius={tokens.radius.xl} />
+        <Skeleton width={AVATAR_SIZE} height={AVATAR_SIZE} borderRadius={tokens.radius.xl} />
         <View style={styles.skeletonMeta}>
           <Skeleton width="74%" height={26} borderRadius={tokens.radius.sm} />
           <Skeleton width="62%" height={14} borderRadius={tokens.radius.sm} />
@@ -1280,7 +1291,7 @@ const styles = StyleSheet.create({
   },
   bannerNameArea: {
     position: 'absolute',
-    left: 132,
+    left: IDENTITY_TEXT_LEFT,
     bottom: 8,
     alignSelf: 'flex-start',
     minHeight: 32,
@@ -1332,13 +1343,13 @@ const styles = StyleSheet.create({
   identityRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: tokens.spacing.md,
+    gap: IDENTITY_GAP,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: -54,
   },
   avatarFrame: {
-    width: 116,
-    height: 116,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
     borderRadius: tokens.radius.xl,
     borderWidth: 3,
     overflow: 'visible',
