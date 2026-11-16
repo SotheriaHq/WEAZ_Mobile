@@ -66,6 +66,7 @@ import {
   DESIGN_MEDIA_SLOTS,
   DESIGN_TARGET_AGE_LABELS,
   DESIGN_VISIBILITY_LABELS,
+  formatNaira,
   getMediaViewSlotLabel,
   getMissingRequiredMediaSlots,
 } from '@/src/features/design-editor/designCreationRules';
@@ -174,6 +175,7 @@ export default function CreateDesignComposerScreen() {
     clearPermissionIssue,
     openMediaPermissionSettings,
     retryBootstrap,
+    rushFeeCap,
   } = useDesignEditor();
   const { scheme, theme } = useTheme();
   // What the reviewer asked for, when this design came back with changes.
@@ -371,59 +373,59 @@ export default function CreateDesignComposerScreen() {
   // backend rules (custom-order-configurations service + DTO: production 1-7,
   // delivery 1-7, rush 1-3) so the creator sees the problem next to the field and
   // is blocked before Preview — never as a submit-time 400. Null per field = valid.
+  /*
+    Messages are deliberately SHORT ("Required", "1–7 days", "Max ₦12,600"):
+    these inputs sit two to a row, and a message that wraps to a second line
+    grows the row and makes the fields jump. Each field reserves one message
+    line (Input's feedback row), and the full rule is the muted helper line
+    under its row. Blank delivery/production/fallback fields mean "use the
+    default shown as the placeholder", exactly as the provider and the server
+    treat them, so they never block Preview.
+  */
   const customOrderFieldErrors = useMemo(() => {
-    const baseCharge = form.baseProductionCharge.trim()
-      ? null
-      : 'Enter a base charge.';
-    const fabricCost = form.fabricCostPerYard.trim()
-      ? null
-      : 'Enter a fabric cost per yard.';
-    const fallbackYards = form.fallbackOutputYards.trim()
-      ? null
-      : 'Enter fallback yards.';
-    const productionDays = Number(form.productionLeadDays);
-    const productionTime =
-      !form.productionLeadDays.trim() ||
-      !Number.isInteger(productionDays) ||
-      productionDays < 1 ||
-      productionDays > 7
-        ? 'Production time must be 1-7 days.'
-        : null;
+    const amountError = (value: string, { required }: { required: boolean }) => {
+      if (!value.trim()) return required ? 'Required' : null;
+      const amount = Number(value);
+      if (!Number.isFinite(amount)) return 'Enter a number';
+      return amount > 0 ? null : 'Above 0';
+    };
+    const dayError = (value: string, min: number, max: number) => {
+      if (!value.trim()) return null;
+      const days = Number(value);
+      return Number.isInteger(days) && days >= min && days <= max ? null : `${min}–${max} days`;
+    };
 
-    // Phase 2B: delivery range locked to 1-7 days, min <= max.
-    const deliveryMin = Number(form.deliveryMinDays);
-    const deliveryMax = Number(form.deliveryMaxDays);
-    const isDeliveryDay = (value: number) =>
-      Number.isInteger(value) && value >= 1 && value <= 7;
-    let delivery: string | null = null;
-    if (!form.deliveryMinDays.trim() || !isDeliveryDay(deliveryMin)) {
-      delivery = 'Delivery min must be 1-7 days.';
-    } else if (!form.deliveryMaxDays.trim() || !isDeliveryDay(deliveryMax)) {
-      delivery = 'Delivery max must be 1-7 days.';
-    } else if (deliveryMin > deliveryMax) {
-      delivery = 'Delivery min cannot exceed delivery max.';
-    }
+    const baseCharge = amountError(form.baseProductionCharge, { required: true });
+    const fabricCost = amountError(form.fabricCostPerYard, { required: true });
+    const fallbackYards = amountError(form.fallbackOutputYards, { required: false });
+    const productionTime = dayError(form.productionLeadDays, 1, 7);
+
+    // Phase 2B: delivery range locked to 1-7 days, min <= max (the inverted
+    // range itself is reported by `deliveryRangeError` next to each field).
+    const deliveryMin = dayError(form.deliveryMinDays, 1, 7);
+    const deliveryMax = dayError(form.deliveryMaxDays, 1, 7);
+    const deliveryMinValue = Number(form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays);
+    const deliveryMaxValue = Number(form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays);
+    const delivery =
+      deliveryMin ?? deliveryMax ?? (deliveryMinValue > deliveryMaxValue ? 'Min above max' : null);
 
     let rushFee: string | null = null;
     let rushTime: string | null = null;
     if (form.rushEnabled) {
-      const fee = Number(form.rushFee);
-      if (!form.rushFee.trim() || !Number.isFinite(fee) || fee <= 0) {
-        rushFee = 'Rush fee must be greater than 0.';
+      rushFee = amountError(form.rushFee, { required: true });
+      // The server's 70% guardrail, checked here so the creator can never
+      // reach Review with a fee that would fail the upload.
+      if (!rushFee && rushFeeCap != null && Number(form.rushFee) > rushFeeCap) {
+        rushFee = `Max ${formatNaira(rushFeeCap)}`;
       }
-      const days = Number(form.rushProductionLeadDays);
-      const standardDays = form.productionLeadDays.trim()
-        ? Number(form.productionLeadDays)
-        : 7;
-      if (
-        !form.rushProductionLeadDays.trim() ||
-        !Number.isInteger(days) ||
-        days < 1 ||
-        days > 3
-      ) {
-        rushTime = 'Rush time must be 1-3 days (72 hours max).';
-      } else if (Number.isFinite(standardDays) && days >= standardDays) {
-        rushTime = 'Rush time must be shorter than production time.';
+      const standardDays = Number(form.productionLeadDays.trim() || 7);
+      if (!form.rushProductionLeadDays.trim()) {
+        rushTime = 'Required';
+      } else {
+        rushTime = dayError(form.rushProductionLeadDays, 1, 3);
+        if (!rushTime && Number(form.rushProductionLeadDays) >= standardDays) {
+          rushTime = 'Under production';
+        }
       }
     }
     return {
@@ -431,6 +433,8 @@ export default function CreateDesignComposerScreen() {
       fabricCost,
       fallbackYards,
       productionTime,
+      deliveryMin,
+      deliveryMax,
       delivery,
       rushFee,
       rushTime,
@@ -445,6 +449,7 @@ export default function CreateDesignComposerScreen() {
     form.rushEnabled,
     form.rushFee,
     form.rushProductionLeadDays,
+    rushFeeCap,
   ]);
   const missingRequiredFields = useMemo(() => {
     const missing: string[] = [];
@@ -1535,7 +1540,10 @@ export default function CreateDesignComposerScreen() {
                 />
               </View>
               <AppText variant="captionRegular" tone="muted">
-                1-3 days (72 hours max), shorter than production time.
+                {rushFeeCap != null
+                  ? `Rush fee up to ${formatNaira(rushFeeCap)} (70% of the outfit estimate). `
+                  : 'Rush fee up to 70% of the outfit estimate. '}
+                Rush lead 1-3 days (72 hours max), shorter than production time.
               </AppText>
             </Reanimated.View>
           ) : null}
@@ -1586,12 +1594,7 @@ export default function CreateDesignComposerScreen() {
               keyboardType="numeric"
               placeholder="2"
               containerStyle={styles.priceInput}
-              error={
-                deliveryRangeError.min ??
-                (customOrderFieldErrors.delivery?.includes('min')
-                  ? customOrderFieldErrors.delivery
-                  : undefined)
-              }
+              error={deliveryRangeError.min ?? customOrderFieldErrors.deliveryMin ?? undefined}
             />
             <Input
               label="Delivery max (days)"
@@ -1600,13 +1603,7 @@ export default function CreateDesignComposerScreen() {
               keyboardType="numeric"
               placeholder="5"
               containerStyle={styles.priceInput}
-              error={
-                deliveryRangeError.max ??
-                (customOrderFieldErrors.delivery &&
-                !customOrderFieldErrors.delivery.includes('min')
-                  ? customOrderFieldErrors.delivery
-                  : undefined)
-              }
+              error={deliveryRangeError.max ?? customOrderFieldErrors.deliveryMax ?? undefined}
             />
           </View>
           <View style={styles.priceRow}>

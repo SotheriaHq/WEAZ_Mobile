@@ -54,6 +54,9 @@ import {
 import {
   DESIGN_REQUIRED_MEDIA_COUNT,
   MEDIA_VIEW_SLOT_OPTIONS,
+  blankZeroAmount,
+  formatNaira,
+  getRushFeeCap,
   getMediaViewSlotLabel,
   getMissingRequiredImageMediaSlots,
   getMissingRequiredMediaSlots,
@@ -120,6 +123,8 @@ type ContextValue = {
   customOrderConfigurations: DesignCustomOrderConfiguration[];
   selectedCustomOrderConfigurationId: string;
   form: FormState;
+  /** Largest rush fee the server accepts for the current terms (null = no estimate yet). */
+  rushFeeCap: number | null;
   assets: DesignEditorAsset[];
   coverAssetId: string | null;
   filterSelection: DesignFilterSelection;
@@ -251,8 +256,9 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     categoryId: detail.categoryId ?? '',
     pendingCategoryProposal: detail.pendingCategoryProposal ?? null,
     subCategoryId: detail.subCategoryId ?? '',
-    minPrice: typeof detail.minPrice === 'number' ? String(detail.minPrice) : '',
-    maxPrice: typeof detail.maxPrice === 'number' ? String(detail.maxPrice) : '',
+    // A stored 0 shows the placeholder, not a "0" the creator has to delete.
+    minPrice: typeof detail.minPrice === 'number' ? blankZeroAmount(detail.minPrice) : '',
+    maxPrice: typeof detail.maxPrice === 'number' ? blankZeroAmount(detail.maxPrice) : '',
     productionLeadDays: '',
     buyerInstructionText: '',
     baseProductionCharge: '',
@@ -336,12 +342,15 @@ function getCustomOrderProductionValidationMessage(form: FormState): string | nu
 // Mirrors the backend custom-order rush rules so the creator gets clear inline
 // guidance instead of a raw 400 from POST /custom-order-configurations. Returns
 // null when rush is disabled (rush fields are then ignored).
-function getCustomOrderRushValidationMessage(form: FormState): string | null {
+function getCustomOrderRushValidationMessage(form: FormState, rushFeeCap: number | null): string | null {
   if (!form.rushEnabled) return null;
 
   const rushFee = Number(form.rushFee);
   if (!form.rushFee.trim() || !Number.isFinite(rushFee) || rushFee <= 0) {
     return 'Add a rush fee greater than 0, or turn off rush orders.';
+  }
+  if (rushFeeCap != null && rushFee > rushFeeCap) {
+    return `Rush fee can be at most ${formatNaira(rushFeeCap)} (70% of the outfit estimate before delivery).`;
   }
 
   const rushLeadDays = Number(form.rushProductionLeadDays);
@@ -399,12 +408,14 @@ function getPublishValidationMessage({
   tags,
   filterValueIds,
   customMeasurementKeys,
+  rushFeeCap,
 }: {
   assets: DesignEditorAsset[];
   form: FormState;
   tags: string[];
   filterValueIds: string[];
   customMeasurementKeys: string[];
+  rushFeeCap: number | null;
 }) {
   const missingRequiredSlots = getMissingRequiredMediaSlots(assets);
   const missingRequiredImageSlots = getMissingRequiredImageMediaSlots(assets);
@@ -437,7 +448,7 @@ function getPublishValidationMessage({
   if (productionMessage) return productionMessage;
   const deliveryMessage = getCustomOrderDeliveryValidationMessage(form);
   if (deliveryMessage) return deliveryMessage;
-  const rushMessage = getCustomOrderRushValidationMessage(form);
+  const rushMessage = getCustomOrderRushValidationMessage(form, rushFeeCap);
   if (rushMessage) return rushMessage;
   return null;
 }
@@ -532,6 +543,20 @@ export function DesignEditorProvider({
   const [loadedSizeExtraYards, setLoadedSizeExtraYards] = useState<any[] | null>(null);
   const [loadedFabricRuleBasisId, setLoadedFabricRuleBasisId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  // The server's rush cap for the CURRENT terms: base charge + largest rule
+  // yardage x fabric/yd (the fallback rule uses the form value or its default).
+  const rushFeeCap = useMemo(
+    () =>
+      getRushFeeCap({
+        baseProductionCharge: form.baseProductionCharge,
+        fabricCostPerYard: form.fabricCostPerYard,
+        outputYards: [
+          form.fallbackOutputYards.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
+          ...(loadedRules ?? []).filter((rule) => !rule.isFallback).map((rule) => rule.outputYards),
+        ],
+      }),
+    [form.baseProductionCharge, form.fabricCostPerYard, form.fallbackOutputYards, loadedRules],
+  );
 
   // Eagerly consume staged assets so they are instantly visible during the route transition,
   // instead of waiting for categories/metadata to load.
@@ -728,8 +753,16 @@ export function DesignEditorProvider({
               ...prev,
               productionLeadDays: String(activeCustomConfiguration.productionLeadDays),
               buyerInstructionText: activeCustomConfiguration.buyerInstructionText ?? '',
-              baseProductionCharge: activeCustomConfiguration.baseProductionCharge,
-              fabricCostPerYard: activeCustomConfiguration.fabricCostPerYard,
+              baseProductionCharge: blankZeroAmount(activeCustomConfiguration.baseProductionCharge),
+              fabricCostPerYard: blankZeroAmount(activeCustomConfiguration.fabricCostPerYard),
+              // Restore rush terms too: reopening a draft (e.g. from Needs
+              // Attention) must not silently switch rush orders off.
+              rushEnabled: Boolean(activeCustomConfiguration.rushEnabled),
+              rushFee: blankZeroAmount(activeCustomConfiguration.rushFee),
+              rushProductionLeadDays:
+                activeCustomConfiguration.rushProductionLeadDays != null
+                  ? String(activeCustomConfiguration.rushProductionLeadDays)
+                  : '',
               deliveryMinDays: String(activeCustomConfiguration.deliveryMinDays),
               deliveryMaxDays: String(activeCustomConfiguration.deliveryMaxDays),
               deliveryScope: activeCustomConfiguration.deliveryScope,
@@ -864,8 +897,9 @@ export function DesignEditorProvider({
         tags,
         filterValueIds: selectedFilterValueIds,
         customMeasurementKeys,
+        rushFeeCap,
       }),
-    [assets, customMeasurementKeys, form, selectedFilterValueIds, tags],
+    [assets, customMeasurementKeys, form, rushFeeCap, selectedFilterValueIds, tags],
   );
   /**
    * A title is the one thing a draft cannot be saved without.
@@ -1075,7 +1109,7 @@ export function DesignEditorProvider({
         toast.error(productionValidationMessage);
         return;
       }
-      const rushValidationMessage = getCustomOrderRushValidationMessage(form);
+      const rushValidationMessage = getCustomOrderRushValidationMessage(form, rushFeeCap);
       if (rushValidationMessage) {
         toast.error(rushValidationMessage);
         return;
@@ -1475,6 +1509,7 @@ export function DesignEditorProvider({
       selectedCustomOrderConfigurationId,
       measurementPoints,
       form,
+      rushFeeCap,
       assets,
       coverAssetId,
       filterSelection,
@@ -1527,6 +1562,7 @@ export function DesignEditorProvider({
       filterDimensions,
       filterSelection,
       form,
+      rushFeeCap,
       loadingError,
       measurementPoints,
       originalMediaIds,

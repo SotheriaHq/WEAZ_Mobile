@@ -142,3 +142,47 @@ export const DESIGN_TARGET_AGE_LABELS = {
   ADULT: 'Adult',
   CHILD: 'Kids',
 } as const;
+
+/**
+ * Rush fee ceiling, mirroring the backend guardrail in
+ * custom-order-configurations.service (RUSH_FEE_CAP_EXCEEDED): the rush fee may
+ * be at most 70% of the estimated outfit subtotal before delivery, i.e.
+ * base production charge + (largest rule yardage x fabric cost per yard).
+ *
+ * Checked inline in the composer and before Preview, so a creator can never
+ * reach Review (or a failed upload in Needs Attention) with a fee the server
+ * will reject. Returns null when there is no estimate yet (the backend also
+ * skips the cap when the estimate is 0).
+ */
+export const RUSH_FEE_CAP_RATIO = 0.7;
+
+export function getRushFeeCap(input: {
+  baseProductionCharge: string;
+  fabricCostPerYard: string;
+  outputYards: Array<string | number | null | undefined>;
+}): number | null {
+  const base = Number(input.baseProductionCharge);
+  const fabric = Number(input.fabricCostPerYard);
+  if (!input.baseProductionCharge.trim() || !Number.isFinite(base)) return null;
+  if (!input.fabricCostPerYard.trim() || !Number.isFinite(fabric)) return null;
+  const maxYards = input.outputYards.reduce<number>((max, value) => {
+    const yards = Number(value);
+    return Number.isFinite(yards) ? Math.max(max, yards) : max;
+  }, 0);
+  const estimate = base + maxYards * fabric;
+  if (!(estimate > 0)) return null;
+  // Floor to whole naira so the shown maximum is always accepted by the server.
+  return Math.floor(estimate * RUSH_FEE_CAP_RATIO);
+}
+
+/** "₦12,600": whole naira with thousands separators (no Intl dependency). */
+export function formatNaira(value: number): string {
+  return `₦${String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+}
+
+/** A stored zero price shows as an empty field (placeholder), never a literal "0". */
+export function blankZeroAmount(value: string | number | null | undefined): string {
+  if (value == null) return '';
+  const text = String(value).trim();
+  return text !== '' && Number(text) === 0 ? '' : text;
+}
