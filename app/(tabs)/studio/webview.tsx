@@ -1119,12 +1119,20 @@ function StudioWebViewContent() {
         case 'AUTH_REQUIRED':
         case 'HANDOFF_FAILED':
           sessionEstablishedRef.current = false;
+          // Say what actually happened. `brand_required` is an ACCESS answer
+          // (this account is not a brand / has no brand access), not an
+          // expired session; telling a brand-new brand its session "expired"
+          // made no sense to them.
           setErrorMessage(
             message.type === 'HANDOFF_FAILED' && message.status
               ? `Studio handoff failed during ${message.stage ?? 'exchange'} with HTTP ${message.status}.`
               : message.type === 'HANDOFF_FAILED' && message.reason === 'network_or_cors_error'
                 ? `Studio handoff could not reach the API from the web view. API: ${message.apiBaseUrl ?? 'unknown'}`
-                : 'Your Studio session expired. Close Studio and open it again.',
+                : message.type === 'AUTH_REQUIRED' && message.reason === 'brand_required'
+                  ? 'Studio is for brand accounts. This account does not have brand access yet.'
+                  : message.type === 'AUTH_REQUIRED' && message.reason === 'missing_user'
+                    ? 'Studio could not confirm your sign-in. Close Studio and open it again.'
+                    : 'Your Studio session expired. Close Studio and open it again.',
           );
           setLoadState('error');
           break;
