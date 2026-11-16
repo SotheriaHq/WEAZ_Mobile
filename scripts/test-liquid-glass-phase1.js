@@ -710,6 +710,8 @@ async function runTests() {
       'Every lens token must be mirrored by an AGSL constant',
     );
     assert.match(agsl, /float bezel = min\(min\(minHalf, LENS_BEZEL_MAX_DP \* density\)/, 'Bezel reach must derive from the short half-axis (full dome on capsules)');
+    // Same cap as the Web model: never past the corner radius (no capsule ring in a rounded rect).
+    assert.match(agsl, /bezel = min\(bezel, max\(cornerR, 3\.0 \* density\)\);/, 'Bezel never exceeds the control corner radius');
     assert.match(agsl, /float2 q = abs\(p\) - \(halfSize - float2\(r2, r2\)\);/, 'Normals must come from the crease-free r2 rounded shape');
     assert.match(agsl, /float foldLimit = max\(0\.0, 0\.85 - magnify\) \* bezel \/ LENS_FALLOFF_K;/, 'Displacement must be hard-clamped so the sampling map never folds');
     assert.match(agsl, /fragCoord - n \* \(maxShift \* g\)/, 'Refraction must sample inward along the outward normal');

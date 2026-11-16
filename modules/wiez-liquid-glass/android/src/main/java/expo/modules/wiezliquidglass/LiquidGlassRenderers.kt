@@ -98,6 +98,9 @@ half4 main(float2 fragCoord) {
 
   // Geometry: the bezel can span the whole short half-axis (full dome on capsules and circles).
   float bezel = min(min(minHalf, LENS_BEZEL_MAX_DP * density), max(minHalf * bezelFrac * mix(0.6, 1.2, thickness), 3.0 * density));
+  // Never past the control's own corner radius: capsules keep a full dome, a
+  // rounded rect keeps its highlight contour on ITS corners (no inner ring).
+  bezel = min(bezel, max(cornerR, 3.0 * density));
   float r2 = min(max(cornerR, bezel), minHalf);
 
   float2 p = fragCoord - center;
