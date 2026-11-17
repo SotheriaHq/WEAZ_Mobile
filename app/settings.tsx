@@ -11,7 +11,7 @@ import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHea
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { useAuth } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership, isBrandAccount } from '@/src/auth/brandAccess';
+import { isBrandAccount } from '@/src/auth/brandAccess';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -146,46 +146,22 @@ export default function SettingsScreen() {
                 params: { from: '/settings' },
               } as never),
           },
-          {
-            emoji: '📧',
-            title: 'Phone & email',
-            subtitle: 'Login and contact details',
-            metadata: user?.email ? 'Email set' : undefined,
-            // Both rows land on the same route, but `focus` decides which
-            // concern it renders — they used to open an identical screen under
-            // an identical heading, which read as one of them being broken.
-            onPress: () =>
-              drillDownPush({
-                pathname: '/settings/account-security',
-                params: { focus: 'email' },
-              } as never),
-          },
-          {
-            emoji: '🔒',
-            title: 'Password & security',
-            subtitle: 'Password, sessions, passkeys',
-            onPress: () =>
-              drillDownPush({
-                pathname: '/settings/account-security',
-                params: { focus: 'password' },
-              } as never),
-          },
         ],
       },
       {
         title: 'Privacy & Security',
         rows: [
           {
+            emoji: '🔒',
+            title: 'Account security',
+            subtitle: 'Email, phone, password, sessions and verification',
+            onPress: () => drillDownPush('/settings/account-security' as never),
+          },
+          {
             emoji: '🛡️',
             title: 'Privacy controls',
             subtitle: 'Visibility, analytics, blocked users',
             onPress: () => drillDownPush('/settings/privacy' as never),
-          },
-          {
-            emoji: '🔑',
-            title: 'Two-factor authentication',
-            subtitle: 'Extra account protection',
-            onPress: () => drillDownPush('/settings/account-security' as never),
           },
         ],
       },
@@ -346,12 +322,6 @@ export default function SettingsScreen() {
       {
         title: 'Business',
         rows: [
-          ...(!storeReady && user?.type === 'BRAND' ? [{ emoji: '🏗️', title: setup.isLoading ? 'Checking store setup…' : setup.isError ? 'Retry store setup check' : 'Finish store setup',
-            subtitle: 'Studio settings become available after setup is complete',
-            onPress: setup.isLoading ? undefined : setup.isError ? setup.retry : () => topLevelNavigate(hasActiveBrandMembership(user)
-              ? { pathname: '/studio', params: { routeKey: 'essentials' } } as never
-              : { pathname: '/(tabs)/me-edit', params: { from: '/settings' } } as never),
-          }] : []),
           { emoji: '👥', requiresStoreSetup: true, title: 'Customer settings', subtitle: 'Purchase threshold · paid plans', onPress: () => drillDownPush('/settings/customers' as never) },
           {
             emoji: '🏪',
@@ -395,7 +365,7 @@ export default function SettingsScreen() {
       },
       ...brandSections.slice(insertAt),
     ].map((section) => ({ ...section, rows: section.rows.filter((row: SettingsRow) => (!row.requiresStoreSetup || storeReady) && (!row.requiresStudio || user?.type === 'BRAND')) }));
-  }, [isBrand, signOut, user, storeReady, setup.isLoading, setup.isError, setup.retry]);
+  }, [isBrand, signOut, user, storeReady]);
 
   return (
     <SafeAreaView
