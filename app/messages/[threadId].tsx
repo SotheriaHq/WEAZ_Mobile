@@ -683,7 +683,7 @@ const MessageBubble = memo(function MessageBubble({
             styles.messageBubble,
             mine
               ? { backgroundColor: theme.colors.primary }
-              : { backgroundColor: theme.colors.surfaceAlt },
+              : { backgroundColor: theme.colors.surfaceRecessed },
           ]}
         >
           {item.bodyText ? (

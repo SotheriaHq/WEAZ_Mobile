@@ -40,9 +40,11 @@ const BINARY_TOGGLE_ALLOWLIST = [
   path.join('app', '(tabs)', 'index.tsx'),   // StatusBar contrast only
   path.join('app', '(tabs)', 'store.tsx'),   // StatusBar contrast only
   path.join('app', 'profile', '[id].tsx'),   // StatusBar contrast only
-  path.join('app', 'studio', 'webview.tsx'), // Intentional resolved scheme bridge
+  path.join('app', '(tabs)', 'studio', 'webview.tsx'), // Intentional resolved scheme bridge + StatusBar contrast
   path.join('src', 'features', 'feed', 'components', 'RunwayFeedScreen.tsx'), // StatusBar/BlurView contrast only
   path.join('src', 'features', 'market', 'components', 'MarketScreen.tsx'),   // StatusBar contrast only
+  path.join('src', 'features', 'market', 'components', 'AdireScreen.tsx'),    // StatusBar contrast only
+  path.join('src', 'features', 'market', 'components', 'MarketSectionDetailScreen.tsx'), // StatusBar contrast only
   path.join('src', 'system', 'AndroidSystemBars.ts'),                         // Protected native system bar bridge
 ];
 

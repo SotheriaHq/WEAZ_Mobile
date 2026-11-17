@@ -234,7 +234,7 @@ const NotificationRow = React.memo(function NotificationRow({
   item: MobileNotification;
   onOpen: (item: MobileNotification) => void;
 }) {
-  const { scheme, theme } = useTheme();
+  const { theme } = useTheme();
   const unread = !item.isRead;
   const onPress = useCallback(() => onOpen(item), [item, onOpen]);
   const entityLinks = bagEntityLinks(item);
@@ -250,11 +250,13 @@ const NotificationRow = React.memo(function NotificationRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        // The background marks UNREAD, edge to edge (owner, Nov 2026). Read
-        // rows sit on the page, so the tint is the signal, not a card. On
-        // light, `surface` is the same white as the page — unread did not
-        // show at all — so light takes the soft brand tint.
-        { backgroundColor: unread ? (scheme === 'dark' ? theme.colors.surface : theme.colors.primarySoft) : 'transparent' },
+        // Unread rows lift onto crisp theme surface over the page canvas with a
+        // purposeful 2px brand indicator rule (Rule 35).
+        {
+          backgroundColor: unread ? theme.colors.surface : 'transparent',
+          borderLeftWidth: unread ? 2 : 0,
+          borderLeftColor: theme.colors.primary,
+        },
         pressed ? styles.pressed : null,
       ]}
     >

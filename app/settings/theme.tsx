@@ -1,6 +1,6 @@
 import { SettingsSectionHeading } from '@/components/settings/SettingsSectionHeading';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -68,9 +68,8 @@ function SystemPreview() {
 }
 
 export default function ThemeSettingsScreen() {
-  const { theme } = useTheme();
+  const { theme, systemScheme: deviceScheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const deviceScheme = useColorScheme();
   const { themePreference, setThemePreference } = useSyncedThemePreference();
   /*
     The tapped option lights at once; the app catches up behind it.
