@@ -302,8 +302,8 @@ function LegacyChip({
     styles.glassHost,
     {
       backgroundColor: 'transparent',
-      borderColor: legacyBorderColor,
-      borderWidth: 2,
+      borderColor: isNav ? 'transparent' : legacyBorderColor,
+      borderWidth: isNav ? 0 : 2,
     },
     style,
   ];
