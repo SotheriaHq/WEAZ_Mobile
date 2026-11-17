@@ -230,13 +230,15 @@ export function Button({
       ? effectiveVariant === 'ghost' || effectiveVariant === 'outline'
         ? 'ghost'
         : 'disabled'
-      : effectiveVariant === 'brand' || effectiveVariant === 'primary'
+      : effectiveVariant === 'brand'
         ? 'brand'
-        : effectiveVariant === 'danger'
-          ? 'danger'
-          : effectiveVariant === 'ghost'
-            ? 'ghost'
-            : 'control';
+        : effectiveVariant === 'primary'
+          ? 'ink'
+          : effectiveVariant === 'danger'
+            ? 'danger'
+            : effectiveVariant === 'ghost'
+              ? 'ghost'
+              : 'control';
   const borderWidth = effectiveVariant === 'ghost' || isTextOnly ? 0 : 2;
   const variantBorderColor = (() => {
     if (effectiveVariant === 'ghost' || isTextOnly) return 'transparent';
@@ -321,6 +323,9 @@ export function Button({
               numberOfLines={sizesToLabel ? 1 : undefined}
               style={[
                 styles.text,
+                !isInert && effectiveVariant === 'primary'
+                  ? { color: theme.colors.semantic.action.primaryText }
+                  : null,
                 {
                   opacity: isBusy ? 0 : 1,
                 },

@@ -106,6 +106,7 @@ export default function CustomerSettings() {
                 </AppText>
               {access.data.canUpgrade ? <Button
                   title="Upgrade"
+                  variant="brand"
                   onPress={() =>
                     drillDownPush("/settings/subscriptions" as never)
                   }

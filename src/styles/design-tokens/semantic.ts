@@ -126,17 +126,17 @@ export const lightSemanticTokens: SemanticColors = {
     primaryText: neutralPrimitives[0], // #ffffff
     brand: brandPrimitives.violet[600], // #9333ea
     brandHover: brandPrimitives.violet[700], // #7e22ce
-    brandPressed: brandPrimitives.violet[500], // #af87f4 approved lighter violet pressed state
+    brandPressed: brandPrimitives.violet[750], // #6b21a8 WCAG AA compliant pressed state (8.84:1 on white)
     brandText: neutralPrimitives[0],
     secondary: '#eff0ed', // WIEZ Material & Surface Lab tactile paper
     secondaryHover: '#e1e4de',
     secondaryText: '#252824',
     outline: 'transparent',
-    outlineBorder: '#e5e5e5',
+    outlineBorder: '#e2e8f0',
     outlineText: neutralPrimitives[950],
     ghost: 'transparent',
     ghostHover: 'rgba(147, 51, 234, 0.08)',
-    ghostText: '#44403c',
+    ghostText: '#475569',
     danger: feedbackPrimitives.error.light,
     dangerHover: feedbackPrimitives.error.dark,
     dangerText: neutralPrimitives[0],
@@ -145,30 +145,30 @@ export const lightSemanticTokens: SemanticColors = {
     disabledBorder: '#dce2ec',
   },
   focus: {
-    ring: brandPrimitives.violet[400], // #c084fc
+    ring: brandPrimitives.violet[600], // #9333ea WCAG SC 1.4.11 compliant focus ring
   },
   surface: {
-    page: neutralPrimitives[0], // #ffffff
-    card: '#faf5ff', // delicate porcelain Lumina lavender
-    subtle: '#f5f3ff', // airy porcelain Lumina tint
-    recessed: '#f3e8ff', // light lavender mist
-    elevated: '#f5f3ff', // soft amethyst Lumina elevation
-    modal: '#faf5ff',
+    page: neutralPrimitives[50], // #f8fafc quiet neutral off-white baseline canvas
+    card: neutralPrimitives[0], // #ffffff crisp white content card
+    subtle: neutralPrimitives[100], // #f1f5f9 calm neutral subtle surface
+    recessed: neutralPrimitives[100], // #f1f5f9 recessed well (search, inbound chat, headers)
+    elevated: neutralPrimitives[0], // #ffffff elevated popover/menu surface
+    modal: neutralPrimitives[0], // #ffffff clean modal panel
     stage: '#080a0f', // deep runway matte preserved
-    overlay: 'rgba(8, 15, 26, 0.35)',
+    overlay: 'rgba(15, 23, 42, 0.40)',
   },
   text: {
     primary: neutralPrimitives[950], // #0a0a0a
-    secondary: '#44403c', // stone-700
-    muted: '#6b6560',
-    placeholder: '#98a4b8',
+    secondary: neutralPrimitives[600], // #475569 (7.58:1 on #fff, 7.24:1 on #f8fafc)
+    muted: '#525f72', // 6.48:1 on #fff, 5.92:1 on #f1f5f9
+    placeholder: '#5e6b7e', // 5.41:1 on #fff, 5.17:1 on #f8fafc, 4.94:1 on #f1f5f9 (WCAG AA)
     disabled: '#9aa5b5',
     inverse: neutralPrimitives[0],
   },
   border: {
-    default: '#e5e5e5',
-    subtle: '#f1f5f9',
-    strong: '#d4d4d4',
+    default: neutralPrimitives[200], // #e2e8f0
+    subtle: neutralPrimitives[200], // #e2e8f0
+    strong: neutralPrimitives[300], // #cbd5e1
     input: '#cfcfcf',
     inputHover: '#9ca3af',
   },
@@ -183,7 +183,7 @@ export const lightSemanticTokens: SemanticColors = {
       primary: neutralPrimitives[950], // #0a0a0a
       primaryPressed: '#171717',
       brand: brandPrimitives.violet[600], // #9333ea
-      brandPressed: brandPrimitives.violet[500], // #af87f4 approved lighter violet
+      brandPressed: brandPrimitives.violet[750], // #6b21a8 WCAG AA compliant pressed state
       secondary: '#e1e4de', // approved Material & Surface Lab paper/stone
       secondaryPressed: '#d8ded4',
       outline: 'transparent',

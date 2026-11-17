@@ -152,13 +152,18 @@ assert.match(
   'count on the Mark all action, in the system colour',
 );
 assert.doesNotMatch(notifications, /unreadPill|headerActions/, 'no separate badge or action row');
-// Unread rows are tinted edge to edge; no inset list padding.
-// On light, `surface` is the page's own white, so unread takes the soft brand
-// tint there (owner, Nov 2026: "unread bg indicator seems off on light theme").
+// Unread rows lift edge to edge onto `theme.colors.surface` over the quiet
+// `#F8FAFC` light / `#000000` dark canvas, paired with a purposeful 2px brand
+// indicator rule (Rule 35) and unread dot; no inset list padding.
 assert.match(
   notifications,
-  /backgroundColor: unread \? \(scheme === 'dark' \? theme\.colors\.surface : theme\.colors\.primarySoft\) : 'transparent'/,
-  'the tint marks unread on both themes',
+  /backgroundColor: unread \? theme\.colors\.surface : 'transparent'/,
+  'unread rows lift onto theme.colors.surface on both themes',
+);
+assert.match(
+  notifications,
+  /borderLeftWidth: unread \? 2 : 0,\s*borderLeftColor: theme\.colors\.primary/,
+  'unread rows carry the purposeful 2px brand left indicator rule',
 );
 assert.doesNotMatch(notifications, /\n {2}content: \{[^}]*paddingHorizontal/, 'the list has no side inset');
 assert.doesNotMatch(notifications, /<AppText key=\{key\} variant="bodyBold"/, 'no bold runs in the sentence');

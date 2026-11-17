@@ -164,6 +164,7 @@ export function SubscriptionNotice() {
             <View style={styles.actionGroup}>
               <Button
                 title="View Subscription Plans"
+                variant="brand"
                 onPress={() => {
                   close();
                   drillDownPush('/settings/subscriptions' as never);

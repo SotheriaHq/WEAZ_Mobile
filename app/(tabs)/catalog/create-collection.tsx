@@ -167,7 +167,7 @@ export default function CreateCollectionScreen() {
                 <Button title="Cancel" variant="outline" fullWidth onPress={() => router.back()} />
               </View>
               <View style={styles.actionButton}>
-                <Button title="Create" fullWidth onPress={handleCreate} disabled={!canSave} loading={saving} />
+                <Button title="Create" variant="brand" fullWidth onPress={handleCreate} disabled={!canSave} loading={saving} />
               </View>
             </View>
           </View>

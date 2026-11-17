@@ -158,6 +158,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
           {hasItems ? (
             <Button
               title="Checkout"
+              variant="brand"
               fullWidth
               testID="mobile-checkout-cta"
               onPress={() => {

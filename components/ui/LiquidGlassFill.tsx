@@ -23,6 +23,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 export type GlassRole =
   | 'control'
   | 'ghost'
+  | 'ink'
   | 'brand'
   | 'brandSoft'
   | 'danger'
@@ -43,6 +44,8 @@ export function glassRoleProps(role: GlassRole, colors: ThemeColors, scheme: The
   const t = tokens.liquidGlass.fallbackTint;
   const dark = scheme === 'dark';
   switch (role) {
+    case 'ink':
+      return { tintColor: colors.actionPrimary, fallbackTintAlpha: t.tintedStrong, tintMode: 'auto' };
     case 'brand':
       return { tintColor: colors.primary, fallbackTintAlpha: t.tintedStrong, tintMode: 'auto' };
     case 'brandSoft':

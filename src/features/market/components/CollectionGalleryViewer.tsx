@@ -238,7 +238,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
         <View style={styles.centerState}>
           <AppText variant="subtitle">No media yet</AppText>
           <AppText variant="body" tone="secondary">This collection does not have gallery media available.</AppText>
-          <Button title="Shop collection" onPress={goBack} />
+          <Button title="Shop collection" variant="brand" onPress={goBack} />
         </View>
       </SafeAreaView>
     );
@@ -324,7 +324,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
           </AppText>
         ) : null}
         <View style={styles.actionRow}>
-          <Button title="Shop collection" onPress={goBack} />
+          <Button title="Shop collection" variant="brand" onPress={goBack} />
           {activeMedia?.productId ? (
             <Button
               title="View product"

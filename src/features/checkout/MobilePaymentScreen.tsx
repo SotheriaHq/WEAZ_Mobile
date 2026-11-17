@@ -280,6 +280,7 @@ export function MobilePaymentScreen() {
             {canOpenProvider && resolvedStatus !== 'PAID' ? (
               <Button
                 title={state === 'opening' ? 'Opening...' : 'Open secure payment'}
+                variant="brand"
                 loading={state === 'opening'}
                 disabled={state === 'opening' || state === 'verifying'}
                 onPress={() => {

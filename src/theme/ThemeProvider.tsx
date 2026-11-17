@@ -28,6 +28,7 @@ export type ThemeContextValue = {
    */
   setMode: (mode: ThemeMode) => void;
   scheme: ThemeScheme;
+  systemScheme: ResolvedTheme;
   theme: (typeof tokens)['themes'][ThemeScheme];
 };
 
@@ -116,6 +117,8 @@ export function ThemeProvider({
 
   const theme = useMemo(() => tokens.themes[scheme], [scheme]);
 
+  const resolvedSystemScheme: ResolvedTheme = systemScheme === 'dark' ? 'dark' : 'light';
+
   const value = useMemo<ThemeContextValue>(
     () => ({
       ready,
@@ -126,9 +129,10 @@ export function ThemeProvider({
       syncThemePreferenceFromBackend,
       setMode: setThemePreference,
       scheme,
+      systemScheme: resolvedSystemScheme,
       theme,
     }),
-    [ready, mode, setThemePreference, syncThemePreferenceFromBackend, scheme, theme],
+    [ready, mode, setThemePreference, syncThemePreferenceFromBackend, scheme, resolvedSystemScheme, theme],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
