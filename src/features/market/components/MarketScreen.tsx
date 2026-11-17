@@ -2868,6 +2868,59 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
     ],
   );
 
+  const activeFilters = useMemo(() => {
+    const list: Array<{ id: string; label: string; onClear: () => void }> = [];
+    if (filters.category) {
+      list.push({
+        id: 'category',
+        label: filters.category,
+        onClear: () => setFilters((current) => ({ ...current, category: null })),
+      });
+    }
+    if (filters.brand) {
+      list.push({
+        id: 'brand',
+        label: filters.brand,
+        onClear: () => setFilters((current) => ({ ...current, brand: null })),
+      });
+    }
+    if (filters.minPrice || filters.maxPrice) {
+      const priceText = filters.minPrice && filters.maxPrice
+        ? `₦${filters.minPrice}–₦${filters.maxPrice}`
+        : filters.minPrice
+          ? `From ₦${filters.minPrice}`
+          : `Up to ₦${filters.maxPrice}`;
+      list.push({
+        id: 'price',
+        label: priceText,
+        onClear: () => setFilters((current) => ({ ...current, minPrice: '', maxPrice: '' })),
+      });
+    }
+    if (filters.availability !== 'all') {
+      list.push({
+        id: 'availability',
+        label: filters.availability === 'in_stock' ? 'Ready to wear' : 'Custom ready',
+        onClear: () => setFilters((current) => ({ ...current, availability: 'all' })),
+      });
+    }
+    if (filters.sort !== 'newest') {
+      const sortLabel =
+        filters.sort === 'popular'
+          ? 'Popular'
+          : filters.sort === 'price_asc'
+            ? 'Price low'
+            : filters.sort === 'price_desc'
+              ? 'Price high'
+              : filters.sort;
+      list.push({
+        id: 'sort',
+        label: sortLabel,
+        onClear: () => setFilters((current) => ({ ...current, sort: 'newest' })),
+      });
+    }
+    return list;
+  }, [filters]);
+
   const renderHeader = (
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
@@ -2919,93 +2972,79 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
         }
       />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-        <Pressable
-          onPress={() => setFilters((current) => ({ ...current, category: null }))}
-          style={({ pressed }) => [
-            styles.categoryChip,
-            {
-              backgroundColor: 'transparent',
-              borderColor: 'transparent',
-            },
-            pressed && styles.pressed,
-          ]}
-        >
-          <LiquidGlassFill glassRole={!filters.category ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
-          <AppText variant="captionBold" tone={!filters.category ? 'inverse' : 'secondary'}>All</AppText>
-        </Pressable>
-        {categoryOptions.map((category) => {
-          const selected = filters.category === category;
-          return (
+      {/* Compact contextual active-filter pill replaces the redundant 15-category row */}
+      <View style={styles.contextualFilterRow}>
+        {activeFilters.length === 0 ? (
+          <Pressable
+            onPress={() => setFilterSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filter and sort market items"
+            style={({ pressed }) => [styles.contextualFilterChip, pressed && styles.pressed]}
+          >
+            <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
+            <AppText variant="captionBold" tone="secondary">
+              All categories ▾
+            </AppText>
+          </Pressable>
+        ) : activeFilters.length === 1 ? (
+          <View style={styles.contextualFilterActiveGroup}>
             <Pressable
-              key={category}
-              onPress={() => setFilters((current) => ({ ...current, category }))}
-              style={({ pressed }) => [
-                styles.categoryChip,
-                {
-                  backgroundColor: 'transparent',
-                  borderColor: 'transparent',
-                },
-                pressed && styles.pressed,
-              ]}
+              onPress={() => setFilterSheetVisible(true)}
+              style={({ pressed }) => [styles.contextualFilterChipActive, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter active: ${activeFilters[0].label}. Tap to edit filters.`}
             >
-              <LiquidGlassFill glassRole={selected ? 'brand' : 'control'} inset={2} borderRadius={tokens.radius.full} />
-              <AppText variant="captionBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
-                {category}
+              <LiquidGlassFill glassRole="brand" inset={2} borderRadius={tokens.radius.full} />
+              <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.contextualLabelText}>
+                {activeFilters[0].label}
               </AppText>
             </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      {/*
-        Say which theme is on, and give a way off it.
-
-        Live themes and the category chips are DIFFERENT taxonomies: the chips
-        come from `categoryOptions` ("Ankara Fashion", "Lacewear", …) while a
-        live theme falls back to an item's own category ("Bridal",
-        "Two-piece set"). Tapping a theme set `filters.category` to a value no
-        chip could match — so no chip highlighted, "All" un-highlighted too, and
-        the screen entered a filtered state that its own controls could neither
-        show nor clear. The user had no indication anything had been applied,
-        let alone how to undo it.
-
-        This bar is bound to the filter itself rather than to the chip list, so
-        it is correct whichever taxonomy set it.
-      */}
-      {filters.category ? (
-        /*
-          One control, and it is a way OUT.
-
-          Choosing a theme re-scopes the whole market, which is a place you have
-          gone rather than a chip you have ticked — so the thing that undoes it
-          has to read like leaving. It was a pill with a small ✕ on the end: two
-          targets, the useful one the size of a full stop, and nothing saying
-          where pressing it would put you.
-
-          The whole bar is now the exit, it leads with a back arrow, and it says
-          where it goes.
-        */
-        <Pressable
-          onPress={() => setFilters((current) => ({ ...current, category: null }))}
-          accessibilityRole="button"
-          accessibilityLabel={`Leave the ${filters.category} theme and return to the full market`}
-          style={({ pressed }) => [styles.activeFilterRow, pressed && styles.pressed]}
-        >
-          <View
-            style={[
-              styles.activeFilterPill,
-              { backgroundColor: 'transparent', borderColor: 'transparent' },
-            ]}
-          >
-            <LiquidGlassFill glassRole="brandSoft" inset={2} borderRadius={tokens.radius.full} />
-            <AppText variant="captionBold" tone="primary">←</AppText>
-            <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.activeFilterLabel}>
-              Showing “{filters.category}” · Back to all
-            </AppText>
+            <Pressable
+              onPress={activeFilters[0].onClear}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Clear ${activeFilters[0].label} filter`}
+              style={({ pressed }) => [styles.contextualClearButton, pressed && styles.pressed]}
+            >
+              <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
+              <AppText variant="captionBold" tone="secondary">✕</AppText>
+            </Pressable>
           </View>
-        </Pressable>
-      ) : null}
+        ) : (
+          <View style={styles.contextualFilterActiveGroup}>
+            <Pressable
+              onPress={() => setFilterSheetVisible(true)}
+              style={({ pressed }) => [styles.contextualFilterChipActive, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`${activeFilters.length} filters active. Tap to edit filters.`}
+            >
+              <LiquidGlassFill glassRole="brand" inset={2} borderRadius={tokens.radius.full} />
+              <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.contextualLabelText}>
+                {`${activeFilters.length} filters active`}
+              </AppText>
+            </Pressable>
+            <Pressable
+              onPress={clearFilters}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all active filters"
+              style={({ pressed }) => [styles.contextualClearButton, pressed && styles.pressed]}
+            >
+              <LiquidGlassFill glassRole="control" inset={2} borderRadius={tokens.radius.full} />
+              <AppText variant="captionBold" tone="secondary">✕</AppText>
+            </Pressable>
+            <Pressable
+              onPress={clearFilters}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all filters"
+              style={({ pressed }) => [styles.clearAllLink, pressed && styles.pressed]}
+            >
+              <AppText variant="captionBold" tone="primary">Clear all</AppText>
+            </Pressable>
+          </View>
+        )}
+      </View>
     </View>
   );
 
@@ -3108,38 +3147,55 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  categoryRow: {
-    gap: tokens.spacing.sm,
-    paddingRight: tokens.spacing.lg,
-  },
-  activeFilterRow: {
-    flexDirection: 'row',
-    paddingTop: tokens.spacing.sm,
-  },
-  activeFilterPill: {
-    overflow: 'hidden',
+  contextualFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
-    minHeight: 32,
+    paddingTop: tokens.spacing.xs,
+  },
+  contextualFilterActiveGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
     maxWidth: '100%',
-    borderRadius: tokens.radius.full,
-    borderWidth: 2,
-    paddingHorizontal: tokens.spacing.md,
   },
-  activeFilterLabel: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  categoryChip: {
+  contextualFilterChip: {
     overflow: 'hidden',
     minHeight: 36,
     borderRadius: tokens.radius.full,
     borderWidth: 2,
+    borderColor: 'transparent',
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    maxWidth: 180,
+    alignSelf: 'flex-start',
+  },
+  contextualFilterChipActive: {
+    overflow: 'hidden',
+    minHeight: 36,
+    borderRadius: tokens.radius.full,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    paddingHorizontal: tokens.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: 240,
+  },
+  contextualClearButton: {
+    overflow: 'hidden',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contextualLabelText: {
+    flexShrink: 1,
+  },
+  clearAllLink: {
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
   },
   section: {
     gap: MARKET_RHYTHM.headerToContent,

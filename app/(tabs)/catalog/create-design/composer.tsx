@@ -495,6 +495,25 @@ export default function CreateDesignComposerScreen() {
     missingRequiredMediaSlots,
   ]);
   const canPreview = missingRequiredFields.length === 0;
+
+  const groupedMeasurementPoints = useMemo(() => {
+    if (!measurementPoints.length) return [];
+    const groups = new Map<string, typeof measurementPoints>();
+    for (const point of measurementPoints) {
+      const categoryKey = point.category?.trim() || 'Standard';
+      const formattedCategory = categoryKey
+        .replace(/_/g, ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      const existing = groups.get(formattedCategory) ?? [];
+      existing.push(point);
+      groups.set(formattedCategory, existing);
+    }
+    return Array.from(groups.entries()).map(([category, points]) => ({
+      category,
+      points,
+    }));
+  }, [measurementPoints]);
   // True when something inside the (collapsed) Custom orders sheet is
   // missing/invalid — used to flag the row on the main form so the creator
   // knows to open it, since the inline field errors live in there.
@@ -1466,20 +1485,31 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="captionRegular" tone="muted">
             Select the exact buyer measurement fields for this design.
           </AppText>
-          <View style={styles.sheetChipWrap}>
-            {measurementPoints.length > 0 ? measurementPoints.map((point) => (
-              <Chip
-                key={point.key}
-                label={point.label || point.key}
-                selected={customMeasurementKeys.includes(point.key)}
-                onPress={() => toggleMeasurementKey(point.key)}
-              />
-            )) : (
-              <AppText variant="body" tone="muted">
-                No measurement fields are available for this audience.
-              </AppText>
-            )}
-          </View>
+          {groupedMeasurementPoints.length > 0 ? (
+            groupedMeasurementPoints.map(({ category, points }) => (
+              <View key={category} style={styles.measurementGroup}>
+                {groupedMeasurementPoints.length > 1 ? (
+                  <AppText variant="captionBold" tone="secondary" style={styles.measurementGroupHeader}>
+                    {category}
+                  </AppText>
+                ) : null}
+                <View style={styles.sheetChipWrap}>
+                  {points.map((point) => (
+                    <Chip
+                      key={point.key}
+                      label={point.label || point.key}
+                      selected={customMeasurementKeys.includes(point.key)}
+                      onPress={() => toggleMeasurementKey(point.key)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))
+          ) : (
+            <AppText variant="body" tone="muted">
+              No measurement fields are available for this audience.
+            </AppText>
+          )}
           <View style={styles.priceRow}>
             <Input
               label="Base charge (₦)"
@@ -1963,6 +1993,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: tokens.spacing.sm,
+  },
+  measurementGroup: {
+    gap: tokens.spacing.xs,
+    marginTop: tokens.spacing.xs,
+  },
+  measurementGroupHeader: {
+    marginBottom: tokens.spacing.xs,
+    letterSpacing: 0.2,
   },
   segmentedControl: {
     flexDirection: 'row',

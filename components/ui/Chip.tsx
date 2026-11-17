@@ -33,6 +33,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   swatchColor?: string;
   disabled?: boolean;
+  readOnly?: boolean;
   variant?: 'default' | 'nav' | 'profile';
   /** Custom tag awaiting global admin approval — rendered with a distinct,
    *  warning-tinted "pending" treatment so it never reads as an approved tag. */
@@ -83,9 +84,11 @@ function OptionChip({
   onPress,
   style,
   disabled,
-}: Pick<Props, 'label' | 'selected' | 'onPress' | 'style' | 'disabled'>) {
+  readOnly,
+}: Pick<Props, 'label' | 'selected' | 'onPress' | 'style' | 'disabled' | 'readOnly'>) {
   const { theme } = useTheme();
   const { primary } = theme.colors;
+  const isInteractive = !readOnly && Boolean(onPress) && !disabled;
   const progress = useSharedValue(selected ? 1 : 0);
   const press = useSharedValue(0);
   const [pressed, setPressed] = React.useState(false);
@@ -101,6 +104,50 @@ function OptionChip({
     transform: [{ scale: 1 - press.value * 0.05 }],
   }));
   const glassRole: GlassRole = disabled ? 'disabled' : selected ? 'brand' : 'control';
+  const borderColor = disabled
+    ? theme.colors.disabledBorder
+    : selected
+      ? primary
+      : theme.colors.border;
+
+  const chipContent = (
+    <Reanimated.View
+      style={[
+        styles.base,
+        styles.optionBase,
+        styles.glassHost,
+        {
+          borderColor,
+          shadowColor: primary,
+          elevation: selected ? 3 : 0,
+        },
+        isInteractive ? animatedStyle : null,
+        style,
+      ]}
+    >
+      <LiquidGlassFill
+        glassRole={glassRole}
+        inset={2}
+        borderRadius={tokens.radius.full}
+        pressed={pressed && isInteractive}
+      />
+      <AppText
+        variant="smallBold"
+        tone={selected ? 'inverse' : disabled ? 'disabled' : 'default'}
+        style={styles.optionLabel}
+      >
+        {label}
+      </AppText>
+    </Reanimated.View>
+  );
+
+  if (!isInteractive && !onPress) {
+    return (
+      <View style={styles.touchTarget}>
+        {chipContent}
+      </View>
+    );
+  }
 
   return (
     <Reanimated.View layout={LinearTransition.duration(160)} style={styles.touchTarget}>
@@ -114,43 +161,12 @@ function OptionChip({
           press.value = withSpring(0, OPTION_PRESS_OUT);
           setPressed(false);
         }}
-        disabled={disabled}
+        disabled={disabled || readOnly}
         hitSlop={4}
         accessibilityRole="button"
         accessibilityState={{ selected: Boolean(selected), disabled: Boolean(disabled) }}
       >
-        <Reanimated.View
-          style={[
-            styles.base,
-            styles.optionBase,
-            styles.glassHost,
-            { shadowColor: primary, elevation: selected ? 3 : 0 },
-            disabled ? null : animatedStyle,
-            style,
-          ]}
-        >
-          <LiquidGlassFill
-            glassRole={glassRole}
-            inset={2}
-            borderRadius={tokens.radius.full}
-            pressed={pressed && !disabled}
-          />
-          {selected ? (
-            <Reanimated.View entering={ZoomIn.duration(160)} exiting={ZoomOut.duration(110)}>
-              <AppText variant="smallBold" tone="inverse">
-                ✓
-              </AppText>
-            </Reanimated.View>
-          ) : null}
-          <AppText
-            variant="smallBold"
-            tone={selected ? 'inverse' : disabled ? 'disabled' : 'default'}
-            numberOfLines={1}
-            style={styles.optionLabel}
-          >
-            {label}
-          </AppText>
-        </Reanimated.View>
+        {chipContent}
       </Pressable>
     </Reanimated.View>
   );
@@ -172,6 +188,7 @@ function LegacyChip({
   style,
   swatchColor,
   disabled,
+  readOnly,
   variant = 'default',
   pending = false,
   onDarkStage = false,
@@ -185,27 +202,20 @@ function LegacyChip({
   const scale = React.useRef(new Animated.Value(1)).current;
   const isNav = variant === 'nav';
   const isProfile = variant === 'profile';
-  // Nav chips floating directly on the runway stage. The default dark-nav
-  // treatment gives every chip a `controlSurface` fill with `borderRadius: 0`
-  // and a 2px underline — square plates that read as pasted-on boxes against
-  // the deep black. On the stage the chips are chrome, not cards: unselected is
-  // pure text, and only the selected chip carries a soft rounded pill.
   const isStageNav = isNav && onDarkStage;
-  // Pending custom tags use a warning-tinted outline over a soft surface instead
-  // of the solid selected fill, so "added but not yet globally approved" is legible.
   const usePendingTreatment = pending && !isNav && !isSwatch;
-  // Strong Lens glass role. Runway-stage nav chips are faint dark glass until
-  // selected (stage glass); everything else is glass in every state.
+  const isInteractive = !readOnly && Boolean(onPress) && !disabled;
+
   const glassRole: GlassRole | null = disabled
     ? 'disabled'
     : isStageNav
       ? selected
-        ? 'stage'
+        ? 'brand'
         : 'stageGhost'
       : isNav
         ? selected
-          ? 'brandSoft'
-          : 'ghost'
+          ? 'brand'
+          : 'control'
         : usePendingTreatment
           ? 'warningSoft'
           : isSwatch
@@ -215,6 +225,30 @@ function LegacyChip({
             : selected
               ? 'brand'
               : 'control';
+
+  const legacyBorderColor = disabled
+    ? theme.colors.disabledBorder
+    : selected
+      ? theme.colors.primary
+      : onDarkStage
+        ? theme.colors.glassBorder
+        : theme.colors.border;
+
+  const textTone = isStageNav
+    ? selected
+      ? ('inverse' as const)
+      : ('default' as const)
+    : isNav
+      ? selected
+        ? ('inverse' as const)
+        : ('secondary' as const)
+      : usePendingTreatment
+        ? ('warning' as const)
+        : selected
+          ? ('inverse' as const)
+          : disabled
+            ? ('disabled' as const)
+            : ('default' as const);
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -229,36 +263,71 @@ function LegacyChip({
     [scale],
   );
 
+  const innerContent = (
+    <>
+      {glassRole ? (
+        <LiquidGlassFill glassRole={glassRole} borderRadius={tokens.radius.full} />
+      ) : null}
+      {isSwatch ? (
+        <View
+          style={[
+            styles.swatch,
+            {
+              backgroundColor: swatchColor,
+            },
+          ]}
+        />
+      ) : (
+        <View style={styles.labelWrap}>
+          <AppText
+            onDarkStage={onDarkStage}
+            variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
+            tone={textTone}
+          >
+            {usePendingTreatment ? `${label} · pending` : label}
+          </AppText>
+        </View>
+      )}
+    </>
+  );
+
+  const containerStyle = [
+    styles.base,
+    isSwatch && styles.swatchBase,
+    isNav && styles.navBase,
+    isProfile && styles.profileBase,
+    isNav && selected && styles.navSelected,
+    isNav && !selected && styles.navInactive,
+    isStageNav && styles.stageNavBase,
+    styles.glassHost,
+    {
+      backgroundColor: 'transparent',
+      borderColor: isNav ? 'transparent' : legacyBorderColor,
+      borderWidth: isNav ? 0 : 2,
+    },
+    style,
+  ];
+
+  if (!isInteractive && !onPress) {
+    return (
+      <View style={styles.touchTarget}>
+        <View style={containerStyle}>
+          {innerContent}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <Animated.View style={[styles.touchTarget, { transform: [{ scale }] }]}>
       <Pressable
         onPress={onPress}
         onPressIn={() => animatePress(0.98, 70)}
         onPressOut={() => animatePress(1, 140)}
-        disabled={disabled}
+        disabled={disabled || readOnly}
         style={({ pressed }) => [
-          styles.base,
-          isSwatch && styles.swatchBase,
-          isNav && styles.navBase,
-          isProfile && styles.profileBase,
-          isNav && selected && styles.navSelected,
-          isNav && !selected && styles.navInactive,
-          isStageNav && styles.stageNavBase,
-          styles.glassHost,
-          {
-            // The glass is the fill and its density change is the edge, so the
-            // box itself is clear. (Unselected stays an offer: neutral glass,
-            // not a grey plate; selected is system-purple glass.)
-            backgroundColor: 'transparent',
-            borderColor: 'transparent',
-            borderBottomColor: 'transparent',
-            borderWidth: 0,
-            // Pressed tints the ring instead of fading the whole chip, so the
-            // label never dims out from under the finger that is choosing it.
-            // Disabled carries its own neutral pair above and needs no fade.
-            opacity: pressed && !disabled ? 0.86 : 1,
-          },
-          style,
+          ...containerStyle,
+          { opacity: pressed && !disabled ? 0.86 : 1 },
         ]}
         accessibilityRole="button"
         accessibilityState={{
@@ -266,53 +335,7 @@ function LegacyChip({
           disabled: Boolean(disabled),
         }}
       >
-        {glassRole ? (
-          <LiquidGlassFill glassRole={glassRole} borderRadius={tokens.radius.full} />
-        ) : null}
-        {isSwatch ? (
-          <View
-            style={[
-              styles.swatch,
-              {
-                backgroundColor: swatchColor,
-              },
-            ]}
-          />
-        ) : (
-          <View style={styles.labelWrap}>
-            <AppText
-              onDarkStage={onDarkStage}
-              variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
-              tone={
-                isStageNav
-                  ? // Bright white = active, dimmed white = available. Accent
-                    // purple on the black stage read as a third UI colour and
-                    // needed the plate behind it to stay legible.
-                    selected
-                    ? 'default'
-                    : 'secondary'
-                  : isNav
-                  ? selected
-                    ? 'primary'
-                    : 'default'
-                  : usePendingTreatment
-                    ? 'warning'
-                    : selected
-                      ? 'inverse'
-                      : disabled
-                        ? 'disabled'
-                        : // Full reading ink on an unselected chip. `secondary`
-                          // made every option a step quieter than the text
-                          // around it, which is what made the row read as
-                          // inactive.
-                          'default'
-              }
-              numberOfLines={1}
-            >
-              {usePendingTreatment ? `${label} · pending` : label}
-            </AppText>
-          </View>
-        )}
+        {innerContent}
       </Pressable>
     </Animated.View>
   );
@@ -339,6 +362,7 @@ export const Chip = React.memo(
     previous.label === next.label &&
     previous.selected === next.selected &&
     previous.disabled === next.disabled &&
+    previous.readOnly === next.readOnly &&
     previous.pending === next.pending &&
     previous.variant === next.variant &&
     previous.swatchColor === next.swatchColor &&
@@ -354,8 +378,7 @@ const styles = StyleSheet.create({
   },
   base: {
     paddingHorizontal: tokens.spacing.md,
-    minHeight: 40,
-    maxWidth: 220,
+    minHeight: 36,
     borderRadius: tokens.radius.full,
     borderWidth: 2,
     alignItems: 'center',
@@ -381,23 +404,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  /**
-   * Runway filter chips. Rounded pill, no plate.
-   *
-   * This was `borderRadius: 0` with a 2px bottom underline — a tab treatment.
-   * On the Runway the chips float over photography, and in dark mode the
-   * unselected ones also carried a `controlSurface` fill, so the row read as a
-   * strip of square plates with hard edges pasted onto the image. Unselected is
-   * now pure text and only the selected chip carries a soft rounded pill, which
-   * is the same conclusion `stageNavBase` reached for the pinned-dark stage.
-   */
   navBase: {
-    minHeight: 38,
+    minHeight: 36,
     paddingHorizontal: tokens.spacing.md,
     paddingTop: 0,
     paddingBottom: 0,
-    borderWidth: 0,
-    borderBottomWidth: 0,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     overflow: 'hidden',
     flexShrink: 0,
@@ -408,16 +420,13 @@ const styles = StyleSheet.create({
   navInactive: {
     backgroundColor: 'transparent',
   },
-  // Runway-stage nav chips: rounded, underline-free, symmetrical padding. The
-  // square plate + tab underline is a header treatment; on a full-bleed photo
-  // stage it needs to melt into the black instead of framing itself.
   stageNavBase: {
     borderRadius: tokens.radius.full,
-    borderBottomWidth: 0,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     paddingTop: 0,
     paddingBottom: 0,
-    minHeight: 34,
+    minHeight: 36,
   },
   profileBase: {
     minHeight: tokens.button.xs.height,
