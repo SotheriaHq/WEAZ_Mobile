@@ -2967,7 +2967,7 @@ export function RunwayFeedScreen() {
                         variant="nav"
                         selected={chip.id === selectedFilterId}
                         onPress={() => setSelectedFilterId(chip.id)}
-                        style={styles.headerFilterChip}
+                        onDarkStage
                       />
                     ))}
                   </ScrollView>
@@ -3213,14 +3213,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  headerFilterChip: {
-    // Symmetric now that the stage chip is a pill, not an underlined tab — the
-    // old 1/3 top/bottom split existed to optically centre the label above a
-    // 2px underline that no longer renders here.
-    minHeight: 32,
-    paddingHorizontal: 12,
-    paddingVertical: 0,
   },
   headerEmoji: {
     fontSize: 16,

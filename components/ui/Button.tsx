@@ -238,6 +238,14 @@ export function Button({
             ? 'ghost'
             : 'control';
   const borderWidth = effectiveVariant === 'ghost' || isTextOnly ? 0 : 2;
+  const variantBorderColor = (() => {
+    if (effectiveVariant === 'ghost' || isTextOnly) return 'transparent';
+    if (isInert) return theme.colors.disabledBorder;
+    if (effectiveVariant === 'outline' || effectiveVariant === 'secondary') {
+      return theme.colors.border;
+    }
+    return 'transparent';
+  })();
   const variantContainer: ViewStyle = {
     borderRadius: tokens.radius.lg,
     alignItems: 'center',
@@ -245,7 +253,7 @@ export function Button({
     flexDirection: 'row',
     gap: tokens.spacing.sm,
     borderWidth,
-    borderColor: 'transparent',
+    borderColor: variantBorderColor,
     backgroundColor: 'transparent',
   };
 

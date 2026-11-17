@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatMoney } from '@/src/utils/money';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -224,7 +224,7 @@ export default function CreateDesignPreviewScreen() {
             <AppText variant="bodyBold">Hashtags</AppText>
             <View style={styles.tagsWrap}>
               {tags.map((tag) => (
-                <Chip key={tag} label={normalizeHashtagLabel(tag)} />
+                <Chip key={tag} label={normalizeHashtagLabel(tag)} readOnly />
               ))}
             </View>
           </Card>
@@ -235,9 +235,20 @@ export default function CreateDesignPreviewScreen() {
             <AppText variant="bodyBold">Custom order fields</AppText>
             <View style={styles.customFieldsWrap}>
               {customMeasurementKeys.map((key) => (
-                <AppText key={key} variant="body" style={styles.customFieldItem}>
-                  {toPrettyLabel(key)}
-                </AppText>
+                <View
+                  key={key}
+                  style={[
+                    styles.customFieldPill,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.surfaceAlt,
+                    },
+                  ]}
+                >
+                  <AppText variant="captionBold" tone="secondary">
+                    {toPrettyLabel(key)}
+                  </AppText>
+                </View>
               ))}
             </View>
           </Card>
@@ -308,42 +319,66 @@ export default function CreateDesignPreviewScreen() {
         </View>
       </ScrollView>
 
-      <Modal
-        transparent
+      <AppBottomSheet
         visible={deleteOpen}
-        animationType="fade"
-        statusBarTranslucent
-        navigationBarTranslucent
-        onRequestClose={() => setDeleteOpen(false)}
+        title="Delete draft?"
+        subtitle={
+          form.title.trim()
+            ? `This permanently deletes "${form.title.trim()}".`
+            : 'This permanently deletes this draft.'
+        }
+        onClose={() => {
+          setDeleteOpen(false);
+          setDeletePhrase('');
+        }}
+        scrollable={false}
       >
-        <View style={[styles.modalRoot, { backgroundColor: theme.colors.overlay }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDeleteOpen(false)} />
-          <KeyboardAvoider style={styles.modalKeyboard}>
-            <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <AppText variant="subtitle">Delete draft?</AppText>
-              <AppText variant="body" tone="muted">
-                This permanently deletes {form.title.trim() ? `"${form.title.trim()}"` : 'this draft'}.
-              </AppText>
-              <Input
-                label="Type DELETE to confirm"
-                value={deletePhrase}
-                onChangeText={setDeletePhrase}
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
-              <View style={styles.modalActions}>
-                <Button title="Cancel" variant="outline" onPress={() => setDeleteOpen(false)} />
-                <Button
-                  title="Delete draft"
-                  variant="danger"
-                  disabled={!canDelete}
-                  onPress={() => void deleteDraft()}
-                />
-              </View>
-            </View>
-          </KeyboardAvoider>
+        <View style={styles.deleteModalContent}>
+          <AppText variant="captionRegular" tone="muted">
+            To proceed, type <AppText variant="captionBold" tone="danger">DELETE</AppText> below.
+          </AppText>
+          <View
+            style={[
+              styles.deleteInputBox,
+              {
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surfaceAlt,
+              },
+            ]}
+          >
+            <Input
+              label="Confirmation code"
+              hideLabel
+              placeholder="Type DELETE to confirm"
+              value={deletePhrase}
+              onChangeText={setDeletePhrase}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              containerStyle={styles.deleteInputWrapper}
+            />
+          </View>
+          <View style={styles.modalActions}>
+            <Button
+              title="Cancel"
+              variant="outline"
+              size="md"
+              style={styles.modalActionButton}
+              onPress={() => {
+                setDeleteOpen(false);
+                setDeletePhrase('');
+              }}
+            />
+            <Button
+              title="Delete draft"
+              variant="danger"
+              size="md"
+              style={styles.modalActionButton}
+              disabled={!canDelete}
+              onPress={() => void deleteDraft()}
+            />
+          </View>
         </View>
-      </Modal>
+      </AppBottomSheet>
     </SafeAreaView>
   );
 }
@@ -453,24 +488,25 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
   },
-  modalKeyboard: {
-    width: '100%',
-    maxWidth: 420,
-    alignSelf: 'center',
-  },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    borderTopLeftRadius: tokens.radius.xl,
-    borderTopRightRadius: tokens.radius.xl,
+  deleteModalContent: {
     gap: tokens.spacing.md,
-    padding: tokens.spacing.lg,
+    paddingTop: tokens.spacing.xs,
+  },
+  deleteInputWrapper: {
+    width: '100%',
+  },
+  deleteInputBox: {
+    borderRadius: tokens.radius.md,
+    borderWidth: 2,
+    overflow: 'hidden',
   },
   modalActions: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
+    paddingTop: tokens.spacing.xs,
+  },
+  modalActionButton: {
+    flex: 1,
   },
   tagsWrap: {
     flexDirection: 'row',
@@ -478,9 +514,17 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   customFieldsWrap: {
-    gap: tokens.spacing.xs,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
   },
-  customFieldItem: {
-    textAlign: 'left',
+  customFieldPill: {
+    borderRadius: tokens.radius.full,
+    borderWidth: 2,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    minHeight: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
