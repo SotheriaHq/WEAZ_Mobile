@@ -343,7 +343,7 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
           : 'This brand has not published content yet.'}
       </AppText>
       {isOwner && onAdd && (
-        <Button title="Create Design" onPress={onAdd} size="md" style={styles.emptyButton} />
+        <Button title="Create Design" variant="brand" onPress={onAdd} size="md" style={styles.emptyButton} />
       )}
     </View>
   );
@@ -374,7 +374,7 @@ const StoreSetupRequiredNotice = ({
         : 'Confirm the link we sent to your email address, then come back to set up your store.'}
     </AppText>
     {emailVerified ? (
-      <Button title="Set up my store" onPress={onStartSetup} size="md" style={styles.emptyButton} />
+      <Button title="Set up my store" variant="brand" onPress={onStartSetup} size="md" style={styles.emptyButton} />
     ) : null}
   </View>
 );

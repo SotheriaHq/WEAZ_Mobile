@@ -316,11 +316,11 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
-    shadowColor: tokens.colors.dark,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    elevation: 4,
+    shadowColor: tokens.primitives.neutral[1000],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
   cardPressed: {
     opacity: 0.92,

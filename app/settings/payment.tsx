@@ -216,6 +216,7 @@ function PaymentSettingsContent() {
               <View style={styles.actionSlot}>
                 <Button
                   title="Open checkout"
+                  variant="brand"
                   onPress={() => drillDownPush('/checkout' as never)}
                 />
               </View>

@@ -572,6 +572,7 @@ export function MobileCheckoutScreen() {
               title={
                 submitting ? 'Initializing...' : 'Continue to secure payment'
               }
+              variant="brand"
               loading={submitting}
               disabled={
                 !hasBagItems ||

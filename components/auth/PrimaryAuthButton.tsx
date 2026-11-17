@@ -30,7 +30,7 @@ export function PrimaryAuthButton({
       onPress={onPress}
       loading={loading}
       disabled={disabled}
-      variant={ghost ? 'outline' : 'primary'}
+      variant={ghost ? 'outline' : 'brand'}
       size="lg"
       fullWidth
       style={styles.button}

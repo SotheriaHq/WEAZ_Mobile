@@ -501,7 +501,7 @@ export function CollectionCommerceViewer({
             <Button
               title={`${BAG_IT_EMOJI} ${BAG_IT_LABEL}`}
               size="sm"
-              variant={item.inBag ? 'secondary' : 'primary'}
+              variant={item.inBag ? 'secondary' : 'brand'}
               disabled={item.inBag || busy === `product:${item.productId}`}
               loading={busy === `product:${item.productId}`}
               onPress={() => handleProductBag(item)}
@@ -661,7 +661,7 @@ export function CollectionCommerceViewer({
         </View>
         <View style={styles.stickyActions}>
           <Button title="Bag selected" size="sm" variant="outline" onPress={handleBagSelected} disabled={selectedProducts.length === 0 || Boolean(busy)} loading={busy === 'bag-selected'} />
-          <Button title="Bag all" size="sm" onPress={handleBagAll} disabled={Boolean(busy) || isOwnBrand} loading={busy === 'bag-all'} />
+          <Button title="Bag all" size="sm" variant="brand" onPress={handleBagAll} disabled={Boolean(busy) || isOwnBrand} loading={busy === 'bag-all'} />
         </View>
       </View>
 

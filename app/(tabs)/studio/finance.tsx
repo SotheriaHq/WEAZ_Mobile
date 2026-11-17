@@ -343,6 +343,7 @@ export default function StudioFinanceScreen() {
             <View style={styles.heroActions}>
               <Button
                 title={requesting ? 'Submitting…' : 'Request payout'}
+                variant="brand"
                 onPress={() => void handleRequestPayout()}
                 disabled={requesting || available < MIN_PAYOUT}
                 loading={requesting}

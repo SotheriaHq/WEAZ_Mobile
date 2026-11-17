@@ -306,6 +306,7 @@ export default function CreateDesignPreviewScreen() {
                       : 'Creating…'
                     : submitLabelFor(activeDesignStatus)
                 }
+                variant="brand"
                 loading={saveState.action === 'publish'}
                 disabled={!canPublish || isSaving}
                 onPress={() => void save('publish')}

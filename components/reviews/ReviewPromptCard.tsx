@@ -25,7 +25,7 @@ export default function ReviewPromptCard({ prompt, onReview, onSkip, skipping = 
         </AppText>
       </View>
       <View style={styles.actions}>
-        <Button title="Write review" size="sm" onPress={() => onReview(prompt)} />
+        <Button title="Write review" variant="brand" size="sm" onPress={() => onReview(prompt)} />
         <Button title="Skip" size="sm" variant="secondary" loading={skipping} onPress={() => onSkip(prompt)} />
       </View>
     </Card>
