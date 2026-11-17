@@ -15,6 +15,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const repoRoot = path.resolve(__dirname, '..');
+const BUILD_SHA = 'abc1234';
 
 function compile(filePath) {
   return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -56,6 +57,7 @@ function load(relativePath, mocks) {
     require: localRequire,
     URL,
     URLSearchParams,
+    process: { env: { EXPO_PUBLIC_BUILD_SHA: BUILD_SHA } },
     console,
     Date,
     Math,
@@ -64,6 +66,14 @@ function load(relativePath, mocks) {
     setTimeout,
   }, { filename: filePath });
   return module.exports;
+}
+
+/** routeRestoration as a given build would load it. */
+function loadRestoration(storage, version = '1.0.0') {
+  return load('src/navigation/routeRestoration.ts', {
+    '@react-native-async-storage/async-storage': { __esModule: true, default: storage },
+    'expo-constants': { __esModule: true, default: { nativeApplicationVersion: version } },
+  });
 }
 
 const checks = [];
@@ -115,7 +125,7 @@ check('root and dev-client URLs pass through without overwriting the real launch
 });
 
 check('restorable hrefs keep real query params and drop segment duplicates', () => {
-  const restoration = load('src/navigation/routeRestoration.ts', { '@react-native-async-storage/async-storage': { __esModule: true, default: createStorage() } });
+  const restoration = loadRestoration(createStorage());
   assert.equal(
     restoration.buildRestorableHref('/orders/9f1c', { orderId: '9f1c', kind: 'CUSTOM' }),
     '/orders/9f1c?kind=CUSTOM',
@@ -124,14 +134,14 @@ check('restorable hrefs keep real query params and drop segment duplicates', () 
 });
 
 check('routes that must never be restored are refused', () => {
-  const restoration = load('src/navigation/routeRestoration.ts', { '@react-native-async-storage/async-storage': { __esModule: true, default: createStorage() } });
+  const restoration = loadRestoration(createStorage());
   for (const pathname of ['/', '/verify-email', '/reset-password', '/checkout', '/payment', '/oauthredirect']) {
     assert.equal(restoration.buildRestorableHref(pathname, {}), null, pathname);
   }
 });
 
 check('sensitive params are never written to storage', () => {
-  const restoration = load('src/navigation/routeRestoration.ts', { '@react-native-async-storage/async-storage': { __esModule: true, default: createStorage() } });
+  const restoration = loadRestoration(createStorage());
   assert.equal(
     restoration.buildRestorableHref('/settings/payment', { token: 't', reference: 'r', tab: 'cards' }),
     '/settings/payment?tab=cards',
@@ -140,10 +150,36 @@ check('sensitive params are never written to storage', () => {
 
 check('a snapshot is consumed on read, so a crash on restore cannot loop', async () => {
   const storage = createStorage();
-  const restoration = load('src/navigation/routeRestoration.ts', { '@react-native-async-storage/async-storage': { __esModule: true, default: storage } });
-  await restoration.saveRouteSnapshot({ href: '/catalog', userId: 'u1', savedAt: 1 });
-  assert.deepEqual(JSON.parse(JSON.stringify(await restoration.takeRouteSnapshot())), { href: '/catalog', savedAt: 1, userId: 'u1' });
+  const restoration = loadRestoration(storage);
+  const build = restoration.currentBuildId();
+  await restoration.saveRouteSnapshot({ href: '/catalog', userId: 'u1', savedAt: 1, build });
+  assert.deepEqual(JSON.parse(JSON.stringify(await restoration.takeRouteSnapshot())), { href: '/catalog', savedAt: 1, userId: 'u1', build });
   assert.equal(await restoration.takeRouteSnapshot(), null);
+});
+
+// Reported 17 Nov 2026: "This screen doesn't exist" right after installing an
+// update. A route saved by the previous build was restored into a build that
+// no longer had it. Preview APKs are all 1.0.0, so the commit decides.
+check('a snapshot from another build is never restored', async () => {
+  const storage = createStorage();
+  const restoration = loadRestoration(storage);
+  assert.equal(restoration.currentBuildId(), `1.0.0+${BUILD_SHA}`);
+  await restoration.saveRouteSnapshot({ href: '/studio/webview', userId: 'u1', savedAt: 1, build: '1.0.0+0000000' });
+  assert.equal(await restoration.takeRouteSnapshot(), null);
+  assert.equal(storage.map.size, 0, 'the stale snapshot is consumed, not kept for later');
+});
+
+check('a snapshot written before builds were recorded is never restored', async () => {
+  const storage = createStorage();
+  const restoration = loadRestoration(storage);
+  await restoration.saveRouteSnapshot({ href: '/catalog', userId: 'u1', savedAt: 1 });
+  assert.equal(await restoration.takeRouteSnapshot(), null);
+});
+
+check('the Runway root is never restored under either of its names', () => {
+  const restoration = loadRestoration(createStorage());
+  assert.equal(restoration.buildRestorableHref('/index', {}), null);
+  assert.equal(restoration.buildRestorableHref('/', {}), null);
 });
 
 /** A verification link is a credential, so it lives in SecureStore, not AsyncStorage. */
@@ -180,6 +216,9 @@ function loadNativeIntent(storage, secureStore = createSecureStore()) {
       '@/src/utils/authLinkRouting': authLinkRouting,
       '@/src/navigation/launchLinkLedger': ledger,
       '@/src/auth/pendingEmailVerification': pending,
+      '@/src/utils/navigationInput': load('src/utils/navigationInput.ts', {}),
+      // Only custom-scheme links here; web-link mapping has its own contract.
+      '@/src/navigation/webLinkRouting': { nativePathForWebLink: () => null },
     }),
   };
 }

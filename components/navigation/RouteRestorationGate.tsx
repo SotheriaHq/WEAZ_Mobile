@@ -9,6 +9,7 @@ import {
   ROUTE_RESTORE_MAX_AGE_MS,
   buildRestorableHref,
   clearRouteSnapshot,
+  currentBuildId,
   saveRouteSnapshot,
   takeRouteSnapshot,
 } from '@/src/navigation/routeRestoration';
@@ -50,7 +51,7 @@ export function RouteRestorationGate() {
       const current = latestRef.current;
       const href = buildRestorableHref(current.pathname, current.params);
       if (href) {
-        void saveRouteSnapshot({ href, userId: current.userId, savedAt: Date.now() });
+        void saveRouteSnapshot({ href, userId: current.userId, savedAt: Date.now(), build: currentBuildId() });
       } else {
         void clearRouteSnapshot();
       }

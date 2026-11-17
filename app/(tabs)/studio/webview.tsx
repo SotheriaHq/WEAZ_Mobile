@@ -89,6 +89,15 @@ type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 const MAX_SILENT_RELOADS = 1;
 
 /**
+ * Sign-in answers from the page (AUTH_REQUIRED / HANDOFF_FAILED) get one fresh
+ * handoff before anyone is told. A brand that had just signed up was shown
+ * "Studio session expired" when the page had merely lost a race with its own
+ * session restore; a fresh handoff answers that. A second refusal inside this
+ * window is real and is shown, so a refusing page can never reload in a loop.
+ */
+const AUTH_AUTO_RETRY_WINDOW_MS = 60_000;
+
+/**
  * Liveness after READY. A page that reported READY and THEN hung (its renderer
  * starved on a low-RAM phone) left every island chip and Back press injecting
  * script into a dead page. The shell pings the page; one that answers nothing
@@ -278,6 +287,7 @@ type StudioWebViewEventName =
   | 'native-message-received'
   | 'ready-timeout'
   | 'silent-reload'
+  | 'auth-retry'
   | 'page-unresponsive'
   | 'page-ready';
 
@@ -776,6 +786,8 @@ function StudioWebViewContent() {
 
   // Silent in-app reloads spent this visit — see MAX_SILENT_RELOADS.
   const silentReloadsRef = useRef(0);
+  // When the last automatic sign-in retry ran — see AUTH_AUTO_RETRY_WINDOW_MS.
+  const lastAuthAutoRetryAtRef = useRef(0);
 
   /**
    * Reload Studio in place without telling anyone, or — once the silent budget
@@ -1119,6 +1131,17 @@ function StudioWebViewContent() {
         case 'AUTH_REQUIRED':
         case 'HANDOFF_FAILED':
           sessionEstablishedRef.current = false;
+          // First refusal: hand the page a fresh session and keep the loader
+          // up. Only a refusal that survives that reaches the person.
+          if (Date.now() - lastAuthAutoRetryAtRef.current > AUTH_AUTO_RETRY_WINDOW_MS) {
+            lastAuthAutoRetryAtRef.current = Date.now();
+            trackStudioWebViewEvent('auth-retry', {
+              routeKey: resolvedRouteKey,
+              reason: message.reason ?? message.type,
+            });
+            retry();
+            break;
+          }
           // Say what actually happened. `brand_required` is an ACCESS answer
           // (this account is not a brand / has no brand access), not an
           // expired session; telling a brand-new brand its session "expired"
@@ -1130,9 +1153,7 @@ function StudioWebViewContent() {
                 ? `Studio handoff could not reach the API from the web view. API: ${message.apiBaseUrl ?? 'unknown'}`
                 : message.type === 'AUTH_REQUIRED' && message.reason === 'brand_required'
                   ? 'Studio is for brand accounts. This account does not have brand access yet.'
-                  : message.type === 'AUTH_REQUIRED' && message.reason === 'missing_user'
-                    ? 'Studio could not confirm your sign-in. Close Studio and open it again.'
-                    : 'Your Studio session expired. Close Studio and open it again.',
+                  : 'Studio could not confirm your sign-in. Tap Retry to try again.',
           );
           setLoadState('error');
           break;
@@ -1259,7 +1280,7 @@ function StudioWebViewContent() {
           break;
       }
     },
-    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast, trustedOrigins,
+    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, retry, toast, trustedOrigins,
       actorId, activeBrandId, studioScope, nativeIdentity],
   );
 
@@ -1656,8 +1677,10 @@ function StudioWebViewContent() {
                 {errorMessage}
               </AppText>
               <View style={styles.errorActions}>
+                {/* Retry is the only action. Leaving is what Back and the
+                    island already do; a "Close" here read as the way to fix
+                    the error, and closing never fixed anything. */}
                 <Button title="Retry" onPress={retry} />
-                <Button title="Close" variant="secondary" onPress={closeStudio} />
               </View>
             </View>
           </View>

@@ -69,6 +69,9 @@ jobs:
           npm run test:studio-startup-recovery
           npm run test:studio-navigation-feedback
 
+      - name: App survival contract
+        run: npm run test:app-survival-contract
+
       - name: Custom order queue contract
         run: npm run test:custom-order-queue-contract
 
