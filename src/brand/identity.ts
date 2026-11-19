@@ -14,7 +14,7 @@
  */
 
 /** The product name. There is no former name to surface anywhere. */
-export const PRODUCT_NAME = 'WIEZ';
+export const PRODUCT_NAME = 'ARU';
 
 export const PRODUCT_TAGLINE = 'When you think WEARS, you think WIEZ.';
 
@@ -37,4 +37,22 @@ export const BRAND_COLORS = {
   onDark: '#af87f4',
   soft: '#a97ef3',
   ink: '#0c0b11',
+} as const;
+
+/**
+ * Statically analyzable relative asset imports for Expo/Metro bundler.
+ * Retains Temporary Legacy Visual Assets per Product Owner Decision 1.2.
+ */
+export const BRAND_ASSETS = {
+  markLight: require('../../assets/images/wiez-mark-light.png'),
+  markDark: require('../../assets/images/wiez-mark-dark.png'),
+  loaderMarkLight: require('../../assets/images/wiez-loader-mark-light.png'),
+  loaderMarkDark: require('../../assets/images/wiez-loader-mark-dark.png'),
+  icon: require('../../assets/images/wiez-icon.png'),
+  adaptiveIcon: require('../../assets/images/wiez-adaptive-icon.png'),
+  favicon: require('../../assets/images/wiez-favicon.png'),
+  splashLight: require('../../assets/images/wiez-splash-icon.png'),
+  splashDark: require('../../assets/images/wiez-splash-icon-dark.png'),
+  wordmarkLight: require('../../assets/images/wiez-wordmark-light.png'),
+  wordmarkDark: require('../../assets/images/wiez-wordmark-dark.png'),
 } as const;

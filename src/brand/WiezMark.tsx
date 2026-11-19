@@ -17,8 +17,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * a light-ground ramp into a dark-ground one.
  */
 
-const MARK_LIGHT = require('@/assets/images/wiez-mark-light.png');
-const MARK_DARK = require('@/assets/images/wiez-mark-dark.png');
+const MARK_LIGHT = require('../../assets/images/wiez-mark-light.png');
+const MARK_DARK = require('../../assets/images/wiez-mark-dark.png');
 
 type WiezMarkProps = {
   /** Rendered edge length. */
@@ -52,5 +52,7 @@ export function WiezMark({ size = 132, style, label }: WiezMarkProps) {
 }
 
 export const WIEZ_MARK_LABEL = LOGO_ACCESSIBILITY_LABEL;
+export const AruMark = WiezMark;
+export const ARU_MARK_LABEL = LOGO_ACCESSIBILITY_LABEL;
 
 export default WiezMark;
