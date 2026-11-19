@@ -761,15 +761,6 @@ export default function CatalogScreen() {
   const patchEnabled = Boolean(
     deferredWorkReady && !isOwner && status === 'authenticated' && userType === 'REGULAR' && targetBrandId,
   );
-  const {
-    isPatched,
-    loading: patchLoading,
-    refresh: refreshPatchStatus,
-    toggle: togglePatchStatus,
-  } = useBrandPatchStatus({
-    brandId: patchEnabled ? targetBrandId : undefined,
-    enabled: patchEnabled,
-  });
 
   const getCollectionOwnerId = useCallback(
     (sourceProfile?: BrandProfileDto | null) => {
@@ -784,6 +775,23 @@ export default function CatalogScreen() {
   const queriedProfile = profileQuery.data !== undefined ? profileQuery.data : null;
   const heldProfile = profileIsForTarget(profile, targetBrandId, user) ? profile : null;
   const effectiveProfile = queriedProfile ?? heldProfile;
+  /*
+    The patch list is keyed by the brand OWNER's user id, and a brand is
+    reachable under two ids. Keyed on the route id, a brand opened by its
+    Brand id read as unpatched even when the shopper had patched it. The
+    fetched profile's id is the owner id; the route id is only the fallback
+    until it lands.
+  */
+  const patchBrandId = queriedProfile?.id ?? targetBrandId;
+  const {
+    isPatched,
+    loading: patchLoading,
+    refresh: refreshPatchStatus,
+    toggle: togglePatchStatus,
+  } = useBrandPatchStatus({
+    brandId: patchEnabled ? patchBrandId : undefined,
+    enabled: patchEnabled,
+  });
   /*
     The queried profile's own id wins, because it is the canonical one.
 
@@ -1338,6 +1346,9 @@ export default function CatalogScreen() {
     if (!targetBrandId || patchLoading) return;
     try {
       const nextPatched = await togglePatchStatus();
+      // null: superseded by a later tap, or the taps cancelled out. The pill
+      // already shows the state, so there is nothing to announce.
+      if (nextPatched === null) return;
       toast.success(nextPatched ? 'Brand patched.' : 'Unpatched brand.');
     } catch (error: any) {
       if (error instanceof BrandPatchUnavailableError) {

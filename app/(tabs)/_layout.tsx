@@ -22,9 +22,11 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { hydratePatchStore } from '@/src/features/patches/patchStore';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import {
   refreshUnreadNotificationCount as refreshSharedUnreadNotificationCount,
+  resyncNotifications,
   useNotificationRealtimeChannel,
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
@@ -201,7 +203,6 @@ export default function TabLayout() {
   const inStoreSetupRoute =
     studioRouteKeyParam === 'setup' || studioRouteKeyParam === 'essentials';
   const lastBackPressAtRef = useRef(0);
-  const lastNotificationRefreshAttemptAtRef = useRef(0);
   const lastMessageRefreshAttemptAtRef = useRef(0);
   const pendingRouteFrameRef = useRef<number | null>(null);
   const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
@@ -260,6 +261,24 @@ export default function TabLayout() {
     `400 Endpoint requires user type REGULAR`.
   */
   const isBrand = isBrandAccount(user);
+  /*
+    Bag is a shopper surface. Guests and brands do not get the chip at all.
+
+    Decided from the account itself, cached or live, so it does not depend on
+    `status`: while a session restores, a returning shopper keeps the chip and
+    a brand never shows it. It used to be shown whenever the user was not yet
+    known to be a brand, so on a cold start a brand's dock drew five chips,
+    then lost Bag when the profile landed and every chip slid sideways under
+    the indicator.
+  */
+  const canShop = Boolean(user) && !isBrand && status !== 'unauthenticated';
+
+  // The patched-brands store, loaded once per shopper session for every
+  // screen (Runway, catalogue, design viewer) instead of per screen.
+  useEffect(() => {
+    if (status !== 'authenticated' || !user?.id || isBrand) return;
+    void hydratePatchStore(user.id);
+  }, [isBrand, status, user?.id]);
 
   /**
    * A freshly signed-in shopper has no on-disk snapshot (it was deliberately
@@ -337,7 +356,6 @@ export default function TabLayout() {
   const islandRefracts = Platform.OS === 'android' && !inStudioIsland;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
-    lastNotificationRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadNotificationCount({
       authenticated: status === 'authenticated',
     });
@@ -654,6 +672,7 @@ export default function TabLayout() {
     return buildNativeIslandItems({
       activeKey: shopperActiveKey as NativeIslandKey,
       isBrand,
+      canShop,
       profileLabel: profileNavLabel,
       profileIcon: profileNavEmoji,
       profileAvatarUri: profileNavAvatarUri,
@@ -671,6 +690,7 @@ export default function TabLayout() {
   }, [
     bagCount.combinedCount,
     canOpenProfileMenu,
+    canShop,
     isBrand,
     messageCountReady,
     notificationCountReady,
@@ -972,20 +992,22 @@ export default function TabLayout() {
     void refreshUnreadMessageCount();
   }, [refreshUnreadMessageCount, user?.id]);
 
+  /*
+    Coming back to the app ALWAYS re-reads the count. It used to skip when the
+    last read was under 30s old — and the commonest return trip, leaving to tap
+    a verification link in Gmail and coming straight back, is well under 30s,
+    so the badge kept the count from before. The socket was down meanwhile and
+    delivered nothing, so there was no other path to the new count.
+  */
   useEffect(() => {
     if (status !== 'authenticated') return;
 
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        if (Date.now() - lastNotificationRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
-          return;
-        }
-        void refreshUnreadNotificationCount();
-      }
+      if (nextState === 'active') resyncNotifications();
     });
 
     return () => subscription.remove();
-  }, [refreshUnreadNotificationCount, status]);
+  }, [status]);
 
   useEffect(() => {
     if (status !== 'authenticated') return;

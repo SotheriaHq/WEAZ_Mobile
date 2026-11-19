@@ -80,6 +80,7 @@ import { useCommitCost } from '@/src/perf/commitCost';
 import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { tokens } from '@/src/styles/tokens';
+import { resyncNotifications } from '@/src/realtime/notifications';
 
 // Nav timing is opt-in via EXPO_PUBLIC_DEBUG_NAV=1 in every build type; see
 // `src/utils/navPerf.ts`. It is no longer forced on for non-dev builds.
@@ -200,8 +201,11 @@ function NotificationSetup() {
         // Set up notification listeners - skip in Expo Go on Android
         const isExpoGoAndroid = Constants.executionEnvironment === 'storeClient' && Platform.OS === 'android';
         const unsubscribe = isExpoGoAndroid ? () => {} : setupNotificationListeners(
-          (notification) => {
-            // Handle foreground notification
+          () => {
+            // The push banner is shown by the OS handler; the in-app count and
+            // list must catch up with it too, or the bell disagrees with the
+            // banner the person just saw.
+            resyncNotifications();
             if (isWiezDebugEnabled('boot')) {
               console.log('Notification received while foreground');
             }

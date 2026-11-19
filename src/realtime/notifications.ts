@@ -42,6 +42,8 @@ type NotificationDeletedPayload = {
 type NotificationListeners = {
   onCreated?: (notification: RealtimeNotification) => void;
   onDeleted?: (payload: NotificationDeletedPayload) => void;
+  /** Events may have been missed: re-read the list from the server. */
+  onResync?: () => void;
 };
 
 let socket: Socket | null = null;
@@ -52,6 +54,10 @@ let activeSubscriptions = 0;
 
 const createdListeners = new Set<(notification: RealtimeNotification) => void>();
 const deletedListeners = new Set<(payload: NotificationDeletedPayload) => void>();
+const resyncListeners = new Set<() => void>();
+let lastResyncAt = 0;
+/** Several triggers fire together on a resume; one round trip answers all. */
+const RESYNC_MIN_GAP_MS = 2_000;
 
 let unreadCount = 0;
 const unreadCountListeners = new Set<() => void>();
@@ -114,8 +120,13 @@ function ensureSocket(token: string, userId: string) {
   });
   unbindSession = bindNativeSessionSocket(socket);
 
+  // The first connect follows the sign-in count read; every later one is a
+  // reconnect after a gap in which events were not delivered to this device.
+  let connectedBefore = false;
   socket.on('connect', () => {
     socket?.emit('join', { room: `USER:${userId}` });
+    if (connectedBefore) resyncNotifications();
+    connectedBefore = true;
   });
 
   socket.on('notification.created', (payload: RealtimeNotification) => {
@@ -141,6 +152,33 @@ function ensureSocket(token: string, userId: string) {
 
   socket.connect();
   return socket;
+}
+
+/**
+ * Catch up with what happened while this device was not listening.
+ *
+ * The socket only delivers events while it is connected, and Android drops it
+ * as soon as the app is in the background — so whatever arrived meanwhile
+ * (the "email verified" notice after tapping a link in Gmail, a push that came
+ * in) never reached the in-app count or list. The push showed; the badge and
+ * the inbox stayed stale until something unrelated refreshed them.
+ *
+ * Forces past the 30s count cache, marks the cached list stale so the next
+ * open re-reads it, and tells a mounted Notifications screen to re-read now.
+ * Called on reconnect, on return to the foreground, on a push received in the
+ * foreground, and after email verification.
+ */
+export function resyncNotifications(): void {
+  if (!getApiSecurityIdentity()) return;
+  const now = Date.now();
+  if (now - lastResyncAt < RESYNC_MIN_GAP_MS) return;
+  lastResyncAt = now;
+  void refreshUnreadNotificationCount({ authenticated: true, forceRefresh: true });
+  void queryClient.invalidateQueries({
+    queryKey: ['notifications', 'list'],
+    refetchType: 'none',
+  });
+  resyncListeners.forEach((listener) => listener());
 }
 
 export function useUnreadNotificationCount(): number {
@@ -174,6 +212,7 @@ export function clearNotificationRealtimeSession() {
   disconnectSocket();
   activeSubscriptions = 0;
   unreadCountRefreshPromise = null;
+  lastResyncAt = 0;
   resetUnreadNotificationCount();
   queryClient.removeQueries({ queryKey: queryKeys.notifications.unreadCount(), exact: true });
 }
@@ -224,6 +263,7 @@ export function useNotificationRealtimeChannel({
   userId,
   onCreated,
   onDeleted,
+  onResync,
 }: {
   enabled?: boolean;
   token: string | null;
@@ -246,6 +286,14 @@ export function useNotificationRealtimeChannel({
       if (onDeleted) deletedListeners.delete(onDeleted);
     };
   }, [enabled, onDeleted]);
+
+  useEffect(() => {
+    if (!enabled || !onResync) return;
+    resyncListeners.add(onResync);
+    return () => {
+      resyncListeners.delete(onResync);
+    };
+  }, [enabled, onResync]);
 
   useEffect(() => {
     if (!enabled || !token || !userId) {

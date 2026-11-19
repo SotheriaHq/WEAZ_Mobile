@@ -38,9 +38,8 @@ import { MuseLoader } from '@/components/ui/MuseLoader';
 import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
 import CollectionCommentsSheet, { getCommentsSheetHeight } from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
-import { ProfileApi } from '@/src/api/ProfileApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
-import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
+import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, setCollectionMediaThread } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { consumeMarketFeedDirty, fetchMarketFeedPage, readCachedMarketFeed, readMemoryCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
@@ -54,9 +53,11 @@ import { prefetchFeedImage } from '@/src/features/feed/media/mediaCache';
 import { resolveFeedImagePrefetchTarget } from '@/src/features/feed/media/feedImageSourcePolicy';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import {
-  setBrandPatchStatus,
-  subscribeAllBrandPatchStatus,
-} from '@/src/hooks/useBrandPatchStatus';
+  hydratePatchStore,
+  seedBrandPatchStatus,
+  toggleBrandPatch,
+  usePatchedBrandIds,
+} from '@/src/features/patches/patchStore';
 import { useReduceMotion } from '@/src/hooks/useReduceMotion';
 import { RUNWAY_PAGE_SCALE_MIN } from '@/src/features/feed/utils/runwayTransitCurves';
 import { getAvatarFallback } from '@/src/utils/profileImage';
@@ -324,7 +325,6 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
   brandLogoFileId,
   canPatch,
   isPatched,
-  patchBusy,
   onPatchPress,
   onPress,
 }: {
@@ -334,7 +334,6 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
   brandLogoFileId?: string | null;
   canPatch: boolean;
   isPatched: boolean;
-  patchBusy: boolean;
   onPatchPress: () => void;
   onPress: () => void;
 }) {
@@ -395,12 +394,10 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
             event.stopPropagation();
             onPatchPress();
           }}
-          disabled={patchBusy}
           style={({ pressed }) => [
             styles.ownerPatchBadge,
             { backgroundColor: theme.colors.surfaceOverlay, borderColor: theme.colors.border },
             isPatched && { backgroundColor: theme.colors.success, borderColor: theme.colors.success },
-            patchBusy && styles.ownerPatchBadgeBusy,
             pressed && styles.ownerPatchBadgePressed,
           ]}
           accessibilityRole="button"
@@ -413,12 +410,14 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
   );
 });
 
+/** Quiet period after the last thread tap before its final state is sent. */
+const THREAD_SETTLE_MS = 400;
+
 type FeedActionRailProps = {
   item: MarketItem;
   brandName: string;
   currentMediaId: string;
   isThreaded: boolean;
-  isThreading: boolean;
   threads: string;
   comments: string;
   likes: string;
@@ -427,7 +426,6 @@ type FeedActionRailProps = {
   isSavingLook: boolean;
   canPatchBrands: boolean;
   isPatched: boolean;
-  patchBusy: boolean;
   bottomClearance: number;
   onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
   onOpenBrand: (brandId?: string | null, username?: string | null) => void;
@@ -557,7 +555,6 @@ const FeedActionRail = React.memo(function FeedActionRail({
   brandName,
   currentMediaId,
   isThreaded,
-  isThreading,
   threads,
   comments,
   likes,
@@ -566,7 +563,6 @@ const FeedActionRail = React.memo(function FeedActionRail({
   isSavingLook,
   canPatchBrands,
   isPatched,
-  patchBusy,
   bottomClearance,
   onPatchBrand,
   onOpenBrand,
@@ -599,7 +595,6 @@ const FeedActionRail = React.memo(function FeedActionRail({
         brandLogoFileId={item.brandLogoFileId}
         canPatch={canPatchBrands}
         isPatched={isPatched}
-        patchBusy={patchBusy}
         onPatchPress={handlePatchPress}
         onPress={handleBrandPress}
       />
@@ -607,7 +602,6 @@ const FeedActionRail = React.memo(function FeedActionRail({
       <ThreadRailAction
         threaded={isThreaded}
         count={threads}
-        busy={isThreading}
         onPress={handleThreadActionPress}
       />
 
@@ -971,19 +965,6 @@ export function RunwayFeedScreen() {
   const hydratedCollectionIdsRef = useRef(new Set<string>());
   const feedTeleportingRef = useRef(false);
   const loadingMoreInFlightRef = useRef(false);
-  const patchedBrandIdsRef = useRef<Set<string>>(new Set());
-  // Read inside the patch handler, which is stable and must not re-create on
-  // every busy-state change.
-  const patchingBrandIdsRef = useRef<Record<string, boolean>>({});
-  /**
-   * Brands the SHOPPER has toggled during this session.
-   *
-   * The feed payload and the patch list both seed the pill state, and both can
-   * land after a tap. Without a record of what the user actually decided, a
-   * page of feed items carrying a now-stale `viewerState.isPatched` would undo
-   * their tap a moment later — the pill flipping back on its own.
-   */
-  const patchDecisionsRef = useRef<Map<string, boolean>>(new Map());
   const lastLoggedPageHeightRef = useRef<number | null>(null);
   const hasLoggedInitialPageHeightRef = useRef(false);
   const previousActivePageIndexRef = useRef(0);
@@ -1013,18 +994,32 @@ export function RunwayFeedScreen() {
   const collectionMediaMapRef = useRef<Record<string, FeedViewerMedia[]>>({});
   // Carousel index is tracked in module-level carouselIndexMap (persists across remounts).
   const [threadStateByMedia, setThreadStateByMedia] = useState<Record<string, { threaded: boolean; count: number }>>({});
-  const [threadingMediaById, setThreadingMediaById] = useState<Record<string, boolean>>({});
   const [savedLookByCollectionId, setSavedLookByCollectionId] = useState<Record<string, boolean>>({});
   const [savingLookByCollectionId, setSavingLookByCollectionId] = useState<Record<string, boolean>>({});
   const threadStateByMediaRef = useRef<Record<string, { threaded: boolean; count: number }>>({});
-  const threadingMediaByIdRef = useRef<Record<string, boolean>>({});
   const savedLookByCollectionIdRef = useRef<Record<string, boolean>>({});
   const lastSavedCheckKeyRef = useRef<string | null>(null);
   const savingLookByCollectionIdRef = useRef<Record<string, boolean>>({});
-  const queuedThreadIntentByMediaRef = useRef<Record<string, boolean>>({});
+  /**
+   * Per-media thread sync: what the shopper wants, what the server last said,
+   * and the pending send. See `handleThreadPress`.
+   */
+  const threadSyncRef = useRef(
+    new Map<
+      string,
+      {
+        desired: boolean;
+        confirmed: { threaded: boolean; count: number };
+        collectionId: string | null;
+        timer: ReturnType<typeof setTimeout> | null;
+        inFlight: boolean;
+      }
+    >(),
+  );
   const viewedFeedItemKeysRef = useRef<Set<string>>(new Set());
-  const [patchedBrandIds, setPatchedBrandIds] = useState<Set<string>>(new Set());
-  const [patchingBrandIds, setPatchingBrandIds] = useState<Record<string, boolean>>({});
+  // The shared patch store: the same pills as the catalog and every other
+  // screen, persisted across restarts (src/features/patches/patchStore.ts).
+  const patchedBrandIds = usePatchedBrandIds();
   const [nextCursor, setNextCursor] = useState<string | null>(() => initialFeedSnapshot?.nextCursor ?? null);
   const [hasNextPage, setHasNextPage] = useState(() => initialFeedSnapshot?.hasNextPage ?? false);
   const [loading, setLoading] = useState(() => !initialFeedSnapshot);
@@ -1035,8 +1030,6 @@ export function RunwayFeedScreen() {
   const hasLoadedFirstPageRef = useRef(Boolean(initialFeedSnapshot));
 
   // Staleness guards - prevent refetch on every tab focus
-  const lastPatchFetchRef = useRef<number>(0);
-  const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
   const showBlockingLoader = loading && !hasLoadedFirstPage;
 
@@ -1085,38 +1078,10 @@ export function RunwayFeedScreen() {
     }
   }, [showBlockingLoader, skeletonOpacity]);
 
+  /** Throttled inside the store: at most one list fetch a minute. */
   const loadPatchedBrands = useCallback(async () => {
-    if (status !== 'authenticated' || !user?.id || user?.type === 'BRAND') {
-      setPatchedBrandIds(new Set());
-      return;
-    }
-
-    try {
-      const items = await ProfileApi.getPatches(user.id);
-      /*
-        MERGE, do not replace.
-
-        This lands after the feed has painted, and by then the shopper may
-        already have patched something — replacing the set wholesale reverted
-        their own tap a second later. `/users/:id/patches` and the feed's
-        `viewerState.isPatched` are both keyed on the brand owner's user id, so
-        the two sets are directly unionable.
-      */
-      const fetched = items.map((brand) => brand.id).filter(Boolean);
-      setPatchedBrandIds(() => {
-        const next = new Set(fetched);
-        for (const [brandId, patched] of patchDecisionsRef.current) {
-          if (patched) next.add(brandId);
-          else next.delete(brandId);
-        }
-        return next;
-      });
-      lastPatchFetchRef.current = Date.now();
-    } catch (error) {
-      // Keep whatever the feed's own viewerState already told us rather than
-      // blanking every pill because one background read failed.
-      console.warn('Failed to load patched brands', error);
-    }
+    if (status !== 'authenticated' || !user?.id || user?.type === 'BRAND') return;
+    await hydratePatchStore(user.id);
   }, [status, user?.id, user?.type]);
 
   /**
@@ -1393,115 +1358,21 @@ export function RunwayFeedScreen() {
     collectionMediaMapRef.current = collectionMediaMap;
   }, [collectionMediaMap]);
 
-  useEffect(() => {
-    patchedBrandIdsRef.current = patchedBrandIds;
-  }, [patchedBrandIds]);
-
-  useEffect(() => {
-    patchingBrandIdsRef.current = patchingBrandIds;
-  }, [patchingBrandIds]);
-
   /**
    * Seed the pill from the feed payload itself.
    *
-   * `viewerState.isPatched` is hydrated server-side with the page, so the first
-   * paint of a brand the shopper already patched is already correct — no
-   * waiting for `/users/:id/patches` and no visible correction afterwards. Only
-   * brands the shopper has not decided on this session are seeded.
+   * `viewerState.isPatched` is hydrated server-side with the page, so a brand
+   * the shopper already patched paints correctly before the patch list lands.
+   * The store ignores it once the full list has loaded, and for any brand with
+   * a tap in progress.
    */
   useEffect(() => {
     if (status !== 'authenticated' || items.length === 0) return;
-    setPatchedBrandIds((prev) => {
-      let next: Set<string> | null = null;
-      for (const item of items) {
-        const brandId = item.brandId;
-        if (!brandId || patchDecisionsRef.current.has(brandId)) continue;
-        const patched = Boolean(item.viewerState?.isPatched ?? item.isPatched);
-        if (patched === prev.has(brandId)) continue;
-        next = next ?? new Set(prev);
-        if (patched) next.add(brandId);
-        else next.delete(brandId);
-      }
-      return next ?? prev;
-    });
+    for (const item of items) {
+      if (!item.brandId) continue;
+      seedBrandPatchStatus(item.brandId, Boolean(item.viewerState?.isPatched ?? item.isPatched));
+    }
   }, [items, status]);
-
-  /**
-   * Follow patches toggled on other screens.
-   *
-   * Without this the feed only learned about a patch made in the catalog header
-   * or design viewer on its next full reload, so walking back into the Runway
-   * showed the old pill and then corrected itself. The shared cache already
-   * broadcasts; the feed just never listened.
-   */
-  useEffect(() => {
-    if (status !== 'authenticated') return undefined;
-    return subscribeAllBrandPatchStatus((brandId, patched) => {
-      setPatchedBrandIds((prev) => {
-        if (prev.has(brandId) === patched) return prev;
-        const next = new Set(prev);
-        if (patched) next.add(brandId);
-        else next.delete(brandId);
-        return next;
-      });
-    });
-  }, [status]);
-
-  useEffect(() => {
-    threadStateByMediaRef.current = threadStateByMedia;
-  }, [threadStateByMedia]);
-
-  useEffect(() => {
-    threadingMediaByIdRef.current = threadingMediaById;
-  }, [threadingMediaById]);
-
-  useEffect(() => {
-    savedLookByCollectionIdRef.current = savedLookByCollectionId;
-  }, [savedLookByCollectionId]);
-
-  useEffect(() => {
-    savingLookByCollectionIdRef.current = savingLookByCollectionId;
-  }, [savingLookByCollectionId]);
-
-  useEffect(() => {
-    if (!deferredWorkReady || status !== 'authenticated' || items.length === 0) {
-      if (status !== 'authenticated') {
-        savedLookByCollectionIdRef.current = {};
-        lastSavedCheckKeyRef.current = null;
-        setSavedLookByCollectionId({});
-      }
-      return undefined;
-    }
-
-    const ids = Array.from(new Set(items.map((item) => item.collectionId).filter(Boolean))).sort();
-    const savedCheckKey = `${user?.id ?? 'authenticated'}:${ids.join('|')}`;
-    if (lastSavedCheckKeyRef.current === savedCheckKey) {
-      return undefined;
-    }
-    lastSavedCheckKeyRef.current = savedCheckKey;
-    let cancelled = false;
-    SavedItemsApi.checkBatch('COLLECTION', ids)
-      .then((result) => {
-        if (cancelled) return;
-        setSavedLookByCollectionId((current) => {
-          const next = { ...current };
-          ids.forEach((id) => {
-            next[id] = Boolean(result[id]);
-          });
-          savedLookByCollectionIdRef.current = next;
-          return next;
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          lastSavedCheckKeyRef.current = null;
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [deferredWorkReady, items, status, user?.id]);
 
   useEffect(() => {
     if (!deferredWorkReady) return;
@@ -1591,12 +1462,13 @@ export function RunwayFeedScreen() {
     feedScrollOffset = 0;
     feedActiveIndex = 0;
     setThreadStateByMedia({});
-    setThreadingMediaById({});
     setSavingLookByCollectionId({});
     threadStateByMediaRef.current = {};
-    threadingMediaByIdRef.current = {};
     savingLookByCollectionIdRef.current = {};
-    queuedThreadIntentByMediaRef.current = {};
+    threadSyncRef.current.forEach((entry) => {
+      if (entry.timer) clearTimeout(entry.timer);
+    });
+    threadSyncRef.current.clear();
     viewedFeedItemKeysRef.current.clear();
     pendingCollectionIdsRef.current.clear();
     hydratedCollectionIdsRef.current.clear();
@@ -1990,118 +1862,92 @@ export function RunwayFeedScreen() {
     setCommentsTarget(null);
   }, []);
 
-  const executeThreadIntent = useCallback(
-    async (
-      mediaId: string,
-      collectionId: string | null,
-      nextThreaded: boolean,
-      baselineState?: { threaded: boolean; count: number },
-    ) => {
-      const previousState =
-        baselineState ??
-        threadStateByMediaRef.current[mediaId] ?? {
-          threaded: false,
-          count: 0,
-        };
-      const optimisticCount = Math.max(0, previousState.count + (nextThreaded ? 1 : -1));
-
-      const optimisticState = {
-        threaded: nextThreaded,
-        count: optimisticCount,
-      };
-
-      if (!nextThreaded) {
-        threadStateByMediaRef.current = {
-          ...threadStateByMediaRef.current,
-          [mediaId]: optimisticState,
-        };
-
-        setThreadStateByMedia((prev) => ({
-          ...prev,
-          [mediaId]: optimisticState,
-        }));
-      }
-
-      threadingMediaByIdRef.current = {
-        ...threadingMediaByIdRef.current,
-        [mediaId]: true,
-      };
-      setThreadingMediaById((prev) => ({ ...prev, [mediaId]: true }));
-
-      let finalState = previousState;
-
-      try {
-        const result = await toggleCollectionMediaThread(mediaId);
-        finalState = {
-          threaded: result.threaded,
-          count: result.threads,
-        };
-        trackMobileEvent('thread_toggled', {
-          sourceScreen: 'runway_feed',
-          itemId: collectionId ?? mediaId,
-          mediaId,
-          collectionId,
-          previousThreaded: previousState.threaded,
-          nextThreaded: result.threaded,
-          threadCount: result.threads,
-          result: 'success',
-        });
-
-        threadStateByMediaRef.current = {
-          ...threadStateByMediaRef.current,
-          [mediaId]: finalState,
-        };
-
-        setThreadStateByMedia((prev) => ({
-          ...prev,
-          [mediaId]: finalState,
-        }));
-
-      } catch {
-        finalState = previousState;
-        trackMobileEvent('thread_toggled', {
-          sourceScreen: 'runway_feed',
-          itemId: collectionId ?? mediaId,
-          mediaId,
-          collectionId,
-          previousThreaded: previousState.threaded,
-          nextThreaded,
-          threadCount: previousState.count,
-          result: 'failure',
-          errorCode: 'thread_toggle_failed',
-        });
-
-        threadStateByMediaRef.current = {
-          ...threadStateByMediaRef.current,
-          [mediaId]: previousState,
-        };
-
-        setThreadStateByMedia((prev) => ({
-          ...prev,
-          [mediaId]: previousState,
-        }));
-      } finally {
-        const nextBusy = { ...threadingMediaByIdRef.current };
-        delete nextBusy[mediaId];
-        threadingMediaByIdRef.current = nextBusy;
-
-        setThreadingMediaById((prev) => {
-          const next = { ...prev };
-          delete next[mediaId];
-          return next;
-        });
-
-        const queuedIntent = queuedThreadIntentByMediaRef.current[mediaId];
-        delete queuedThreadIntentByMediaRef.current[mediaId];
-
-        if (typeof queuedIntent === 'boolean' && queuedIntent !== finalState.threaded) {
-          void executeThreadIntent(mediaId, collectionId, queuedIntent, finalState);
-        }
-      }
+  /** Paint one media item's thread state (ref first, for the async paths). */
+  const paintThreadState = useCallback(
+    (mediaId: string, next: { threaded: boolean; count: number }) => {
+      const current = threadStateByMediaRef.current[mediaId];
+      if (current && current.threaded === next.threaded && current.count === next.count) return;
+      threadStateByMediaRef.current = { ...threadStateByMediaRef.current, [mediaId]: next };
+      setThreadStateByMedia((prev) => ({ ...prev, [mediaId]: next }));
     },
     [],
   );
 
+  /**
+   * Send the shopper's latest wish for one media item, once their taps stop.
+   *
+   * What is painted is always derived from (server truth, wish): the count the
+   * server last returned, plus or minus one while the wish differs. So a tap
+   * moves the count and the "threaded" state at once, a reply never makes the
+   * number jump backwards, and a refusal lands exactly on the server's state.
+   */
+  const flushThreadIntent = useCallback(
+    async (mediaId: string) => {
+      const entry = threadSyncRef.current.get(mediaId);
+      if (!entry || entry.inFlight || entry.timer) return;
+      const want = entry.desired;
+      if (want === entry.confirmed.threaded) {
+        threadSyncRef.current.delete(mediaId);
+        return;
+      }
+      entry.inFlight = true;
+      const previous = entry.confirmed;
+      try {
+        const result = await setCollectionMediaThread(mediaId, want);
+        entry.confirmed = { threaded: result.threaded, count: result.threads };
+        trackMobileEvent('thread_toggled', {
+          sourceScreen: 'runway_feed',
+          itemId: entry.collectionId ?? mediaId,
+          mediaId,
+          collectionId: entry.collectionId,
+          previousThreaded: previous.threaded,
+          nextThreaded: result.threaded,
+          threadCount: result.threads,
+          result: 'success',
+        });
+      } catch {
+        trackMobileEvent('thread_toggled', {
+          sourceScreen: 'runway_feed',
+          itemId: entry.collectionId ?? mediaId,
+          mediaId,
+          collectionId: entry.collectionId,
+          previousThreaded: previous.threaded,
+          nextThreaded: want,
+          threadCount: previous.count,
+          result: 'failure',
+          errorCode: 'thread_toggle_failed',
+        });
+        if (entry.timer) clearTimeout(entry.timer);
+        if (threadSyncRef.current.get(mediaId) === entry) {
+          threadSyncRef.current.delete(mediaId);
+          paintThreadState(mediaId, previous);
+        }
+        return;
+      }
+      entry.inFlight = false;
+      if (threadSyncRef.current.get(mediaId) !== entry) return; // feed was reset
+      const { confirmed } = entry;
+      if (entry.desired === confirmed.threaded) {
+        threadSyncRef.current.delete(mediaId);
+        paintThreadState(mediaId, confirmed);
+        return;
+      }
+      // Changed their mind while this was in flight: show it, then send it.
+      paintThreadState(mediaId, {
+        threaded: entry.desired,
+        count: Math.max(0, confirmed.count + (entry.desired ? 1 : -1)),
+      });
+      if (!entry.timer) void flushThreadIntent(mediaId);
+    },
+    [paintThreadState],
+  );
+
+  /**
+   * Thread / unthread. The spool and the count change on the tap; the request
+   * goes 400ms after the last tap, as a SET of the final state, so a double tap
+   * sends nothing and a burst sends one request. No spinner: the button stays
+   * live, which is what lets a second tap take the first back.
+   */
   const handleThreadPress = useCallback(
     (
       mediaId: string | null | undefined,
@@ -2114,49 +1960,49 @@ export function RunwayFeedScreen() {
       if (status !== 'authenticated') return;
 
       const normalizedCollectionId = typeof collectionId === 'string' ? collectionId.trim() : '';
-      const currentState =
-        threadStateByMediaRef.current[normalizedMediaId] ?? {
-          threaded: fallbackThreaded,
-          count: fallbackCount,
+      const shown = threadStateByMediaRef.current[normalizedMediaId] ?? {
+        threaded: fallbackThreaded,
+        count: fallbackCount,
+      };
+      let entry = threadSyncRef.current.get(normalizedMediaId);
+      if (!entry) {
+        entry = {
+          desired: shown.threaded,
+          confirmed: shown,
+          collectionId: normalizedCollectionId || null,
+          timer: null,
+          inFlight: false,
         };
-
-      if (!threadStateByMediaRef.current[normalizedMediaId]) {
-        threadStateByMediaRef.current = {
-          ...threadStateByMediaRef.current,
-          [normalizedMediaId]: currentState,
-        };
+        threadSyncRef.current.set(normalizedMediaId, entry);
       }
-
-      const nextThreaded = !currentState.threaded;
+      entry.desired = !shown.threaded;
+      const { confirmed } = entry;
+      paintThreadState(normalizedMediaId, {
+        threaded: entry.desired,
+        count:
+          entry.desired === confirmed.threaded
+            ? confirmed.count
+            : Math.max(0, confirmed.count + (entry.desired ? 1 : -1)),
+      });
 
       trackMobileEvent('thread_tapped', {
         sourceScreen: 'runway_feed',
         itemId: normalizedCollectionId || normalizedMediaId,
         mediaId: normalizedMediaId,
         collectionId: normalizedCollectionId || null,
-        currentThreaded: currentState.threaded,
-        threadCount: currentState.count,
+        currentThreaded: shown.threaded,
+        threadCount: shown.count,
         feedPosition: activePageIndex,
       });
 
-      if (threadingMediaByIdRef.current[normalizedMediaId]) {
-        queuedThreadIntentByMediaRef.current[normalizedMediaId] = nextThreaded;
-        trackMobileEvent('thread_toggled', {
-          sourceScreen: 'runway_feed',
-          itemId: normalizedCollectionId || normalizedMediaId,
-          mediaId: normalizedMediaId,
-          collectionId: normalizedCollectionId || null,
-          previousThreaded: currentState.threaded,
-          nextThreaded,
-          threadCount: currentState.count,
-          result: 'queued',
-        });
-        return;
-      }
-
-      void executeThreadIntent(normalizedMediaId, normalizedCollectionId || null, nextThreaded, currentState);
+      if (entry.timer) clearTimeout(entry.timer);
+      const target = entry;
+      target.timer = setTimeout(() => {
+        target.timer = null;
+        void flushThreadIntent(normalizedMediaId);
+      }, THREAD_SETTLE_MS);
     },
-    [activePageIndex, executeThreadIntent, status],
+    [activePageIndex, flushThreadIntent, paintThreadState, status],
   );
 
   /**
@@ -2180,52 +2026,20 @@ export function RunwayFeedScreen() {
 
       requireAuth(
         async () => {
-          if (patchingBrandIdsRef.current[normalizedBrandId]) return;
-
-          const wasPatched = patchedBrandIdsRef.current.has(normalizedBrandId);
-          const nextPatched = !wasPatched;
-
-          const applyPatched = (patched: boolean) => {
-            setPatchedBrandIds((prev) => {
-              if (prev.has(normalizedBrandId) === patched) return prev;
-              const next = new Set(prev);
-              if (patched) next.add(normalizedBrandId);
-              else next.delete(normalizedBrandId);
-              return next;
-            });
-          };
-
-          patchDecisionsRef.current.set(normalizedBrandId, nextPatched);
-          applyPatched(nextPatched);
-          setPatchingBrandIds((prev) => ({ ...prev, [normalizedBrandId]: true }));
-
-          try {
-            if (wasPatched) {
-              await brandApi.unpatchBrand(normalizedBrandId);
-              toast.success(`Unpatched ${brandName ?? 'brand'}`);
-            } else {
-              await brandApi.patchBrand(normalizedBrandId);
-              toast.success(`Patched ${brandName ?? 'brand'}`);
-            }
-            setBrandPatchStatus(normalizedBrandId, nextPatched);
-          } catch (error) {
-            patchDecisionsRef.current.set(normalizedBrandId, wasPatched);
-            applyPatched(wasPatched);
-            // The server's message is the only actionable one — a brand account
-            // cannot patch, an unpatch can race a patch removed elsewhere.
+          // Flips the pill now; rapid taps settle into one request. Toast once,
+          // for a change that actually happened, never per tap.
+          const outcome = await toggleBrandPatch(normalizedBrandId);
+          if (outcome.status === 'settled' && outcome.changed) {
+            toast.success(`${outcome.patched ? 'Patched' : 'Unpatched'} ${brandName ?? 'brand'}`);
+          } else if (outcome.status === 'failed') {
+            // `patched` is the state it went back to, so the attempt was the
+            // opposite. The server's message is the only actionable one.
             toast.error(
               resolvePatchErrorMessage(
-                error,
-                `Could not ${wasPatched ? 'unpatch' : 'patch'} ${brandName ?? 'this brand'}.`,
+                outcome.error,
+                `Could not ${outcome.patched ? 'unpatch' : 'patch'} ${brandName ?? 'this brand'}.`,
               ),
             );
-          } finally {
-            setPatchingBrandIds((prev) => {
-              if (!prev[normalizedBrandId]) return prev;
-              const next = { ...prev };
-              delete next[normalizedBrandId];
-              return next;
-            });
           }
         },
         { message: 'Sign in to patch brands' },
@@ -2431,13 +2245,11 @@ export function RunwayFeedScreen() {
     pageHeight,
     pageScaleEnabled,
     patchedBrandIds,
-    patchingBrandIds,
     savedLookByCollectionId,
     savingLookByCollectionId,
     scheme,
     status,
     threadStateByMedia,
-    threadingMediaById,
     userId: user?.id,
     visibleMetaCollectionId,
     items,
@@ -2480,7 +2292,6 @@ export function RunwayFeedScreen() {
       const isThreaded = currentMedia
         ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
         : Boolean(item.isThreaded);
-      const isThreading = Boolean(threadingMediaById[currentMediaId]);
       const likes = toCompactCount(item.likesCount ?? 0);
       const commentCountRaw = item.combinedCommentsCount ?? item.commentsCount ?? 0;
       const comments = formatMetricCountLabel(commentCountRaw, 'comment', 'comments');
@@ -2494,7 +2305,6 @@ export function RunwayFeedScreen() {
       const isSavingLook = Boolean(savingLookByCollectionId[item.collectionId]);
       const isActiveFeedItem = activePageIndex === entry.realIndex;
       const isPatchedBrand = Boolean(item.brandId && patchedBrandIds.has(item.brandId));
-      const isPatchBusy = Boolean(item.brandId && patchingBrandIds[item.brandId]);
       const isMetaVisible = visibleMetaCollectionId === item.collectionId;
       const rowRenderVersion = [
         item.updatedAt ?? item.id,
@@ -2502,12 +2312,10 @@ export function RunwayFeedScreen() {
         currentMediaId,
         isActiveFeedItem,
         isThreaded,
-        isThreading,
         threadCountRaw,
         isSavedLook,
         isSavingLook,
         isPatchedBrand,
-        isPatchBusy,
         isMetaVisible,
         likes,
         comments,
@@ -2554,7 +2362,6 @@ export function RunwayFeedScreen() {
               brandName={brandName}
               currentMediaId={currentMediaId}
               isThreaded={isThreaded}
-              isThreading={isThreading}
               likes={likes}
               comments={comments}
               threads={threads}
@@ -2563,7 +2370,6 @@ export function RunwayFeedScreen() {
               isSavingLook={isSavingLook}
               canPatchBrands={canPatchBrands}
               isPatched={isPatchedBrand}
-              patchBusy={isPatchBusy}
               bottomClearance={bottomClearance}
               onPatchBrand={handlePatchBrand}
               onOpenBrand={handleOpenBrand}
@@ -2605,14 +2411,12 @@ export function RunwayFeedScreen() {
       pageHeight,
       pageScaleEnabled,
       patchedBrandIds,
-      patchingBrandIds,
       savedLookByCollectionId,
       savingLookByCollectionId,
       scheme,
       toggleMetaOverlay,
       status,
       threadStateByMedia,
-      threadingMediaById,
       user?.id,
       visibleMetaCollectionId,
     ],
@@ -2867,17 +2671,14 @@ export function RunwayFeedScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const now = Date.now();
       // A realtime content event (e.g. a design approval/publish) flagged the
       // feed as stale while we were away. Silently revalidate so the newly
       // surfaced content shows on return without a manual pull-to-refresh.
       if (consumeMarketFeedDirty()) {
         void onRefresh();
       }
-      // Only refetch if data is stale (> 60s old) - prevents redundant calls on every tab visit
-      if (now - lastPatchFetchRef.current > STALE_THRESHOLD_MS) {
-        void loadPatchedBrands();
-      }
+      // The store refetches at most once a minute, so every visit can ask.
+      void loadPatchedBrands();
       // Clear any stale comments target on tab focus
       setCommentsTarget(null);
       // Native interval snapping owns the resting position. Observe drift on
@@ -3354,9 +3155,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 4,
-  },
-  ownerPatchBadgeBusy: {
-    opacity: 0.75,
   },
   ownerPatchBadgePressed: {
     transform: [{ scale: 0.95 }],

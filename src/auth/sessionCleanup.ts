@@ -15,6 +15,7 @@ import {
 } from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { DESIGN_DRAFT_SESSION_STORAGE_PREFIX } from '@/src/features/design-editor/designDraftSessionStore';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
+import { PATCH_STORE_STORAGE_PREFIX, resetPatchStore } from '@/src/features/patches/patchStore';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
 import { clearAppBadge } from '@/src/notifications/appBadge';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
@@ -60,6 +61,7 @@ export async function clearMobilePrivateAsyncStorage() {
         key === DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY ||
         key.startsWith(PERSISTED_FEED_CACHE_PREFIX) ||
         key.startsWith(DESIGN_DRAFT_SESSION_STORAGE_PREFIX) ||
+        key.startsWith(PATCH_STORE_STORAGE_PREFIX) ||
         key === env.userStorageKey,
     );
 
@@ -103,6 +105,7 @@ export async function clearMobilePrivateSessionState({
   clearBrandApiSessionCaches();
   clearWarmScreenStateCache();
   clearShopperProfileWarmups();
+  resetPatchStore();
   clearResolvedImageUriCache();
   clearDesignEditorBackgroundTasks();
   // "This account type has no custom orders" is a per-account verdict, so it

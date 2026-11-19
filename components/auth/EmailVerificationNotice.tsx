@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { resendVerificationEmail } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { drainPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
+import { resyncNotifications } from '@/src/realtime/notifications';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -186,6 +187,9 @@ export function EmailVerificationNotice({
     if (!shouldWatch) return;
     return subscribeToVerificationWatch(validateToken, () => {
       markVerifiedRef.current({ isEmailVerified: true });
+      // Verifying writes an "email verified" notification server-side while
+      // the socket is still reconnecting from the trip to the mail app.
+      resyncNotifications();
     });
   }, [shouldWatch, validateToken]);
 

@@ -65,6 +65,7 @@
         }
       ],
       "./plugins/with-android-system-bars",
+    "./plugins/with-android-release-size",
       "@sentry/react-native"
     ],
     "experiments": {

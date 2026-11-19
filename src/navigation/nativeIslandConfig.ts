@@ -330,6 +330,8 @@ export function buildNativeIslandItems(args: {
   /** `null` when the current route is nobody's tab — then no chip is active. */
   activeKey: NativeIslandKey | null;
   isBrand: boolean;
+  /** A signed-in shopper (cached or live). Bag exists only for them. */
+  canShop: boolean;
   profileLabel: string;
   profileIcon: string;
   profileAvatarUri?: string | null;
@@ -385,11 +387,14 @@ export function buildNativeIslandItems(args: {
   //
   // Charts goes with it, for the same reason: it reads a SHOPPER's fittings
   // against size grades, and a brand has no fittings to read.
-  return args.isBrand
-    ? baseItems.filter(
-        (item) => item.key !== NATIVE_ISLAND_KEYS.bag && item.key !== NATIVE_ISLAND_KEYS.charts,
-      )
-    : baseItems;
+  //
+  // A guest has no bag either: there is nothing to put in it until they sign
+  // in, and bagging from a product already asks them to.
+  return baseItems.filter((item) => {
+    if (item.key === NATIVE_ISLAND_KEYS.bag) return args.canShop && !args.isBrand;
+    if (item.key === NATIVE_ISLAND_KEYS.charts) return !args.isBrand;
+    return true;
+  });
 }
 
 export function getNativeIslandRoute(key: string, isBrand: boolean) {
