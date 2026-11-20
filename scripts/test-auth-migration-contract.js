@@ -1,5 +1,5 @@
 /**
- * ARU Product Identity Migration — Mobile SecureStore Contract Suite (AUTH-T01 through AUTH-T08)
+ * ARU Product Identity Migration — Mobile SecureStore Contract Suite (AUTH-T01 through AUTH-T08 & Section 4 Extended)
  * Governed by Document 26 (ARU-P1-CTR-026-REV2).
  */
 
@@ -11,9 +11,13 @@ class MockSecureStore {
     this.store = new Map();
     this.failNextWrite = false;
     this.failNextDelete = false;
+    this.readbackMismatch = false;
   }
 
   async getItemAsync(key) {
+    if (this.readbackMismatch && key === 'ARU_ACCESS_TOKEN.credentials.v2' && this.store.has(key)) {
+      return JSON.stringify({ version: 2, accessToken: 'corrupt_readback_mismatch', refreshToken: null });
+    }
     return this.store.has(key) ? this.store.get(key) : null;
   }
 
@@ -37,6 +41,7 @@ class MockSecureStore {
     this.store.clear();
     this.failNextWrite = false;
     this.failNextDelete = false;
+    this.readbackMismatch = false;
   }
 }
 
@@ -175,11 +180,9 @@ async function runTests() {
   assert.ok(migrated, 'Must return migrated credentials');
   assert.strictEqual(migrated.accessToken, 'tok_wiez_legacy');
   assert.strictEqual(migrated.refreshToken, 'ref_wiez_legacy');
-  // Primary key must now contain migrated data
   const primaryRaw3 = await mockStorage.getItemAsync(adapter.PRIMARY_KEY);
   assert.ok(primaryRaw3, 'Primary key must now exist');
   assert.strictEqual(JSON.parse(primaryRaw3).accessToken, 'tok_wiez_legacy');
-  // Legacy key must be purged
   assert.strictEqual(await mockStorage.getItemAsync(adapter.LEGACY_KEY), null, 'Legacy key must be purged');
   passed++;
   console.log('✓ AUTH-T03: Legacy User Upgrade Migration passed.');
@@ -213,11 +216,10 @@ async function runTests() {
     adapter.LEGACY_KEY,
     JSON.stringify({ version: 2, accessToken: 'tok_wiez_critical', refreshToken: 'ref_wiez_critical' }),
   );
-  mockStorage.failNextWrite = true; // Inject write failure to primary key
+  mockStorage.failNextWrite = true;
   const fallbackCreds = await adapter.readCredentials();
   assert.ok(fallbackCreds, 'Must return legacy credentials even when primary write fails');
   assert.strictEqual(fallbackCreds.accessToken, 'tok_wiez_critical');
-  // Legacy key must NOT have been deleted
   const retainedLegacy = await mockStorage.getItemAsync(adapter.LEGACY_KEY);
   assert.ok(retainedLegacy, 'Legacy key must be preserved when primary write fails');
   passed++;
@@ -229,13 +231,12 @@ async function runTests() {
     adapter.LEGACY_KEY,
     JSON.stringify({ version: 2, accessToken: 'tok_wiez_del_fail', refreshToken: 'ref_wiez_del_fail' }),
   );
-  mockStorage.failNextDelete = true; // Inject delete failure for legacy key
+  mockStorage.failNextDelete = true;
   const creds7 = await adapter.readCredentials();
   assert.ok(creds7, 'Must return credentials even when legacy deletion fails');
   assert.strictEqual(creds7.accessToken, 'tok_wiez_del_fail');
   const primaryRaw7 = await mockStorage.getItemAsync(adapter.PRIMARY_KEY);
   assert.ok(primaryRaw7, 'Primary write succeeded');
-  // Next read should come from primary key cleanly
   const creds7Next = await adapter.readCredentials();
   assert.strictEqual(creds7Next.accessToken, 'tok_wiez_del_fail');
   passed++;
@@ -243,16 +244,76 @@ async function runTests() {
 
   // AUTH-T08: Emergency Binary Downgrade Simulation
   mockStorage.clear();
-  // Migrated app has completed cutover
   await adapter.setSessionTokens('tok_aru_cutover', 'ref_aru_cutover');
   assert.strictEqual(await mockStorage.getItemAsync(adapter.LEGACY_KEY), null);
-  // Old binary inspects legacy key
   const oldBinaryRead = await mockStorage.getItemAsync(adapter.LEGACY_KEY);
   assert.strictEqual(oldBinaryRead, null, 'Old binary sees null and requires fresh login');
   passed++;
   console.log('✓ AUTH-T08: Emergency Binary Downgrade Simulation passed.');
 
-  console.log(`\nALL ${passed}/8 MOBILE AUTH CONTRACT TESTS PASSED CLEANLY.`);
+  console.log('\n--- EXTENDED PRECEDENCE & SECURITY DURABILITY SCENARIOS (SECTION 4) ---');
+
+  // Scenario A: Dual-key precedence with matching credentials
+  mockStorage.clear();
+  await mockStorage.setItemAsync(adapter.PRIMARY_KEY, JSON.stringify({ version: 2, accessToken: 'tok_match', refreshToken: 'ref_match' }));
+  await mockStorage.setItemAsync(adapter.LEGACY_KEY, JSON.stringify({ version: 2, accessToken: 'tok_match', refreshToken: 'ref_match' }));
+  const credsMatch = await adapter.readCredentials();
+  assert.strictEqual(credsMatch.accessToken, 'tok_match');
+  passed++;
+  console.log('✓ Extended Scenario A: Dual-key matching precedence passed.');
+
+  // Scenario B: Dual-key precedence with conflicting credentials (ARU takes precedence)
+  mockStorage.clear();
+  await mockStorage.setItemAsync(adapter.PRIMARY_KEY, JSON.stringify({ version: 2, accessToken: 'tok_aru_active', refreshToken: 'ref_aru_active' }));
+  await mockStorage.setItemAsync(adapter.LEGACY_KEY, JSON.stringify({ version: 2, accessToken: 'tok_wiez_stale', refreshToken: 'ref_wiez_stale' }));
+  const credsConflict = await adapter.readCredentials();
+  assert.strictEqual(credsConflict.accessToken, 'tok_aru_active');
+  passed++;
+  console.log('✓ Extended Scenario B: Conflicting credentials ARU precedence passed.');
+
+  // Scenario C: Dual-key with corrupted ARU primary drops corrupt primary and recovers legacy
+  mockStorage.clear();
+  await mockStorage.setItemAsync(adapter.PRIMARY_KEY, '{corrupted-non-json');
+  await mockStorage.setItemAsync(adapter.LEGACY_KEY, JSON.stringify({ version: 2, accessToken: 'tok_wiez_recovered', refreshToken: 'ref_wiez_recovered' }));
+  const credsCorruptPrimary = await adapter.readCredentials();
+  assert.ok(credsCorruptPrimary);
+  assert.strictEqual(credsCorruptPrimary.accessToken, 'tok_wiez_recovered');
+  passed++;
+  console.log('✓ Extended Scenario C: Corrupted primary dropped and legacy recovered passed.');
+
+  // Scenario D: Read-back verification mismatch prevents legacy key deletion
+  mockStorage.clear();
+  await mockStorage.setItemAsync(adapter.LEGACY_KEY, JSON.stringify({ version: 2, accessToken: 'tok_precious_legacy', refreshToken: null }));
+  mockStorage.readbackMismatch = true;
+  const credsMismatch = await adapter.readCredentials();
+  assert.strictEqual(credsMismatch.accessToken, 'tok_precious_legacy');
+  assert.ok(await mockStorage.getItemAsync(adapter.LEGACY_KEY), 'Legacy key must NOT be deleted when read-back verification fails');
+  passed++;
+  console.log('✓ Extended Scenario D: Read-back verification mismatch preserves legacy key passed.');
+
+  // Scenario E: Compound credential migration integrity with malformed version
+  mockStorage.clear();
+  await mockStorage.setItemAsync(adapter.LEGACY_KEY, JSON.stringify({ version: 1, accessToken: 'v1_dead_token' }));
+  const credsOldVersion = await adapter.readCredentials();
+  assert.strictEqual(credsOldVersion, null, 'Outdated version 1 credential rejected without corruption');
+  passed++;
+  console.log('✓ Extended Scenario E: Compound credential version integrity passed.');
+
+  // Scenario F: Confidentiality: sensitive tokens are never exposed in log output
+  const sensitiveToken = 'sensitive_secret_mobile_xyz_777';
+  const originalWarn = console.warn;
+  let loggedOutput = '';
+  console.warn = (...args) => { loggedOutput += args.join(' '); };
+  mockStorage.clear();
+  await mockStorage.setItemAsync(adapter.LEGACY_KEY, JSON.stringify({ version: 2, accessToken: sensitiveToken, refreshToken: null }));
+  mockStorage.failNextWrite = true;
+  await adapter.readCredentials();
+  console.warn = originalWarn;
+  assert.ok(!loggedOutput.includes(sensitiveToken), 'Sensitive token must NEVER appear in diagnostic logs');
+  passed++;
+  console.log('✓ Extended Scenario F: Credential confidentiality in logs passed.');
+
+  console.log(`\nALL ${passed} MOBILE AUTH CONTRACT & EXTENDED TESTS PASSED CLEANLY.`);
 }
 
 runTests().catch((err) => {
