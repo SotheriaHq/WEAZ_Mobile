@@ -70,6 +70,19 @@ function loadPushRegistration(options = {}) {
       if (request === '@/src/notifications/pushChannels') {
         return { ensureAndroidPushChannels: async () => undefined };
       }
+      if (request === 'expo-notifications') {
+        return (
+          options.expoNotifications ?? {
+            PermissionStatus: {
+              GRANTED: 'granted',
+              DENIED: 'denied',
+              UNDETERMINED: 'undetermined',
+            },
+            getPermissionsAsync: async () => ({ status: 'granted', granted: true }),
+            getExpoPushTokenAsync: async () => ({ data: 'ExponentPushToken[test]' }),
+          }
+        );
+      }
       return require(request);
     },
     console,
@@ -225,18 +238,106 @@ async function main() {
   assert.equal(settingsReadCount, 1);
   assert.equal(registerCallCount, 0);
 
+  // Verify storage key constants
+  assert.equal(
+    pushRegistration.PRIMARY_PUSH_REGISTRATION_STORAGE_KEY,
+    'aru.pushTokenRegistration.v1',
+    'Primary storage key must be aru.pushTokenRegistration.v1',
+  );
+  assert.equal(
+    pushRegistration.LEGACY_PUSH_REGISTRATION_STORAGE_KEY,
+    'wiez.pushTokenRegistration.v1',
+    'Legacy storage key must be wiez.pushTokenRegistration.v1',
+  );
+
   const storedRecord = JSON.stringify(previous);
   const failingApi = {
     deactivateCurrentPushToken: async () => {
       throw new Error('network failed');
     },
   };
-  const { exports: logoutExports, deletedKeys } = loadPushRegistration({
-    store: { 'wiez.pushTokenRegistration.v1': storedRecord },
+
+  // Test: Logout dual-key purge (even if API deactivation fails)
+  const { exports: logoutExports, deletedKeys, store: logoutStore } = loadPushRegistration({
+    store: {
+      'wiez.pushTokenRegistration.v1': storedRecord,
+      'aru.pushTokenRegistration.v1': storedRecord,
+    },
     notificationsApi: failingApi,
   });
   await assert.doesNotReject(() => logoutExports.deactivateRegisteredPushTokenForLogout());
-  assert.deepEqual(deletedKeys, ['wiez.pushTokenRegistration.v1']);
+  assert.ok(deletedKeys.includes('aru.pushTokenRegistration.v1'), 'Must delete primary key on logout');
+  assert.ok(deletedKeys.includes('wiez.pushTokenRegistration.v1'), 'Must delete legacy key on logout');
+  assert.equal(logoutStore['aru.pushTokenRegistration.v1'], undefined);
+  assert.equal(logoutStore['wiez.pushTokenRegistration.v1'], undefined);
+
+  // Test: Legacy fallback and opportunistic migration on read
+  const legacyStore = { 'wiez.pushTokenRegistration.v1': storedRecord };
+  let apiRegistered = false;
+  const { exports: migrationExports, store: migratedStore } = loadPushRegistration({
+    store: legacyStore,
+    constants: {
+      executionEnvironment: 'standalone',
+      expoConfig: { version: '1.0.0', extra: { eas: { projectId: 'configured-eas-project' } } },
+    },
+    notificationsApi: {
+      getSettings: async () => ({ push: { enabled: true } }),
+      registerPushToken: async () => {
+        apiRegistered = true;
+        return { success: true };
+      },
+      deactivateCurrentPushToken: async () => ({ success: true }),
+    },
+  });
+  // Logout with only legacy present should delete both keys
+  const { exports: legacyLogoutExports, deletedKeys: legacyDeleted } = loadPushRegistration({
+    store: { 'wiez.pushTokenRegistration.v1': storedRecord },
+    notificationsApi: failingApi,
+  });
+  await legacyLogoutExports.deactivateRegisteredPushTokenForLogout();
+  assert.ok(legacyDeleted.includes('aru.pushTokenRegistration.v1'));
+  assert.ok(legacyDeleted.includes('wiez.pushTokenRegistration.v1'));
+
+  // Test: clearStoredPushRegistration purges both keys
+  const { exports: clearExports, deletedKeys: clearDeleted, store: clearStore } = loadPushRegistration({
+    store: {
+      'aru.pushTokenRegistration.v1': storedRecord,
+      'wiez.pushTokenRegistration.v1': storedRecord,
+    },
+  });
+  await clearExports.clearStoredPushRegistration();
+  assert.ok(clearDeleted.includes('aru.pushTokenRegistration.v1'));
+  assert.ok(clearDeleted.includes('wiez.pushTokenRegistration.v1'));
+  assert.equal(clearStore['aru.pushTokenRegistration.v1'], undefined);
+  assert.equal(clearStore['wiez.pushTokenRegistration.v1'], undefined);
+
+  // Test: Opportunistic migration on registration write
+  const oppInitialStore = { 'wiez.pushTokenRegistration.v1': storedRecord };
+  let oppServerCalled = false;
+  const { exports: oppExports, store: oppStore } = loadPushRegistration({
+    store: oppInitialStore,
+    constants: {
+      executionEnvironment: 'standalone',
+      expoConfig: { version: '1.0.0', extra: { eas: { projectId: 'project-1' } } },
+    },
+    notificationsApi: {
+      getSettings: async () => ({ push: { enabled: true } }),
+      registerPushToken: async () => {
+        oppServerCalled = true;
+        return { success: true };
+      },
+      deactivateCurrentPushToken: async () => ({ success: true }),
+    },
+  });
+  const regResult = await oppExports.registerAuthenticatedPushToken({
+    userId: 'user-1',
+    authToken: 'token',
+  });
+  assert.equal(oppServerCalled, true, 'Server registration is called to establish token');
+  assert.equal(regResult.status, 'registered');
+  // Primary key should now be written and legacy retired
+  assert.ok(oppStore['aru.pushTokenRegistration.v1'], 'Primary key must be populated after migration');
+  assert.equal(oppStore['wiez.pushTokenRegistration.v1'], undefined, 'Legacy key must be deleted after verified migration');
 
   console.log('Push token registration contract tests passed.');
 }

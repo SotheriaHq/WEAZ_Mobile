@@ -26,14 +26,17 @@ export type PushRegistrationRecord = {
 /**
  * `skipped`: a gate this device or account closed (permission, preference).
  * `failed`: an attempt that broke, at the phone (`device`, no push token) or at
- * WIEZ (`server`, token not saved). The settings screen shows them apart.
+ * ARU (`server`, token not saved). The settings screen shows them apart.
  */
 export type PushRegistrationResult =
   | { status: 'registered'; token: string }
   | { status: 'skipped'; reason: string }
   | { status: 'failed'; stage: 'device' | 'server'; reason: string };
 
-const PUSH_REGISTRATION_STORAGE_KEY = 'wiez.pushTokenRegistration.v1';
+export const PRIMARY_PUSH_REGISTRATION_STORAGE_KEY = 'aru.pushTokenRegistration.v1';
+export const LEGACY_PUSH_REGISTRATION_STORAGE_KEY = 'wiez.pushTokenRegistration.v1';
+/** @deprecated Use PRIMARY_PUSH_REGISTRATION_STORAGE_KEY */
+export const PUSH_REGISTRATION_STORAGE_KEY = PRIMARY_PUSH_REGISTRATION_STORAGE_KEY;
 const PUSH_REGISTRATION_REVALIDATION_MS = 24 * 60 * 60 * 1000;
 const REGISTRATION_RETRY_DELAYS_MS = [30_000, 2 * 60_000, 10 * 60_000, 30 * 60_000];
 
@@ -98,7 +101,7 @@ export function classifyDeviceRegistrationError(error: unknown): string {
 export type PushDeviceStatus = {
   /** This phone: can it produce a push token? */
   phone: 'ready' | 'needs-app-update' | 'failed' | 'waiting-for-permission' | 'not-checked';
-  /** WIEZ: has the server saved this phone for the account? */
+  /** ARU: has the server saved this phone for the account? */
   server: 'saved' | 'failed' | 'waiting' | 'not-checked';
   /** Whether trying again now could change the answer. */
   retryable: boolean;
@@ -252,28 +255,76 @@ export function shouldRevalidatePushRegistration(
 
 async function readStoredPushRegistration(): Promise<PushRegistrationRecord | null> {
   try {
-    const raw = await SecureStore.getItemAsync(PUSH_REGISTRATION_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PushRegistrationRecord>;
-    if (!parsed.userId || !parsed.token || !parsed.platform) return null;
-    return {
-      userId: String(parsed.userId),
-      token: String(parsed.token),
-      platform: parsed.platform,
-      appVersion: parsed.appVersion ?? null,
-      expoProjectId: parsed.expoProjectId ?? null,
+    const rawPrimary = await SecureStore.getItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY);
+    if (rawPrimary) {
+      const parsed = JSON.parse(rawPrimary) as Partial<PushRegistrationRecord>;
+      if (parsed.userId && parsed.token && parsed.platform) {
+        return {
+          userId: String(parsed.userId),
+          token: String(parsed.token),
+          platform: parsed.platform,
+          appVersion: parsed.appVersion ?? null,
+          expoProjectId: parsed.expoProjectId ?? null,
+          registeredAt:
+            typeof parsed.registeredAt === 'number' && Number.isFinite(parsed.registeredAt)
+              ? parsed.registeredAt
+              : null,
+        };
+      }
+    }
+  } catch {
+    // Primary read failed or corrupt, fall through to legacy fallback
+  }
+
+  try {
+    const rawLegacy = await SecureStore.getItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY);
+    if (!rawLegacy) return null;
+    const parsedLegacy = JSON.parse(rawLegacy) as Partial<PushRegistrationRecord>;
+    if (!parsedLegacy.userId || !parsedLegacy.token || !parsedLegacy.platform) return null;
+
+    const legacyRecord: PushRegistrationRecord = {
+      userId: String(parsedLegacy.userId),
+      token: String(parsedLegacy.token),
+      platform: parsedLegacy.platform,
+      appVersion: parsedLegacy.appVersion ?? null,
+      expoProjectId: parsedLegacy.expoProjectId ?? null,
       registeredAt:
-        typeof parsed.registeredAt === 'number' && Number.isFinite(parsed.registeredAt)
-          ? parsed.registeredAt
+        typeof parsedLegacy.registeredAt === 'number' && Number.isFinite(parsedLegacy.registeredAt)
+          ? parsedLegacy.registeredAt
           : null,
     };
+
+    // Opportunistically migrate to primary key with read-back verification
+    try {
+      const serialized = JSON.stringify(legacyRecord);
+      await SecureStore.setItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY, serialized);
+      const verified = await SecureStore.getItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY);
+      if (verified === serialized) {
+        await SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+      }
+    } catch {
+      // Storage write error during migration must not block returning the valid legacy record
+    }
+
+    return legacyRecord;
   } catch {
     return null;
   }
 }
 
 async function writeStoredPushRegistration(record: PushRegistrationRecord) {
-  await SecureStore.setItemAsync(PUSH_REGISTRATION_STORAGE_KEY, JSON.stringify(record));
+  const serialized = JSON.stringify(record);
+  await SecureStore.setItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY, serialized);
+
+  // Read-back verification before retiring legacy key
+  try {
+    const verified = await SecureStore.getItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY);
+    if (verified === serialized) {
+      await SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+    }
+  } catch {
+    // Retirement failure should not throw
+  }
 }
 
 function invalidatePushRegistration() {
@@ -287,7 +338,10 @@ export function clearStoredPushRegistration(): Promise<void> {
   invalidatePushRegistration();
   return enqueuePushMutation(async () => {
     acceptedPushRegistration = null;
-    await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+    await Promise.all([
+      SecureStore.deleteItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
+      SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
+    ]);
   });
 }
 
@@ -433,7 +487,7 @@ async function attemptPushRegistration(params: {
         return { status: 'registered', token };
       })
       .catch((error): PushRegistrationResult => {
-        if (__DEV__) console.warn('[Push] WIEZ could not save this device:', error);
+        if (__DEV__) console.warn('[Push] ARU could not save this device:', error);
         return { status: 'failed', stage: 'server', reason: 'server-registration-failed' };
       });
   });
@@ -472,7 +526,10 @@ export function deactivateRegisteredPushTokenForLogout(
       // Logout must not be blocked by a best-effort token cleanup call.
     } finally {
       acceptedPushRegistration = null;
-      await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
+      await Promise.all([
+        SecureStore.deleteItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
+        SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
+      ]);
     }
   });
 }
