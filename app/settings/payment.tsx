@@ -209,7 +209,7 @@ function PaymentSettingsContent() {
           <SettingsPanel style={styles.card}>
             <AppText variant="bodyBold">Backend-verified checkout</AppText>
             <AppText variant="captionRegular" tone="muted">
-              WIEZ initializes payment from your backend bag and only updates
+              ARU initializes payment from your backend bag and only updates
               order state after backend and provider verification.
             </AppText>
             <View style={styles.actionRow}>

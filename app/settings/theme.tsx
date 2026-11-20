@@ -155,8 +155,8 @@ export default function ThemeSettingsScreen() {
 
         <AppText variant="captionRegular" tone="muted" style={styles.footnote}>
           {themePreference === 'system'
-            ? `WIEZ follows your phone — right now ${followingLabel}.`
-            : `WIEZ stays in ${themePreference} mode on every device you sign in to.`}
+            ? `ARU follows your phone — right now ${followingLabel}.`
+            : `ARU stays in ${themePreference} mode on every device you sign in to.`}
         </AppText>
       </ScrollView>
     </SafeAreaView>

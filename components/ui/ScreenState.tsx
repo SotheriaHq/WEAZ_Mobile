@@ -56,7 +56,7 @@ const PRESETS: Record<ScreenStateKind, Preset> = {
     emoji: '📡',
     title: 'You appear to be offline',
     message:
-      'We could not reach WIEZ. Check your connection and try again — nothing has been lost.',
+      'We could not reach ARU. Check your connection and try again — nothing has been lost.',
     retryable: true,
   },
   server: {

@@ -1,11 +1,13 @@
 {
   "expo": {
-    "name": "WIEZ",
+    "name": "ARU",
     "slug": "threadly",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/wiez-icon.png",
     "scheme": [
+      "arumobile",
+      "aru",
       "wiezmobile",
       "com.wiez.wiez"
     ],

@@ -153,7 +153,7 @@ export default function ExtensionDecisionScreen() {
         toast.success(
           decision === 'ACCEPTED'
             ? 'Extra time granted. Your delivery date has moved.'
-            : 'Declined. WIEZ is reviewing the order with your maker.',
+            : 'Declined. ARU is reviewing the order with your maker.',
         );
         backOrNavigate(`/orders/${order.id}` as never);
       } catch (submitError: any) {
@@ -241,9 +241,9 @@ export default function ExtensionDecisionScreen() {
       settled === 'ACCEPTED'
         ? 'You already granted this extra time.'
         : settled === 'REJECTED'
-          ? 'You already declined this request. WIEZ is reviewing the order.'
+          ? 'You already declined this request. ARU is reviewing the order.'
           : settled === 'EXPIRED'
-            ? 'This request expired before it was answered. No extra time was granted and WIEZ is looking into it.'
+            ? 'This request expired before it was answered. No extra time was granted and ARU is looking into it.'
             : settled === 'VOIDED'
               ? 'This is no longer needed — your maker moved the order on.'
               : 'This request has already been settled.';
@@ -325,7 +325,7 @@ export default function ExtensionDecisionScreen() {
           */}
           <AppText variant="small" tone="muted">
             Granting moves your delivery date by {dayLabel(request.requestedExtraDays)}.
-            Declining does not cancel or refund your order — it brings WIEZ in to
+            Declining does not cancel or refund your order — it brings ARU in to
             sort the delay out with your maker. A note is optional either way.
           </AppText>
 
@@ -335,7 +335,7 @@ export default function ExtensionDecisionScreen() {
             onChangeText={setNote}
             multiline
             maxLength={500}
-            placeholder="Anything your maker or WIEZ should know"
+            placeholder="Anything your maker or ARU should know"
           />
 
           <Button

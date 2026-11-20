@@ -9,7 +9,7 @@ import { confirmPasswordReset } from '@/src/api/AuthApi';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { tokens } from '@/src/styles/tokens';
-import WiezMark from '@/src/brand/WiezMark';
+import AruMark from '@/src/brand/AruMark';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { Button } from '@/components/ui/Button';
 import { AppText } from '@/components/ui/AppText';
@@ -269,7 +269,7 @@ export default function ResetPasswordScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WiezMark size={36} />
+            <AruMark size={36} />
           </Pressable>
         </View>
 
@@ -281,7 +281,7 @@ export default function ResetPasswordScreen() {
           </AppText>
           <AppText variant="display">Choose a new password</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish resetting your WIEZ account.
+            Use the secure link from your email to finish resetting your ARU account.
           </AppText>
         </View>
 

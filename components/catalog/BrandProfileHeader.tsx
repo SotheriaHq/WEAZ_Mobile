@@ -1073,7 +1073,7 @@ export function BrandProfileHeader({
   unreadNotificationCount,
 }: BrandProfileHeaderProps) {
   const { theme } = useTheme();
-  const effectiveName = brandName || username || 'WIEZ Brand';
+  const effectiveName = brandName || username || 'ARU Brand';
   const { width } = useWindowDimensions();
   const useFullWidthStats = width < 380;
 

@@ -26,7 +26,7 @@ export function MfaJourneySheet({ mode, isCurrent, onClose, onDone, onMethodChan
   const blocked = flow.step === 'password' && (!flow.status?.setup?.hasPassword || !flow.status?.setup?.emailVerified);
   const close = () => {
     if (flow.step === 'codes' && !flow.saved) {
-      Alert.alert('Save your recovery codes', 'WIEZ cannot show these codes again. Save them before closing, or replace them later in security settings.',
+      Alert.alert('Save your recovery codes', 'ARU cannot show these codes again. Save them before closing, or replace them later in security settings.',
         [{ text: 'Keep open', style: 'cancel' }, { text: 'Close without saving', style: 'destructive', onPress: onClose }]);
     } else onClose();
   };
@@ -46,7 +46,7 @@ export function MfaJourneySheet({ mode, isCurrent, onClose, onDone, onMethodChan
         </View> : null}
         {(mode.kind === 'passkey' || onMethodChange) && (flow.passkeySupport.checking || flow.passkeySupport.message) ? <AppText variant="body" accessibilityLiveRegion="polite">{flow.passkeySupport.checking ? 'Checking passkey support…' : flow.passkeySupport.message}</AppText> : null}
         {mode.kind === 'passkey' ? <>
-          <AppText variant="body">Your device or password manager will ask you to create a passkey. WIEZ never receives your fingerprint, face or device PIN.</AppText>
+          <AppText variant="body">Your device or password manager will ask you to create a passkey. ARU never receives your fingerprint, face or device PIN.</AppText>
           <Input label="Passkey name" value={flow.passkeyLabel} maxLength={80} onChangeText={flow.setPasskeyLabel} />
         </> : null}
         {mode.kind === 'replace' ? <AppText variant="body">Your current authenticator stays active until the replacement is confirmed.</AppText> : null}
@@ -73,12 +73,12 @@ export function MfaJourneySheet({ mode, isCurrent, onClose, onDone, onMethodChan
         <Input label="Authenticator code" keyboardType="number-pad" autoComplete="one-time-code" value={flow.code} maxLength={6} onChangeText={value => flow.setCode(value.replace(/\D/g, ''))} />
       </> : null}
       {flow.step === 'passkey' ? <>
-        <AppText variant="body">{flow.passkeyResponse ? 'Your passkey was created on your device. Confirm it with WIEZ to finish setup. If the connection failed, retry confirmation without creating another passkey.' : 'Ready to create your passkey. Press Create passkey to open the secure system prompt. Cancelling keeps your existing methods unchanged.'}</AppText>
-        {flow.busy ? <AppText variant="body" accessibilityLiveRegion="polite">{flow.passkeyResponse ? 'Confirming your passkey with WIEZ…' : 'Complete or cancel the passkey prompt on your device…'}</AppText> : null}
+        <AppText variant="body">{flow.passkeyResponse ? 'Your passkey was created on your device. Confirm it with ARU to finish setup. If the connection failed, retry confirmation without creating another passkey.' : 'Ready to create your passkey. Press Create passkey to open the secure system prompt. Cancelling keeps your existing methods unchanged.'}</AppText>
+        {flow.busy ? <AppText variant="body" accessibilityLiveRegion="polite">{flow.passkeyResponse ? 'Confirming your passkey with ARU…' : 'Complete or cancel the passkey prompt on your device…'}</AppText> : null}
       </> : null}
       {flow.remainingSeconds !== null ? <AppText variant="small" accessibilityLiveRegion="polite">{flow.expired ? 'This setup expired. Close it and start again.' : `Setup expires in ${flow.remainingSeconds} seconds.`}</AppText> : null}
       {flow.step === 'codes' ? <>
-        <AppText variant="body">Save these codes somewhere private. Each works once. WIEZ cannot show them again.</AppText>
+        <AppText variant="body">Save these codes somewhere private. Each works once. ARU cannot show them again.</AppText>
         {flow.codes.map(code => <AppText key={code} variant="body" selectable>{code}</AppText>)}
         <Button title="Copy recovery codes" variant="secondary" onPress={async () => {
           try { await Clipboard.setStringAsync(flow.codes.join('\n')); setCopyError(''); }

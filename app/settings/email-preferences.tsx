@@ -58,7 +58,7 @@ const GROUP_COPY: Record<string, string> = {
 const SCENARIO_OVERRIDES: Record<string, ScenarioMeta> = {
   'auth.signin.new_device': {
     title: 'New sign-in from a new device',
-    description: 'Sent when WIEZ sees account access from a device it has not seen before.',
+    description: 'Sent when ARU sees account access from a device it has not seen before.',
     group: 'Security',
   },
   'auth.password.changed': {
@@ -132,7 +132,7 @@ function describeScenario(title: string, scenarioKey: string) {
   if (key.includes('REQUEST')) return `Sent when ${title.toLowerCase()} needs your attention or response.`;
   if (key.includes('REMINDER')) return `Sent as a reminder when ${title.toLowerCase()} still needs attention.`;
   if (key.includes('UPDATED') || key.includes('PROGRESS')) return `Sent when ${title.toLowerCase()} changes and there is something new to review.`;
-  return `Sent when ${title.toLowerCase()} happens in WIEZ.`;
+  return `Sent when ${title.toLowerCase()} happens in ARU.`;
 }
 
 function getScenarioMeta(scenarioKey: string): ScenarioMeta {

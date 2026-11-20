@@ -6,7 +6,7 @@ import { AppText } from '@/components/ui/AppText';
 export default function ExploreScreen() {
   return (
     <View style={styles.screen}>
-      <AppText variant="h2" style={styles.title}>WIEZ</AppText>
+      <AppText variant="h2" style={styles.title}>ARU</AppText>
       <AppText variant="body" style={styles.body}>Explore</AppText>
     </View>
   );

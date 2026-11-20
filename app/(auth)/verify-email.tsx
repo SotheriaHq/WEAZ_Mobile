@@ -12,7 +12,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import WiezMark from '@/src/brand/WiezMark';
+import AruMark from '@/src/brand/AruMark';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
@@ -156,7 +156,7 @@ export default function VerifyEmailScreen() {
         <MuseLoader size={20} />
         <AppText variant="title">Verifying email</AppText>
         <AppText variant="body" tone="muted">
-          Keep this screen open while WIEZ confirms your email address.
+          Keep this screen open while ARU confirms your email address.
         </AppText>
       </View>
     </View>
@@ -266,7 +266,7 @@ export default function VerifyEmailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WiezMark size={36} />
+            <AruMark size={36} />
           </Pressable>
         </View>
 
@@ -278,7 +278,7 @@ export default function VerifyEmailScreen() {
           </AppText>
           <AppText variant="display">Confirm your email</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish verifying your WIEZ account.
+            Use the secure link from your email to finish verifying your ARU account.
           </AppText>
         </View>
 

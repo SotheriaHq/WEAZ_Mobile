@@ -288,7 +288,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
             </View>
             <CurrencyChargeNote />
             <AppText variant="caption" tone="muted">
-              Payment opens through the secure provider and is verified by WIEZ before orders update.
+              Payment opens through the secure provider and is verified by ARU before orders update.
             </AppText>
           </View>
         ) : (

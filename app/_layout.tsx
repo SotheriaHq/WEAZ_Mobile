@@ -363,7 +363,7 @@ function GoogleAuthRedirectRecoveryGate() {
           recovered.continuation.type === 'BRAND';
         router.replace((isNewBrand ? '/catalog' : '/(tabs)/me') as any);
         toast.success(
-          recovered.continuation.intent === 'SIGNUP' ? 'Welcome to WIEZ!' : 'Welcome back!',
+          recovered.continuation.intent === 'SIGNUP' ? 'Welcome to ARU!' : 'Welcome back!',
         );
       } catch (error) {
         if (!mounted) return;
@@ -371,12 +371,12 @@ function GoogleAuthRedirectRecoveryGate() {
         if (error instanceof AuthRequestError) {
           if (error.code === 'GOOGLE_NO_ACCOUNT') {
             router.replace('/(auth)/signup');
-            toast.info("No WIEZ account for that Google email yet — let's get you signed up.");
+            toast.info("No ARU account for that Google email yet — let's get you signed up.");
             return;
           }
           if (error.code === 'EMAIL_ALREADY_EXISTS') {
             router.replace('/(auth)/login');
-            toast.info('That email already has a WIEZ account — log in to continue.');
+            toast.info('That email already has an ARU account — log in to continue.');
             return;
           }
         }

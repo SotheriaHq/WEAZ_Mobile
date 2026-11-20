@@ -624,7 +624,7 @@ export default function SearchScreen() {
           <Card>
             <View style={styles.stateBlock}>
               <MuseLoader size={20} />
-              <AppText variant="body" tone="muted">Searching WIEZ...</AppText>
+              <AppText variant="body" tone="muted">Searching ARU...</AppText>
             </View>
           </Card>
         ) : null}
@@ -742,7 +742,7 @@ export default function SearchScreen() {
 
             {showPopularSection ? (
               <SearchSection
-                title="🔥 Trending on WIEZ"
+                title="🔥 Trending on ARU"
                 rightAction={
                   <AppText variant="captionRegular" tone="muted">
                     {suggestions?.trending?.length ?? 0} trending

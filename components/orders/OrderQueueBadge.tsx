@@ -41,7 +41,7 @@ export function OrderQueueBadge({ queue, onExpiry }: { queue?: QueuePresenter | 
       </AppText> : null}
       {waiting ? <AppText variant="small" tone="muted">Paid · funds held until Active</AppText> : null}
       {canRetainQueue(queue, now) ? <AppText variant="small" tone="primary">Retain available - open order to review</AppText> : null}
-      {queue.adminPromotionHeld ? <AppText variant="small" tone="warning">WIEZ has paused promotion. Your cancellation deadline still applies.</AppText> : null}
+      {queue.adminPromotionHeld ? <AppText variant="small" tone="warning">ARU has paused promotion. Your cancellation deadline still applies.</AppText> : null}
     </View>
   );
 }

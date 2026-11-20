@@ -299,7 +299,7 @@ export default function CustomBagSheet({
       if (next.quoteStatus === 'MANUAL_QUOTE_REQUIRED') {
         toast.info('This request needs the brand to quote it before it can be added to your bag.');
       } else if (!next.checkoutIntentId) {
-        setError('WIEZ could not hold a price for this request. Try again.');
+        setError('ARU could not hold a price for this request. Try again.');
       }
     } catch (nextError) {
       if (generation !== requestGeneration.current) return;

@@ -296,7 +296,7 @@ export default function BuyerOrderDetailScreen() {
             : 'This order has passed its production date without an update.',
       });
       mutateOrder(() => updated);
-      toast.success('Reported. WIEZ is reviewing this with your maker.');
+      toast.success('Reported. ARU is reviewing this with your maker.');
     } catch (reportError: any) {
       toast.error(
         reportError?.response?.data?.message ||
@@ -343,7 +343,7 @@ export default function BuyerOrderDetailScreen() {
         toast.success(
           accept
             ? 'Agreed. We have told your maker.'
-            : 'Thanks — WIEZ is picking this back up with your maker.',
+            : 'Thanks — ARU is picking this back up with your maker.',
         );
       } catch (respondError: any) {
         toast.error(
@@ -441,11 +441,11 @@ export default function BuyerOrderDetailScreen() {
         title: 'A way to settle this',
         body:
           proposal.resolution === 'MEDIATED_EXTENSION'
-            ? `WIEZ suggests giving your maker ${days} more day${days === 1 ? '' : 's'}. Your delivery date moves by the same amount. Saying no does not close your dispute — it goes back to the person handling it.`
+            ? `ARU suggests giving your maker ${days} more day${days === 1 ? '' : 's'}. Your delivery date moves by the same amount. Saying no does not close your dispute — it goes back to the person handling it.`
             : proposal.resolution === 'REMAKE'
-              ? 'WIEZ suggests your maker remakes the piece. Saying no does not close your dispute — it goes back to the person handling it.'
-              : 'WIEZ has proposed a way to settle this order. Saying no does not close your dispute.',
-        meta: proposal.note ? `“${proposal.note}” — WIEZ` : undefined,
+              ? 'ARU suggests your maker remakes the piece. Saying no does not close your dispute — it goes back to the person handling it.'
+              : 'ARU has proposed a way to settle this order. Saying no does not close your dispute.',
+        meta: proposal.note ? `“${proposal.note}” — ARU` : undefined,
         action: {
           label: 'Yes, that works',
           loading: saving,
@@ -467,7 +467,7 @@ export default function BuyerOrderDetailScreen() {
           marker: '🛟',
           title: 'Delay reported',
           body:
-            'Your order is still live and your maker has been told to keep working. WIEZ will be in touch here.',
+            'Your order is still live and your maker has been told to keep working. ARU will be in touch here.',
           action: {
             label: 'It arrived — close this',
             loading: saving,
@@ -486,7 +486,7 @@ export default function BuyerOrderDetailScreen() {
           // The reassurance goes BEFORE the button, every time. Without it
           // "report a problem" reads as "cancel my order", which it is not.
           body:
-            'If your maker has not explained the delay, bring WIEZ in. This does not cancel or refund your order — it freezes their payment and puts a person on it.',
+            'If your maker has not explained the delay, bring ARU in. This does not cancel or refund your order — it freezes their payment and puts a person on it.',
           action: {
             label: 'Report the delay',
             loading: saving,
@@ -500,7 +500,7 @@ export default function BuyerOrderDetailScreen() {
           marker: '⏳',
           title: 'Running a little late',
           body:
-            'Your maker is just past the production date. Message them first — you can bring WIEZ in shortly if nothing moves.',
+            'Your maker is just past the production date. Message them first — you can bring ARU in shortly if nothing moves.',
         });
       }
     }
@@ -510,9 +510,9 @@ export default function BuyerOrderDetailScreen() {
         id: 'intervention',
         tone: 'warning',
         marker: '🛟',
-        title: 'WIEZ is reviewing this order',
+        title: 'ARU is reviewing this order',
         body:
-          'Someone at WIEZ is working on this with your maker. You will hear from us here.',
+          'Someone at ARU is working on this with your maker. You will hear from us here.',
       });
     }
 
@@ -522,8 +522,8 @@ export default function BuyerOrderDetailScreen() {
         id: `notice:${notice.id}`,
         tone: 'neutral',
         marker: '📣',
-        title: 'Note from WIEZ',
-        body: body || 'WIEZ updated this order.',
+        title: 'Note from ARU',
+        body: body || 'ARU updated this order.',
         meta: formatDate(notice.createdAt),
       });
     });

@@ -22,7 +22,7 @@ import {
 } from '@/src/state/persistentScreenCache';
 import { readWarmScreenState } from '@/src/state/screenWarmState';
 
-import WiezMark from '@/src/brand/WiezMark';
+import AruMark from '@/src/brand/AruMark';
 import { AppText } from '@/components/ui/AppText';
 import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { SeeMoreLink } from '@/components/ui/InlineNavLink';
@@ -601,7 +601,7 @@ function buildRows(args: {
     rows.push({
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Fresh on WIEZ',
+      title: 'Fresh on ARU',
       label: 'Just landed',
       emojiKey: 'fresh-drops',
       items: freshItems,
@@ -656,7 +656,7 @@ function buildRows(args: {
     id: 'latest-collections',
     type: 'COLLECTION_ROW',
     title: 'Latest collections',
-    label: 'Complete edits from WIEZ brands',
+    label: 'Complete edits from ARU brands',
     items: collections,
     error: collectionError,
   });
@@ -697,7 +697,7 @@ function MarketProductCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'WIEZ brand'}
+      brandName={getItemBrand(item) ?? 'ARU brand'}
       priceLabel={getItemPriceLabel(item)}
       customOrder={Boolean(item.product.customOrderEnabled)}
       mediaSrc={media.mediaSrc}
@@ -739,7 +739,7 @@ function MarketDesignCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'WIEZ brand'}
+      brandName={getItemBrand(item) ?? 'ARU brand'}
       priceLabel={getItemPriceLabel(item)}
       customOrder={canRequestCustomOrder}
       mediaSrc={media.mediaSrc}
@@ -1282,7 +1282,7 @@ function ApiSectionCard({
       width={width}
       height={height ?? Math.round(width * 1.5)}
       title={item.title}
-      brandName={item.brand?.name ?? 'WIEZ brand'}
+      brandName={item.brand?.name ?? 'ARU brand'}
       priceLabel={formatSectionItemPrice(item)}
       customOrder={Boolean(item.availability?.customOrderEnabled)}
       mediaSrc={mediaSrc}
@@ -1568,7 +1568,7 @@ function EditorialCard({
           {item ? `Build a look around ${getItemTitle(item)}` : 'Discover curated African fashion'}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={2}>
-          Mix custom-ready design inspiration with ready-to-wear finds from WIEZ brands.
+          Mix custom-ready design inspiration with ready-to-wear finds from ARU brands.
         </AppText>
         <AppText variant="captionBold" tone="primary">Read & Shop {String.fromCodePoint(0x2192)}</AppText>
       </View>
@@ -2926,7 +2926,7 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
       <View style={styles.topRow}>
         {/* Header controls act while the finger is down (QuickPressable). */}
         <QuickPressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
-          <WiezMark size={30} />
+          <AruMark size={30} />
         </QuickPressable>
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>
