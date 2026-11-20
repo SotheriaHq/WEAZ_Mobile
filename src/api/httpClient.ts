@@ -22,6 +22,7 @@ import { createRequestId } from '@/src/utils/requestId';
 import {
   getCachedDeviceId,
   getDeviceId,
+  ARU_DEVICE_ID_HEADER,
   WIEZ_DEVICE_ID_HEADER,
 } from '@/src/utils/deviceId';
 
@@ -914,13 +915,24 @@ apiClient.interceptors.request.use(async (config) => {
   // a duplicate view count — so it never carries authority. It is what keeps a
   // view from being counted twice when the same person views something signed
   // out, signs in, and views it again.
-  if (!headers.get(WIEZ_DEVICE_ID_HEADER)) {
+  if (!headers.get(WIEZ_DEVICE_ID_HEADER) && !headers.get(ARU_DEVICE_ID_HEADER)) {
     const deviceId = getCachedDeviceId() ?? (await getDeviceId());
-    if (deviceId) headers.set(WIEZ_DEVICE_ID_HEADER, deviceId);
+    if (deviceId) {
+      headers.set(ARU_DEVICE_ID_HEADER, deviceId);
+      headers.set(WIEZ_DEVICE_ID_HEADER, deviceId);
+    }
   }
   if (String(retryableConfig.url ?? '').startsWith('/auth/')) {
-    try { headers.set('x-wiez-security-device', await getSecurityDeviceId()); } catch { /* Identification cannot block authentication. */ }
-    headers.set('x-wiez-device-name', String(Constants.deviceName ?? `${Platform.OS} app`).slice(0, 80));
+    try {
+      const secDev = await getSecurityDeviceId();
+      if (secDev) {
+        headers.set('x-aru-security-device', secDev);
+        headers.set('x-wiez-security-device', secDev);
+      }
+    } catch { /* Identification cannot block authentication. */ }
+    const devName = String(Constants.deviceName ?? `${Platform.OS} app`).slice(0, 80);
+    headers.set('x-aru-device-name', devName);
+    headers.set('x-wiez-device-name', devName);
   }
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
   assertCurrentScope(retryableConfig);
@@ -1009,8 +1021,12 @@ apiClient.interceptors.response.use(
       const verified = await verifyChallengedRequest(originalRequest, error.response?.data, sentIdentity,
         () => securityIdentity(currentAuthToken), originalRequest.signal);
       if (verified) {
+        sentHeaders.delete('x-aru-action-proof');
         sentHeaders.delete('x-wiez-action-proof');
-        if (verified.proof) sentHeaders.set('x-wiez-action-proof', verified.proof);
+        if (verified.proof) {
+          sentHeaders.set('x-aru-action-proof', verified.proof);
+          sentHeaders.set('x-wiez-action-proof', verified.proof);
+        }
         originalRequest.headers = sentHeaders;
         return apiClient(originalRequest);
       }
