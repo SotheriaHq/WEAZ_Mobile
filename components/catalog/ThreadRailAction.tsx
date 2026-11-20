@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { tokens } from '@/src/styles/tokens';
 
 type ThreadRailActionProps = {
@@ -19,9 +20,13 @@ type ThreadRailActionProps = {
 };
 
 const THREAD_EMOJI = String.fromCodePoint(0x1f9f5);
+/** Inside the 52pt touch target, so the glass sits clear of its neighbours. */
+const DISC_SIZE = 44;
 
 /** One wind of the spool when a thread is made. */
 const WIND_DURATION_MS = 420;
+/** The threaded glass fading in or out. */
+const ACTIVE_TIMING = { duration: 200, easing: Easing.out(Easing.cubic) };
 
 /**
  * "30" over "threads" — one phrase, stacked so it fits.
@@ -52,6 +57,11 @@ function splitThreadCountLabel(count: string): { value: string; caption: string 
  * sends the final state once the taps stop, so this component has no busy
  * state at all: threading winds the spool one whole turn with a small pop,
  * unthreading pops without the turn. Reduce Motion gets the pop only.
+ *
+ * The state itself is shown by glass, not by motion: a smaller spool sits on a
+ * faint dark disc (`stageGhost`), and when threaded the same light brand glass
+ * as the island's active indicator (`brandSoft`) fades in over it. Both are
+ * light enough that the artwork underneath still reads.
  */
 export default function ThreadRailAction({
   threaded,
@@ -64,8 +74,15 @@ export default function ThreadRailAction({
   const feedbackScale = useSharedValue(1);
   // Whole turns, not degrees — so the spool always rests upright.
   const turns = useSharedValue(0);
+  const active = useSharedValue(threaded ? 1 : 0);
 
   const previousThreadedRef = useRef(threaded);
+
+  // Follows the state in every case, including a recycled row receiving a
+  // different item, where there is no tap and so no pop.
+  useEffect(() => {
+    active.value = withTiming(threaded ? 1 : 0, ACTIVE_TIMING);
+  }, [active, threaded]);
 
   useEffect(() => {
     let mounted = true;
@@ -112,8 +129,9 @@ export default function ThreadRailAction({
       cancelAnimation(pressScale);
       cancelAnimation(feedbackScale);
       cancelAnimation(turns);
+      cancelAnimation(active);
     },
-    [feedbackScale, pressScale, turns],
+    [active, feedbackScale, pressScale, turns],
   );
 
   const handlePressIn = useCallback(() => {
@@ -126,9 +144,15 @@ export default function ThreadRailAction({
 
   const countLabel = splitThreadCountLabel(count);
 
+  // The disc gives under the finger; the spool alone pops and winds, so the
+  // glass highlight never spins with it.
+  const discStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pressScale.value }],
+  }));
+  const activeGlassStyle = useAnimatedStyle(() => ({ opacity: active.value }));
   const iconStyle = useAnimatedStyle(() => ({
     transform: [
-      { scale: pressScale.value * feedbackScale.value },
+      { scale: feedbackScale.value },
       { rotate: `${turns.value * 360}deg` },
     ],
   }));
@@ -148,14 +172,16 @@ export default function ThreadRailAction({
         accessibilityLabel={threaded ? 'Remove thread' : 'Thread this design'}
         accessibilityState={{ selected: threaded }}
       >
-        <Animated.View style={[styles.iconWrap, iconStyle]}>
-          <AppText
-            variant="display"
-            tone="inverse"
-            style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}
-          >
-            {THREAD_EMOJI}
-          </AppText>
+        <Animated.View style={[styles.disc, discStyle]}>
+          <LiquidGlassFill glassRole="stageGhost" borderRadius={tokens.radius.full} />
+          <Animated.View style={[StyleSheet.absoluteFill, activeGlassStyle]} pointerEvents="none">
+            <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
+          </Animated.View>
+          <Animated.View style={[styles.iconWrap, iconStyle]}>
+            <AppText variant="title" tone="inverse" style={styles.threadEmoji}>
+              {THREAD_EMOJI}
+            </AppText>
+          </Animated.View>
         </Animated.View>
       </Pressable>
       {/*
@@ -215,9 +241,18 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.88,
   },
+  /** Borderless glass disc; clips both glass layers to the circle. */
+  disc: {
+    width: DISC_SIZE,
+    height: DISC_SIZE,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconWrap: {
-    width: 46,
-    height: 46,
+    width: DISC_SIZE,
+    height: DISC_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -229,9 +264,6 @@ const styles = StyleSheet.create({
     textShadowColor: tokens.scrim(0.45),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
-  },
-  threadEmojiActive: {
-    textShadowColor: tokens.colors.threadRailGlow,
   },
   countBlock: {
     alignItems: 'center',

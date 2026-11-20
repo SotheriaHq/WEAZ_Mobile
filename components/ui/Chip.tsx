@@ -34,19 +34,14 @@ type Props = {
   swatchColor?: string;
   disabled?: boolean;
   readOnly?: boolean;
-  variant?: 'default' | 'nav' | 'profile';
+  /**
+   * The Runway's feed tabs were the `nav` variant; they are text tabs now
+   * (`src/features/feed/components/RunwayFeedTab.tsx`), and so is nothing else.
+   */
+  variant?: 'default' | 'profile';
   /** Custom tag awaiting global admin approval — rendered with a distinct,
    *  warning-tinted "pending" treatment so it never reads as an approved tag. */
   pending?: boolean;
-  /**
-   * Render for a surface that is dark in BOTH themes — the Runway stage.
-   *
-   * Without this the chip is themed by the app scheme while the stage behind it
-   * is not: in light mode `nav` chips render transparent with near-black text
-   * onto the deep-black matte and vanish entirely. Forcing the dark palette is
-   * the same opt-out `RUNWAY_MATTE` and the transit `scrimColor` already use.
-   */
-  onDarkStage?: boolean;
 };
 
 /**
@@ -176,8 +171,7 @@ function ChipComponent(props: Props) {
   const isOption =
     (props.variant ?? 'default') === 'default' &&
     !props.swatchColor &&
-    !props.pending &&
-    !props.onDarkStage;
+    !props.pending;
   return isOption ? <OptionChip {...props} /> : <LegacyChip {...props} />;
 }
 
@@ -191,64 +185,39 @@ function LegacyChip({
   readOnly,
   variant = 'default',
   pending = false,
-  onDarkStage = false,
 }: Props) {
-  const { scheme: activeScheme, theme: activeTheme } = useTheme();
-  const scheme = onDarkStage ? 'dark' : activeScheme;
-  const theme = onDarkStage
-    ? ({ ...activeTheme, colors: tokens.themes.dark.colors } as typeof activeTheme)
-    : activeTheme;
+  const { theme } = useTheme();
   const isSwatch = Boolean(swatchColor);
   const scale = React.useRef(new Animated.Value(1)).current;
-  const isNav = variant === 'nav';
   const isProfile = variant === 'profile';
-  const isStageNav = isNav && onDarkStage;
-  const usePendingTreatment = pending && !isNav && !isSwatch;
+  const usePendingTreatment = pending && !isSwatch;
   const isInteractive = !readOnly && Boolean(onPress) && !disabled;
 
-  const glassRole: GlassRole | null = disabled
+  const glassRole: GlassRole = disabled
     ? 'disabled'
-    : isStageNav
-      ? selected
-        ? 'brand'
-        : 'stageGhost'
-      : isNav
+    : usePendingTreatment
+      ? 'warningSoft'
+      : isSwatch
         ? selected
-          ? 'brand'
+          ? 'brandSoft'
           : 'control'
-        : usePendingTreatment
-          ? 'warningSoft'
-          : isSwatch
-            ? selected
-              ? 'brandSoft'
-              : 'control'
-            : selected
-              ? 'brand'
-              : 'control';
+        : selected
+          ? 'brand'
+          : 'control';
 
   const legacyBorderColor = disabled
     ? theme.colors.disabledBorder
     : selected
       ? theme.colors.primary
-      : onDarkStage
-        ? theme.colors.glassBorder
-        : theme.colors.border;
+      : theme.colors.border;
 
-  const textTone = isStageNav
-    ? selected
+  const textTone = usePendingTreatment
+    ? ('warning' as const)
+    : selected
       ? ('inverse' as const)
-      : ('default' as const)
-    : isNav
-      ? selected
-        ? ('inverse' as const)
-        : ('secondary' as const)
-      : usePendingTreatment
-        ? ('warning' as const)
-        : selected
-          ? ('inverse' as const)
-          : disabled
-            ? ('disabled' as const)
-            : ('default' as const);
+      : disabled
+        ? ('disabled' as const)
+        : ('default' as const);
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -265,9 +234,7 @@ function LegacyChip({
 
   const innerContent = (
     <>
-      {glassRole ? (
-        <LiquidGlassFill glassRole={glassRole} borderRadius={tokens.radius.full} />
-      ) : null}
+      <LiquidGlassFill glassRole={glassRole} borderRadius={tokens.radius.full} />
       {isSwatch ? (
         <View
           style={[
@@ -279,11 +246,7 @@ function LegacyChip({
         />
       ) : (
         <View style={styles.labelWrap}>
-          <AppText
-            onDarkStage={onDarkStage}
-            variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
-            tone={textTone}
-          >
+          <AppText variant={isProfile ? 'captionBold' : 'smallBold'} tone={textTone}>
             {usePendingTreatment ? `${label} · pending` : label}
           </AppText>
         </View>
@@ -294,16 +257,12 @@ function LegacyChip({
   const containerStyle = [
     styles.base,
     isSwatch && styles.swatchBase,
-    isNav && styles.navBase,
     isProfile && styles.profileBase,
-    isNav && selected && styles.navSelected,
-    isNav && !selected && styles.navInactive,
-    isStageNav && styles.stageNavBase,
     styles.glassHost,
     {
       backgroundColor: 'transparent',
-      borderColor: isNav ? 'transparent' : legacyBorderColor,
-      borderWidth: isNav ? 0 : 2,
+      borderColor: legacyBorderColor,
+      borderWidth: 2,
     },
     style,
   ];
@@ -366,7 +325,6 @@ export const Chip = React.memo(
     previous.pending === next.pending &&
     previous.variant === next.variant &&
     previous.swatchColor === next.swatchColor &&
-    previous.onDarkStage === next.onDarkStage &&
     previous.style === next.style,
 );
 
@@ -403,30 +361,6 @@ const styles = StyleSheet.create({
   glassHost: {
     overflow: 'hidden',
     position: 'relative',
-  },
-  navBase: {
-    minHeight: 36,
-    paddingHorizontal: tokens.spacing.md,
-    paddingTop: 0,
-    paddingBottom: 0,
-    borderWidth: 2,
-    borderRadius: tokens.radius.full,
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-  navSelected: {
-    paddingHorizontal: tokens.spacing.md,
-  },
-  navInactive: {
-    backgroundColor: 'transparent',
-  },
-  stageNavBase: {
-    borderRadius: tokens.radius.full,
-    borderWidth: 2,
-    paddingHorizontal: tokens.spacing.md,
-    paddingTop: 0,
-    paddingBottom: 0,
-    minHeight: 36,
   },
   profileBase: {
     minHeight: tokens.button.xs.height,

@@ -27,7 +27,6 @@ import { useToast } from '@/src/toast/ToastContext';
 import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { useAppStateListener } from '@/src/hooks/useAppStateListener';
-import { Chip } from '@/components/ui/Chip';
 import { IconButton } from '@/components/ui/IconButton';
 import { Button } from '@/components/ui/Button';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
@@ -36,6 +35,7 @@ import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton
 import WiezMark from '@/src/brand/WiezMark';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
+import { RunwayFeedTab } from './RunwayFeedTab';
 import CollectionCommentsSheet, { getCommentsSheetHeight } from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
@@ -2762,13 +2762,11 @@ export function RunwayFeedScreen() {
                     contentContainerStyle={styles.headerChipsContent}
                     style={styles.headerChipsScroll}>
                     {visibleFilterChips.map((chip) => (
-                      <Chip
+                      <RunwayFeedTab
                         key={chip.id}
                         label={chip.label}
-                        variant="nav"
                         selected={chip.id === selectedFilterId}
                         onPress={() => setSelectedFilterId(chip.id)}
-                        onDarkStage
                       />
                     ))}
                   </ScrollView>
@@ -2984,7 +2982,8 @@ const styles = StyleSheet.create({
   },
   headerChipsContent: {
     flexGrow: 1,
-    gap: 12,
+    // Text tabs, not pills: the space between words is what separates them.
+    gap: 20,
     justifyContent: 'center',
     paddingHorizontal: 12,
     alignItems: 'center',
