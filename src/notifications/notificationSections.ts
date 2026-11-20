@@ -51,7 +51,7 @@ export type NotificationSectionConfig = {
 export const PUSH_MASTER_TOGGLE: NotificationToggle = {
   id: 'push.enabled',
   label: 'Push notifications',
-  description: 'Allow WIEZ to send push notifications to this phone.',
+  description: 'Allow ARU to send push notifications to this phone.',
   section: 'push',
   key: 'enabled',
 };
@@ -110,7 +110,7 @@ const COMMERCE_ITEMS: NotificationToggle[] = [
 ];
 
 const MESSAGING_ITEMS: NotificationToggle[] = [
-  { id: 'messaging.desktop', label: 'Browser message alerts', description: 'Show browser notifications while WIEZ is open in the background, when browser permission allows.', section: 'messaging', key: 'desktop' },
+  { id: 'messaging.desktop', label: 'Browser message alerts', description: 'Show browser notifications while ARU is open in the background, when browser permission allows.', section: 'messaging', key: 'desktop' },
   { id: 'messaging.newMessages', label: 'New messages', description: 'New order and support messages.', section: 'messaging', key: 'newMessages' },
   { id: 'messaging.reminders', label: 'Unread reminders', description: 'Reminders about conversations you have not read.', section: 'messaging', key: 'reminders' },
   { id: 'messaging.moderation', label: 'Moderation notices', description: 'Visibility and moderation changes on your conversations.', section: 'messaging', key: 'moderation' },

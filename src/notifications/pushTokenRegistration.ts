@@ -511,7 +511,7 @@ export const PUSH_SKIP_EXPLANATIONS: Record<string, string> = {
   'device-registration-failed':
     'Your phone could not set up notifications just now. Check your connection and try again.',
   'server-registration-failed':
-    'WIEZ could not save this phone for notifications just now. Check your connection and try again.',
+    'ARU could not save this phone for notifications just now. Check your connection and try again.',
   'registration-cancelled': 'Signed out before this phone finished registering.',
   'already-registered': 'This phone is already set up for notifications.',
 };
