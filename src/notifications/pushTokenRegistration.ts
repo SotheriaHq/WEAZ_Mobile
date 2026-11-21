@@ -339,8 +339,8 @@ export function clearStoredPushRegistration(): Promise<void> {
   return enqueuePushMutation(async () => {
     acceptedPushRegistration = null;
     await Promise.all([
-      SecureStore.deleteItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
-      SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
+      SecureStore.deleteItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY),
+      SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY),
     ]);
   });
 }
@@ -523,8 +523,8 @@ export function deactivateRegisteredPushTokenForLogout(
     } finally {
       acceptedPushRegistration = null;
       await Promise.all([
-        SecureStore.deleteItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
-        SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined),
+        SecureStore.deleteItemAsync(PRIMARY_PUSH_REGISTRATION_STORAGE_KEY),
+        SecureStore.deleteItemAsync(LEGACY_PUSH_REGISTRATION_STORAGE_KEY),
       ]);
     }
   });
