@@ -510,20 +510,16 @@ export function deactivateRegisteredPushTokenForLogout(
   invalidatePushRegistration();
   const outgoingAccount = readString(options.asAccount);
   return enqueuePushMutation(async () => {
-    const previousRecord = acceptedPushRegistration ?? await readStoredPushRegistration();
-    if (!previousRecord?.token) {
-      return;
-    }
-
     try {
+      const previousRecord = acceptedPushRegistration ?? await readStoredPushRegistration();
       // Never fall back to the incoming account's global API credentials.
-      if (outgoingAccount) {
+      if (previousRecord?.token && outgoingAccount) {
         await NotificationsApi.deactivateCurrentPushToken(previousRecord.token, {
           asAccount: outgoingAccount,
         });
       }
     } catch {
-      // Logout must not be blocked by a best-effort token cleanup call.
+      // Logout must not be blocked by a best-effort token cleanup call or storage read error.
     } finally {
       acceptedPushRegistration = null;
       await Promise.all([

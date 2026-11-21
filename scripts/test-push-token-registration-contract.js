@@ -271,6 +271,29 @@ async function main() {
   assert.equal(logoutStore['aru.pushTokenRegistration.v1'], undefined);
   assert.equal(logoutStore['wiez.pushTokenRegistration.v1'], undefined);
 
+  // Test: Logout dual-key purge when storage contains corrupt unparseable JSON or missing token
+  const { exports: corruptLogoutExports, deletedKeys: corruptDeleted, store: corruptStore } = loadPushRegistration({
+    store: {
+      'aru.pushTokenRegistration.v1': '{ invalid json',
+      'wiez.pushTokenRegistration.v1': JSON.stringify({ notAValidRecord: true }),
+    },
+    notificationsApi: failingApi,
+  });
+  await assert.doesNotReject(() => corruptLogoutExports.deactivateRegisteredPushTokenForLogout());
+  assert.ok(corruptDeleted.includes('aru.pushTokenRegistration.v1'), 'Corrupt storage must still purge primary key');
+  assert.ok(corruptDeleted.includes('wiez.pushTokenRegistration.v1'), 'Corrupt storage must still purge legacy key');
+  assert.equal(corruptStore['aru.pushTokenRegistration.v1'], undefined);
+  assert.equal(corruptStore['wiez.pushTokenRegistration.v1'], undefined);
+
+  // Test: Logout dual-key purge when storage is empty
+  const { exports: emptyLogoutExports, deletedKeys: emptyDeleted } = loadPushRegistration({
+    store: {},
+    notificationsApi: failingApi,
+  });
+  await assert.doesNotReject(() => emptyLogoutExports.deactivateRegisteredPushTokenForLogout());
+  assert.ok(emptyDeleted.includes('aru.pushTokenRegistration.v1'), 'Empty storage must still purge primary key');
+  assert.ok(emptyDeleted.includes('wiez.pushTokenRegistration.v1'), 'Empty storage must still purge legacy key');
+
   // Test: Legacy fallback and opportunistic migration on read
   const legacyStore = { 'wiez.pushTokenRegistration.v1': storedRecord };
   let apiRegistered = false;
