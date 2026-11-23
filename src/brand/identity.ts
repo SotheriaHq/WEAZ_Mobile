@@ -16,6 +16,8 @@
 /** The product name. There is no former name to surface anywhere. */
 export const PRODUCT_NAME = 'ARU';
 
+export const PRODUCT_SLOGAN = 'Just wear';
+
 export const PRODUCT_TAGLINE = 'When you think WEARS, you think ARU.';
 
 export const PRODUCT_CATEGORY = 'African fashion social commerce marketplace';
@@ -41,18 +43,20 @@ export const BRAND_COLORS = {
 
 /**
  * Statically analyzable relative asset imports for Expo/Metro bundler.
- * Retains Temporary Legacy Visual Assets per Product Owner Decision 1.2.
+ * Uses official ARU brand assets with backward compatibility mirrors.
  */
 export const BRAND_ASSETS = {
-  markLight: require('../../assets/images/wiez-mark-light.png'),
-  markDark: require('../../assets/images/wiez-mark-dark.png'),
-  loaderMarkLight: require('../../assets/images/wiez-loader-mark-light.png'),
-  loaderMarkDark: require('../../assets/images/wiez-loader-mark-dark.png'),
-  icon: require('../../assets/images/wiez-icon.png'),
-  adaptiveIcon: require('../../assets/images/wiez-adaptive-icon.png'),
-  favicon: require('../../assets/images/wiez-favicon.png'),
-  splashLight: require('../../assets/images/wiez-splash-icon.png'),
-  splashDark: require('../../assets/images/wiez-splash-icon-dark.png'),
-  wordmarkLight: require('../../assets/images/wiez-wordmark-light.png'),
-  wordmarkDark: require('../../assets/images/wiez-wordmark-dark.png'),
+  markLight: require('../../assets/images/aru-mark-light.png'),
+  markDark: require('../../assets/images/aru-mark-dark.png'),
+  loaderMarkLight: require('../../assets/images/aru-loader-mark-light.png'),
+  loaderMarkDark: require('../../assets/images/aru-loader-mark-dark.png'),
+  icon: require('../../assets/images/aru-icon.png'),
+  adaptiveIcon: require('../../assets/images/aru-adaptive-icon.png'),
+  favicon: require('../../assets/images/aru-favicon.png'),
+  splashLight: require('../../assets/images/aru-splash-icon.png'),
+  splashDark: require('../../assets/images/aru-splash-icon-dark.png'),
+  wordmarkLight: require('../../assets/images/aru-wordmark-light.png'),
+  wordmarkDark: require('../../assets/images/aru-wordmark-dark.png'),
+  wordmarkSloganLight: require('../../assets/images/aru-wordmark-slogan-light.png'),
+  wordmarkSloganDark: require('../../assets/images/aru-wordmark-slogan-dark.png'),
 } as const;
