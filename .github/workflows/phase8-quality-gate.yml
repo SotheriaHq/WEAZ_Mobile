@@ -72,6 +72,9 @@ jobs:
       - name: App survival contract
         run: npm run test:app-survival-contract
 
+      - name: Patch store contract
+        run: npm run test:patch-store-contract
+
       - name: Custom order queue contract
         run: npm run test:custom-order-queue-contract
 

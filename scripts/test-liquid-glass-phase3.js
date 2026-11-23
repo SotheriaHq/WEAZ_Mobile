@@ -876,28 +876,20 @@ async function runTests() {
       await renderer.act(async () => tree.unmount());
     }
 
-    // 4b. Chip variant="nav" (standard & onDarkStage) vs OptionChip
-    for (const onDarkStage of [false, true]) {
+    // 4b. Runway feed tabs are TEXT, like the tabs over Reels (owner, 20 Nov
+    // 2026): no glass plate in either state, white when inactive, the system
+    // colour with an underline when active. Option chips (every design-creation
+    // picker) stay Strong Lens glass in every state.
+    {
+      const { RunwayFeedTab } = harness.loadTs('src/features/feed/components/RunwayFeedTab.tsx');
       let tree;
       await renderer.act(async () => {
         tree = renderer.create(
           React.createElement(
             'View',
             null,
-            React.createElement(Chip, {
-              label: 'Discover',
-              variant: 'nav',
-              selected: true,
-              onDarkStage,
-              onPress: () => undefined,
-            }),
-            React.createElement(Chip, {
-              label: 'Explore',
-              variant: 'nav',
-              selected: false,
-              onDarkStage,
-              onPress: () => undefined,
-            }),
+            React.createElement(RunwayFeedTab, { label: 'Discover', selected: true, onPress: () => undefined }),
+            React.createElement(RunwayFeedTab, { label: 'Explore', selected: false, onPress: () => undefined }),
             React.createElement(Chip, {
               label: 'Casual',
               variant: 'default',
@@ -909,39 +901,22 @@ async function runTests() {
         );
       });
       const json = tree.toJSON();
-      const buttons = collectNodes(json, (n) => n.type === 'Pressable');
-      const selectedNav = buttons[0];
-      const unselectedNav = buttons[1];
-      const optionChip = buttons[2];
+      const isGlass = (n) => n.type === 'View' && typeof n.props?.onLayout === 'function';
+      const [selectedTab, unselectedTab, optionChip] = collectNodes(json, (n) => n.type === 'Pressable');
 
-      assert.equal(flattenStyle(selectedNav.props.style).backgroundColor, 'transparent');
-      assert.equal(flattenStyle(selectedNav.props.style).borderWidth, 0);
-      // Strong Lens everywhere (15 Nov 2026): no legacy gradient haze on any chip.
+      assert.equal(collectNodes(selectedTab, isGlass).length, 0, 'Active Runway tab has no glass plate');
+      assert.equal(collectNodes(unselectedTab, isGlass).length, 0, 'Inactive Runway tab has no glass plate');
+      assert.equal(selectedTab.props.accessibilityRole, 'tab');
+      assert.equal(selectedTab.props.accessibilityState.selected, true);
+      assert.equal(unselectedTab.props.accessibilityState.selected, false);
+      const [selectedLabel] = collectNodes(selectedTab, (n) => n.type === 'AppText');
+      const [unselectedLabel] = collectNodes(unselectedTab, (n) => n.type === 'AppText');
+      assert.equal(selectedLabel.props.tone, 'primary', 'Active tab takes the system colour');
+      assert.equal(unselectedLabel.props.tone, 'default', 'Inactive tab is white on the dark stage');
+      assert.equal(selectedLabel.props.onDarkStage, true);
+      assert.equal(selectedLabel.props.variant, 'actionLabel', 'Tabs are 17/700 so the colour reads');
       assert.equal(collectNodes(json, (n) => n.type === 'ExpoLinearGradient').length, 0);
-      // Unselected nav chips are glass too: faint dark stageGhost glass over the
-      // Runway stage, ghost glass elsewhere (owner, 15 Nov 2026).
-      assert.equal(
-        collectNodes(unselectedNav, (n) => n.type === 'View' && typeof n.props?.onLayout === 'function').length,
-        1,
-        onDarkStage ? 'Unselected stage nav chip is stageGhost glass' : 'Unselected nav chip is ghost glass',
-      );
-      // Option chips (every design-creation picker) are glass in every state.
-      assert.ok(
-        collectNodes(optionChip, (n) => n.type === 'View' && typeof n.props?.onLayout === 'function').length >= 1,
-        'Option chip must mount Strong Lens glass',
-      );
-      const selectedNavGlassRoot = collectNodes(
-        selectedNav,
-        (n) => n.type === 'View' && typeof n.props?.onLayout === 'function',
-      )[0];
-      assert.ok(selectedNavGlassRoot, 'Selected nav Chip must attach WiezLiquidGlass layout measurer');
-      await renderer.act(async () => {
-        selectedNavGlassRoot.props.onLayout({
-          nativeEvent: { layout: { width: 92, height: 34 } },
-        });
-      });
-      const updatedSelectedNav = collectNodes(tree.toJSON(), (n) => n.type === 'Pressable')[0];
-      assert.equal(collectNodes(updatedSelectedNav, (n) => n.type === 'Svg').length, 1);
+      assert.ok(collectNodes(optionChip, isGlass).length >= 1, 'Option chip must mount Strong Lens glass');
       assert.equal(collectNodes(json, (n) => n.type === 'BlurView').length, 0);
       assert.equal(collectNodes(json, (n) => n.type === 'WiezLiquidGlassLensView').length, 0);
       await renderer.act(async () => tree.unmount());

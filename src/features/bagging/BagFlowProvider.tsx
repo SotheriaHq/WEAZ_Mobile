@@ -360,6 +360,8 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const openMyBag = useCallback(() => {
+    // The island only offers Bag to shoppers; this holds for any other caller.
+    if (authStatus !== 'authenticated' || !user) return;
     if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
@@ -369,7 +371,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(true);
     void refreshGlobalBagCount();
-  }, [refreshGlobalBagCount, refuseForBrandAccount]);
+  }, [authStatus, refreshGlobalBagCount, refuseForBrandAccount, user]);
 
   useEffect(() => {
     pendingResumeRef.current = pendingAuth;

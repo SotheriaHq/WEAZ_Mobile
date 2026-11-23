@@ -5,27 +5,28 @@ import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/AppText';
+import { LiquidGlassFill } from '@/components/ui/LiquidGlassFill';
 import { tokens } from '@/src/styles/tokens';
 
 type ThreadRailActionProps = {
   threaded: boolean;
   count: string;
-  busy?: boolean;
   onPress: () => void;
 };
 
 const THREAD_EMOJI = String.fromCodePoint(0x1f9f5);
+/** Inside the 52pt touch target, so the glass sits clear of its neighbours. */
+const DISC_SIZE = 44;
 
-/** One full turn while the request is in flight. */
-const SPIN_TURN_DURATION_MS = 760;
-/** Easing the spool to rest on a whole turn once the server answers. */
-const SPIN_SETTLE_DURATION_MS = 320;
+/** One wind of the spool when a thread is made. */
+const WIND_DURATION_MS = 420;
+/** The threaded glass fading in or out. */
+const ACTIVE_TIMING = { duration: 200, easing: Easing.out(Easing.cubic) };
 
 /**
  * "30" over "threads" — one phrase, stacked so it fits.
@@ -46,37 +47,42 @@ function splitThreadCountLabel(count: string): { value: string; caption: string 
 }
 
 /**
- * The spool spins while the thread is being made, and the count is live.
+ * The spool answers the tap itself, and the count is live.
  *
- * What this replaces was neither. The "spin" was `rotation: -8deg -> +8deg -> 0`
- * — a sixteen-degree wiggle, which is a shake by any other name; a spool of
- * thread that rocks back and forth is not doing anything a spool does. And the
- * count was deliberately WITHHELD: a `setTimeout` chain
- * (`revealCountAfterFeedback`, `countRevealAtRef`, a 280ms
- * `THREAD_COUNT_REVEAL_DELAY_MS`) held the new number back until the wiggle had
- * finished, so the one piece of real information arrived late on purpose and
- * the tap felt unacknowledged.
+ * It used to spin for as long as the request took and lock the button
+ * meanwhile, so a slow network left a spool spinning for up to the 15-second
+ * request timeout, and the count only moved when the server answered — the
+ * "spinning, count never registers" report. The parent now flips `threaded`
+ * and the count on the tap (see `handleThreadPress` in RunwayFeedScreen) and
+ * sends the final state once the taps stop, so this component has no busy
+ * state at all: threading winds the spool one whole turn with a small pop,
+ * unthreading pops without the turn. Reduce Motion gets the pop only.
  *
- * Now: `busy` drives a continuous full rotation, so the motion means "your
- * thread is being made" and lasts exactly as long as that takes. When the
- * server answers, the spool eases to rest on a whole turn — never mid-angle —
- * with a small scale pop, and the count renders from props with no delay at
- * all. Reduce Motion gets the pop and no rotation.
+ * The state itself is shown by glass, not by motion: a smaller spool sits on a
+ * faint dark disc (`stageGhost`), and when threaded the same light brand glass
+ * as the island's active indicator (`brandSoft`) fades in over it. Both are
+ * light enough that the artwork underneath still reads.
  */
 export default function ThreadRailAction({
   threaded,
   count,
-  busy = false,
   onPress,
 }: ThreadRailActionProps) {
   const [reduceMotion, setReduceMotion] = useState(false);
 
   const pressScale = useSharedValue(1);
   const feedbackScale = useSharedValue(1);
-  // Whole turns, not degrees — so "settle on a whole turn" is Math.round.
+  // Whole turns, not degrees — so the spool always rests upright.
   const turns = useSharedValue(0);
+  const active = useSharedValue(threaded ? 1 : 0);
 
-  const wasBusyRef = useRef(busy);
+  const previousThreadedRef = useRef(threaded);
+
+  // Follows the state in every case, including a recycled row receiving a
+  // different item, where there is no tap and so no pop.
+  useEffect(() => {
+    active.value = withTiming(threaded ? 1 : 0, ACTIVE_TIMING);
+  }, [active, threaded]);
 
   useEffect(() => {
     let mounted = true;
@@ -103,45 +109,29 @@ export default function ThreadRailAction({
     );
   }, [feedbackScale]);
 
+  // Feedback on a CHANGE of state (never on mount, and not on a recycled row
+  // that merely receives a different item's value without a tap).
   useEffect(() => {
-    const wasBusy = wasBusyRef.current;
-    wasBusyRef.current = busy;
-
-    if (busy && !wasBusy) {
-      if (reduceMotion) return;
-      cancelAnimation(turns);
-      // `false` = do not reverse. A spool that unwinds every other turn is the
-      // wiggle again, one revolution at a time.
-      turns.value = withRepeat(
-        withTiming(turns.value + 1, {
-          duration: SPIN_TURN_DURATION_MS,
-          easing: Easing.linear,
-        }),
-        -1,
-        false,
-      );
-      return;
-    }
-
-    if (!busy && wasBusy) {
-      popScale();
-      if (reduceMotion) return;
-      cancelAnimation(turns);
-      // Land on a whole turn so the spool never stops at an angle.
-      turns.value = withTiming(Math.round(turns.value) + 1, {
-        duration: SPIN_SETTLE_DURATION_MS,
-        easing: Easing.out(Easing.cubic),
-      });
-    }
-  }, [busy, popScale, reduceMotion, turns]);
+    const wasThreaded = previousThreadedRef.current;
+    previousThreadedRef.current = threaded;
+    if (wasThreaded === threaded) return;
+    popScale();
+    if (!threaded || reduceMotion) return;
+    cancelAnimation(turns);
+    turns.value = withTiming(Math.round(turns.value) + 1, {
+      duration: WIND_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [popScale, reduceMotion, threaded, turns]);
 
   useEffect(
     () => () => {
       cancelAnimation(pressScale);
       cancelAnimation(feedbackScale);
       cancelAnimation(turns);
+      cancelAnimation(active);
     },
-    [feedbackScale, pressScale, turns],
+    [active, feedbackScale, pressScale, turns],
   );
 
   const handlePressIn = useCallback(() => {
@@ -154,9 +144,15 @@ export default function ThreadRailAction({
 
   const countLabel = splitThreadCountLabel(count);
 
+  // The disc gives under the finger; the spool alone pops and winds, so the
+  // glass highlight never spins with it.
+  const discStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pressScale.value }],
+  }));
+  const activeGlassStyle = useAnimatedStyle(() => ({ opacity: active.value }));
   const iconStyle = useAnimatedStyle(() => ({
     transform: [
-      { scale: pressScale.value * feedbackScale.value },
+      { scale: feedbackScale.value },
       { rotate: `${turns.value * 360}deg` },
     ],
   }));
@@ -167,25 +163,25 @@ export default function ThreadRailAction({
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        disabled={busy}
         hitSlop={8}
         style={({ pressed }) => [
           styles.button,
-          busy && styles.buttonBusy,
-          pressed && !busy && styles.buttonPressed,
+          pressed && styles.buttonPressed,
         ]}
         accessibilityRole="button"
         accessibilityLabel={threaded ? 'Remove thread' : 'Thread this design'}
-        accessibilityState={{ selected: threaded, disabled: busy, busy }}
+        accessibilityState={{ selected: threaded }}
       >
-        <Animated.View style={[styles.iconWrap, iconStyle]}>
-          <AppText
-            variant="display"
-            tone="inverse"
-            style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}
-          >
-            {THREAD_EMOJI}
-          </AppText>
+        <Animated.View style={[styles.disc, discStyle]}>
+          <LiquidGlassFill glassRole="stageGhost" borderRadius={tokens.radius.full} />
+          <Animated.View style={[StyleSheet.absoluteFill, activeGlassStyle]} pointerEvents="none">
+            <LiquidGlassFill glassRole="brandSoft" borderRadius={tokens.radius.full} />
+          </Animated.View>
+          <Animated.View style={[styles.iconWrap, iconStyle]}>
+            <AppText variant="title" tone="inverse" style={styles.threadEmoji}>
+              {THREAD_EMOJI}
+            </AppText>
+          </Animated.View>
         </Animated.View>
       </Pressable>
       {/*
@@ -242,15 +238,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  buttonBusy: {
-    opacity: 0.72,
-  },
   buttonPressed: {
     opacity: 0.88,
   },
+  /** Borderless glass disc; clips both glass layers to the circle. */
+  disc: {
+    width: DISC_SIZE,
+    height: DISC_SIZE,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconWrap: {
-    width: 46,
-    height: 46,
+    width: DISC_SIZE,
+    height: DISC_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -262,9 +264,6 @@ const styles = StyleSheet.create({
     textShadowColor: tokens.scrim(0.45),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
-  },
-  threadEmojiActive: {
-    textShadowColor: tokens.colors.threadRailGlow,
   },
   countBlock: {
     alignItems: 'center',

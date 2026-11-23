@@ -1315,8 +1315,17 @@ export async function getMarketFilterChips(): Promise<MarketFilterChip[]> {
   }
 }
 
-export async function toggleCollectionMediaThread(mediaId: string): Promise<{ threaded: boolean; threads: number }> {
-  const response = await apiClient.post(`/collections/media/${mediaId}/reaction/thread`);
+/**
+ * SET the viewer's thread on one media item, rather than flip it: a flip from
+ * a wrong local belief (an image whose state the app never loaded) removed a
+ * thread the shopper had made. Asking for the state that already holds writes
+ * nothing server-side and returns the truth.
+ */
+export async function setCollectionMediaThread(
+  mediaId: string,
+  threaded: boolean,
+): Promise<{ threaded: boolean; threads: number }> {
+  const response = await apiClient.post(`/collections/media/${mediaId}/reaction/thread`, { threaded });
   const data = unwrapData<{ threaded?: boolean; threads?: number }>(response.data) ?? {};
   return {
     threaded: Boolean(data.threaded),

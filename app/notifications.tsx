@@ -450,6 +450,8 @@ export default function NotificationsScreen() {
     userId: user?.id ?? null,
     onCreated: handleRealtimeCreated,
     onDeleted: handleRealtimeDeleted,
+    // The socket was down (backgrounded, offline) and events were missed.
+    onResync: load,
   });
 
   if (!hasAuthenticatedSession) {
