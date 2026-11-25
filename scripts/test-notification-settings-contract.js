@@ -150,7 +150,7 @@ async function main() {
   assert.match(settingsHook, /queryKeys\.notifications\.settings\(userId\)/, 'one shared copy for overview and sections');
   assert.match(deviceHook, /registerAuthenticatedPushToken\(/);
   assert.match(deviceHook, /AppState\.addEventListener\('change'/, 'device recovery: re-checks on return from phone settings');
-  assert.match(parts, /Notifications are enabled in WIEZ, but disabled at device level\./);
+  assert.match(parts, /Notifications are enabled in (?:ARU|WIEZ), but disabled at device level\./);
   assert.match(overview, /useNotificationSettings\(\)/);
   assert.match(sectionScreen, /useNotificationSettings\(\)/);
   assert.match(sectionScreen, /<SettingsSectionHeading title=/, 'each focused section has the shared label and trailing divider');
