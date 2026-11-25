@@ -119,7 +119,7 @@ function MfaVerificationSheet({ prompt }: { prompt: SecurityPrompt }) {
         {flow.method === 'passkey' ? <AppText variant="body">{flow.passkeyOptions ? 'Press Use passkey to open the secure system prompt. You can cancel and choose another method.' : 'Prepare your passkey above, or choose another available method.'}</AppText> :
           <Input label={flow.method === 'totp' ? 'Authenticator code' : 'Unused recovery code'} value={flow.code} maxLength={flow.method === 'totp' ? 6 : 64} onChangeText={flow.setCode} keyboardType={flow.method === 'totp' ? 'number-pad' : 'default'} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" />}
         <AppText variant="body">Lost every method and recovery code? Account recovery requires two independent support reviews. Email access alone cannot remove verification.</AppText>
-        <Button title="Review account recovery" variant="secondary" onPress={() => { prompt.cancel(); router.push('/settings/mfa-recovery'); }} />
+        <Button title="Review account recovery" variant="secondary" onPress={() => { prompt.cancel(); router.push('/settings/mfa-recovery' as any); }} />
       </>}
       {flow.error ? <AppText variant="body" tone="danger" accessibilityRole="alert">{flow.error}</AppText> : null}
     </View>
@@ -194,7 +194,7 @@ export function MfaSettingsPanel() {
         {status.factors.length >= 10 ? <AppText variant="body">You have 10 verified methods. Remove an unused method before adding another.</AppText> : null}
         <Button title="Refresh verification methods" variant="secondary" onPress={() => setVersion(value => value + 1)} />
       </> : null}
-      <Button title="Lost your methods? Review account recovery" variant="secondary" onPress={() => router.push('/settings/mfa-recovery')} />
+      <Button title="Lost your methods? Review account recovery" variant="secondary" onPress={() => router.push('/settings/mfa-recovery' as any)} />
     </View>
     {mode ? <MfaJourneySheet mode={mode} isCurrent={() => chosenMode.current === mode && current()} onClose={close} onDone={close} /> : null}
   </SettingsSection>;
