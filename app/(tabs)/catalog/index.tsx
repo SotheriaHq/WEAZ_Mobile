@@ -1604,7 +1604,7 @@ export default function CatalogScreen() {
   );
   const profileShareMessage = useMemo(() => {
     if (!profileShareUrl) return undefined;
-    return `Check out ${effectiveProfile?.brandFullName || 'this brand'} on WIEZ: ${profileShareUrl}`;
+    return `Check out ${effectiveProfile?.brandFullName || 'this brand'} on ARU: ${profileShareUrl}`;
   }, [effectiveProfile?.brandFullName, profileShareUrl]);
 
   const applyProfilePhotoViewState = useCallback(
@@ -2213,7 +2213,7 @@ export default function CatalogScreen() {
   const handleShareCollection = useCallback(
     async (collectionId: string) => {
       const collection = currentCollectionsRef.current.find((item) => item.id === collectionId);
-      const title = collection?.title?.trim() || 'WIEZ design';
+      const title = collection?.title?.trim() || 'ARU design';
       const profileUrl = profileShareUrl ?? '';
       const url = profileUrl ? `${profileUrl}${profileUrl.includes('?') ? '&' : '?'}collectionId=${encodeURIComponent(collectionId)}` : '';
 

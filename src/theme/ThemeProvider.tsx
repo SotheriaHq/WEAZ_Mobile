@@ -34,7 +34,9 @@ export type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const THEME_MODE_KEY = 'wiez.theme.mode';
+export const ARU_THEME_MODE_KEY = 'aru.theme.mode';
+export const WIEZ_THEME_MODE_KEY = 'wiez.theme.mode';
+const THEME_MODE_KEY = ARU_THEME_MODE_KEY;
 
 function computeScheme(mode: ThemeMode, systemScheme: ColorSchemeName): ResolvedTheme {
   if (mode === 'light') return 'light';
@@ -72,7 +74,8 @@ export function ThemeProvider({
       lands at once.
     */
     setModeState(normalized);
-    SecureStore.setItemAsync(THEME_MODE_KEY, normalized).catch(() => undefined);
+    SecureStore.setItemAsync(ARU_THEME_MODE_KEY, normalized).catch(() => undefined);
+    SecureStore.deleteItemAsync(WIEZ_THEME_MODE_KEY).catch(() => undefined);
   }, []);
 
   const syncThemePreferenceFromBackend = useCallback((next: unknown) => {
@@ -91,7 +94,17 @@ export function ThemeProvider({
 
     let isMounted = true;
 
-    SecureStore.getItemAsync(THEME_MODE_KEY)
+    SecureStore.getItemAsync(ARU_THEME_MODE_KEY)
+      .then(async (value) => {
+        if (value) return value;
+        const legacy = await SecureStore.getItemAsync(WIEZ_THEME_MODE_KEY).catch(() => null);
+        if (legacy) {
+          SecureStore.setItemAsync(ARU_THEME_MODE_KEY, legacy).catch(() => undefined);
+          SecureStore.deleteItemAsync(WIEZ_THEME_MODE_KEY).catch(() => undefined);
+          return legacy;
+        }
+        return null;
+      })
       .then((value) => {
         if (!isMounted) return;
         setModeState(normalizeThemePreference(value));

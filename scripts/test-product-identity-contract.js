@@ -90,7 +90,7 @@ if (missing.length) {
   process.exit(0);
 }
 
-const SHARED_STRINGS = ['PRODUCT_NAME', 'PRODUCT_TAGLINE', 'PRODUCT_CATEGORY'];
+const SHARED_STRINGS = ['PRODUCT_NAME', 'PRODUCT_SLOGAN', 'PRODUCT_TAGLINE', 'PRODUCT_CATEGORY'];
 
 const mobile = loadTsModule(SOURCES.mobile);
 const backend = loadTsModule(SOURCES.backend);

@@ -75,47 +75,187 @@ const removeSecureItem = (key: string): Promise<void> => enqueueWrite(async () =
   try { await removeRaw(key); } catch { /* Retry on the next explicit sign-out. */ }
 });
 
-const CREDENTIALS_KEY = `${env.tokenStorageKey}.credentials.v2`;
-type Credentials = { version: 2; accessToken: string | null; refreshToken: string | null };
-const readCredentialsRaw = async (): Promise<Credentials | null> => {
-  const raw = await getSecureItem(CREDENTIALS_KEY);
+export const PRIMARY_CREDENTIALS_KEY = 'ARU_ACCESS_TOKEN.credentials.v2';
+export const LEGACY_CREDENTIALS_KEY = 'WIEZ_ACCESS_TOKEN.credentials.v2';
+export const HISTORICAL_CREDENTIALS_KEYS = [
+  'WIEZ_ACCESS_TOKEN',
+  'WIEZ_REFRESH_TOKEN',
+  'THREADLY_ACCESS_TOKEN',
+  'THREADLY_REFRESH_TOKEN',
+  'ARU_ACCESS_TOKEN',
+  'ARU_REFRESH_TOKEN',
+];
+
+export const PRIMARY_USER_KEY = 'ARU_USER';
+export const LEGACY_USER_KEYS = ['WIEZ_USER', 'THREADLY_USER'];
+
+export type Credentials = { version: 2; accessToken: string | null; refreshToken: string | null };
+
+export const readCredentialsRaw = async (): Promise<Credentials | null> => {
+  // 1. Read primary ARU credentials
+  const primaryRaw = await getSecureItem(PRIMARY_CREDENTIALS_KEY);
+  if (primaryRaw) {
+    try {
+      const parsed = JSON.parse(primaryRaw) as Credentials;
+      if (parsed?.version === 2) {
+        return parsed;
+      }
+    } catch {
+      // Corrupt primary: remove and try fallback
+      await removeSecureItem(PRIMARY_CREDENTIALS_KEY).catch(() => undefined);
+    }
+  }
+
+  // 2. Read legacy fallback credentials
+  const legacyRaw = await getSecureItem(LEGACY_CREDENTIALS_KEY);
+  if (!legacyRaw) {
+    return null;
+  }
+
+  let legacyCreds: Credentials | null = null;
   try {
-    const value = raw ? JSON.parse(raw) as Credentials : null;
-    return value?.version === 2 ? value : null;
-  } catch { return null; }
+    const parsed = JSON.parse(legacyRaw) as Credentials;
+    if (parsed?.version === 2) {
+      legacyCreds = parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  if (!legacyCreds) {
+    return null;
+  }
+
+  // 3. Durable migration: Write-Primary -> Verify -> Retire-Legacy
+  try {
+    await writeRaw(PRIMARY_CREDENTIALS_KEY, legacyRaw);
+    const verified = await getSecureItem(PRIMARY_CREDENTIALS_KEY);
+    if (verified === legacyRaw) {
+      try {
+        await removeRaw(LEGACY_CREDENTIALS_KEY);
+      } catch {
+        console.warn('[AuthMigration] Non-fatal legacy credential retirement failure. Retained for retry.');
+      }
+    }
+  } catch {
+    console.warn('[AuthMigration] Primary key write failed. Returning legacy credentials without migration.');
+  }
+
+  return legacyCreds;
 };
-export const setSessionTokens = (accessToken: string, refreshToken: string | null,
-  stillCurrent: () => boolean = () => true): Promise<boolean> => enqueueWrite(async () => {
+
+export const setSessionTokens = (
+  accessToken: string,
+  refreshToken: string | null,
+  stillCurrent: () => boolean = () => true,
+): Promise<boolean> => enqueueWrite(async () => {
   if (!stillCurrent()) return false;
-  // One secure-store value: power loss cannot leave an access/refresh mismatch.
-  await writeRaw(CREDENTIALS_KEY, JSON.stringify({ version: 2, accessToken, refreshToken }));
-  // The approved fresh-sign-in cutover retires the previous independent keys.
-  await Promise.all([removeRaw(env.tokenStorageKey), removeRaw(env.refreshTokenStorageKey)]).catch(() => undefined);
+  const payload = JSON.stringify({ version: 2, accessToken, refreshToken });
+
+  // 1. Strict single-write to primary key
+  await writeRaw(PRIMARY_CREDENTIALS_KEY, payload);
+
+  // 2. Verify write succeeded
+  const verified = await getSecureItem(PRIMARY_CREDENTIALS_KEY);
+  if (verified !== payload) {
+    throw new Error('Durable verification of primary credentials failed.');
+  }
+
+  // 3. Purge legacy and historical keys asynchronously
+  const purgeTargets = [
+    LEGACY_CREDENTIALS_KEY,
+    ...HISTORICAL_CREDENTIALS_KEYS,
+  ];
+  await Promise.allSettled(purgeTargets.map((key) => removeRaw(key)));
+
   return stillCurrent();
 });
+
 export const getAccessToken = async (): Promise<string | null> => {
-  await writeQueue; return (await readCredentialsRaw())?.accessToken ?? null;
+  await writeQueue;
+  return (await readCredentialsRaw())?.accessToken ?? null;
 };
+
 export const getRefreshToken = async (): Promise<string | null> => {
-  await writeQueue; return (await readCredentialsRaw())?.refreshToken ?? null;
+  await writeQueue;
+  return (await readCredentialsRaw())?.refreshToken ?? null;
 };
+
 export const setAccessToken = (token: string): Promise<void> => enqueueWrite(async () => {
   const previous = await readCredentialsRaw();
-  await writeRaw(CREDENTIALS_KEY, JSON.stringify({ version: 2, accessToken: token, refreshToken: previous?.refreshToken ?? null }));
+  const payload = JSON.stringify({ version: 2, accessToken: token, refreshToken: previous?.refreshToken ?? null });
+  await writeRaw(PRIMARY_CREDENTIALS_KEY, payload);
+  const verified = await getSecureItem(PRIMARY_CREDENTIALS_KEY);
+  if (verified !== payload) {
+    throw new Error('Durable verification of primary credentials failed.');
+  }
+  await Promise.allSettled([LEGACY_CREDENTIALS_KEY, ...HISTORICAL_CREDENTIALS_KEYS].map((k) => removeRaw(k)));
 });
+
 export const setRefreshToken = (token: string): Promise<void> => enqueueWrite(async () => {
   const previous = await readCredentialsRaw();
-  await writeRaw(CREDENTIALS_KEY, JSON.stringify({ version: 2, accessToken: previous?.accessToken ?? null, refreshToken: token }));
+  const payload = JSON.stringify({ version: 2, accessToken: previous?.accessToken ?? null, refreshToken: token });
+  await writeRaw(PRIMARY_CREDENTIALS_KEY, payload);
+  const verified = await getSecureItem(PRIMARY_CREDENTIALS_KEY);
+  if (verified !== payload) {
+    throw new Error('Durable verification of primary credentials failed.');
+  }
+  await Promise.allSettled([LEGACY_CREDENTIALS_KEY, ...HISTORICAL_CREDENTIALS_KEYS].map((k) => removeRaw(k)));
 });
-export const removeAccessToken = async (): Promise<void> => {
-  await removeSecureItem(CREDENTIALS_KEY); await removeSecureItem(env.tokenStorageKey);
+
+export const clearCredentials = async (): Promise<{ success: boolean; errors: string[] }> => {
+  const purgeTargets = [
+    PRIMARY_CREDENTIALS_KEY,
+    LEGACY_CREDENTIALS_KEY,
+    ...HISTORICAL_CREDENTIALS_KEYS,
+  ];
+  const results = await Promise.allSettled(purgeTargets.map((k) => removeRaw(k)));
+  const errors: string[] = [];
+  results.forEach((res, idx) => {
+    if (res.status === 'rejected') {
+      errors.push(`Failed to delete ${purgeTargets[idx]}: ${String(res.reason)}`);
+    }
+  });
+  return { success: errors.length === 0, errors };
 };
+
+export const removeAccessToken = async (): Promise<void> => {
+  await clearCredentials();
+};
+
 export const removeRefreshToken = async (): Promise<void> => {
-  await removeSecureItem(CREDENTIALS_KEY); await removeSecureItem(env.refreshTokenStorageKey);
+  await clearCredentials();
 };
 
 export const getCachedAuthUser = async (accessToken: string): Promise<unknown | null> => {
-  const raw = await getSecureItem(env.userStorageKey);
+  let raw = await getSecureItem(PRIMARY_USER_KEY);
+  if (!raw) {
+    for (const legacyKey of LEGACY_USER_KEYS) {
+      const legacy = await getSecureItem(legacyKey);
+      if (legacy) {
+        try {
+          const snapshot = JSON.parse(legacy) as Partial<AuthUserSnapshot>;
+          if (
+            snapshot.version === AUTH_USER_SNAPSHOT_VERSION &&
+            snapshot.accessToken === accessToken &&
+            snapshot.user &&
+            typeof snapshot.user === 'object'
+          ) {
+            try {
+              await writeRaw(PRIMARY_USER_KEY, legacy);
+              await removeRaw(legacyKey);
+            } catch {
+              // Best effort migration
+            }
+            return snapshot.user;
+          }
+        } catch {
+          // Corrupt legacy snapshot
+        }
+      }
+    }
+  }
+
   if (!raw) return null;
 
   try {
@@ -140,9 +280,10 @@ export const setCachedAuthUser = async (accessToken: string, user: unknown): Pro
     accessToken,
     user,
   };
-  await setSecureItem(env.userStorageKey, JSON.stringify(snapshot));
+  await setSecureItem(PRIMARY_USER_KEY, JSON.stringify(snapshot));
+  await Promise.allSettled(LEGACY_USER_KEYS.map((k) => removeRaw(k)));
 };
 
 export const removeCachedAuthUser = async (): Promise<void> => {
-  await removeSecureItem(env.userStorageKey);
+  await Promise.allSettled([PRIMARY_USER_KEY, ...LEGACY_USER_KEYS].map((k) => removeRaw(k)));
 };

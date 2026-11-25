@@ -1017,7 +1017,7 @@ function StudioWebViewContent() {
         path: sanitizePathForTelemetry(classification.path),
       });
       if (source !== 'route-report') {
-        toast.info('Open this from the WIEZ app');
+        toast.info('Open this from the ARU app');
       }
       return false;
     },

@@ -295,7 +295,7 @@ export default function SettingsScreen() {
           {
             emoji: '🗑️',
             title: 'Delete account',
-            subtitle: 'Permanently remove your WIEZ account',
+            subtitle: 'Permanently remove your ARU account',
             danger: true,
             onPress: () => drillDownPush('/settings/delete-account' as never),
           },

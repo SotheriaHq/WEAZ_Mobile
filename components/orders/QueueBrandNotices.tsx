@@ -42,8 +42,8 @@ export function QueueBrandNotices({ enabled }: { enabled: boolean }) {
   if (!enabled || (!notices.length && !error)) return null;
   return (
     <View>
-      <Button variant="ghost" title={error ? 'Retry WIEZ notices' : `📣 WIEZ brand notices (${notices.length})`} onPress={() => error ? setRetry((value) => value + 1) : setOpen(true)} />
-      <AppBottomSheet visible={open} title="WIEZ brand notices" onClose={() => setOpen(false)} scrollable>
+      <Button variant="ghost" title={error ? 'Retry ARU notices' : `📣 ARU brand notices (${notices.length})`} onPress={() => error ? setRetry((value) => value + 1) : setOpen(true)} />
+      <AppBottomSheet visible={open} title="ARU brand notices" onClose={() => setOpen(false)} scrollable>
         <View style={{ gap: tokens.spacing.md }}>
           {notices.length ? notices.map((notice) => <View key={notice.id} style={{ gap: tokens.spacing.sm, paddingVertical: tokens.spacing.sm }}>
             <AppText variant="subtitle">{notice.title}</AppText>

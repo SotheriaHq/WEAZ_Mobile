@@ -27,11 +27,16 @@ module.exports = ({ config } = {}) => {
   return {
     ...baseConfig,
 
-      android: {
+    android: {
       ...(baseConfig.android ?? {}),
       package: readString(process.env.EXPO_PUBLIC_ANDROID_PACKAGE) ?? 'com.wiez.wiez',
       ...withGoogleServicesFile(baseConfig.android?.googleServicesFile),
       intentFilters: withAppLinkIntentFilters(baseConfig.android?.intentFilters),
+    },
+
+    ios: {
+      ...(baseConfig.ios ?? {}),
+      bundleIdentifier: readString(process.env.EXPO_PUBLIC_IOS_BUNDLE_IDENTIFIER) ?? baseConfig.ios?.bundleIdentifier ?? 'com.wiez.wiez',
     },
 
     plugins: withSentryPluginConfig(baseConfig.plugins),

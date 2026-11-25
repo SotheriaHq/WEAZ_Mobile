@@ -18,7 +18,9 @@ import { analyticsPermitted } from '@/src/privacy/consent';
  */
 export const DEVICE_ID_STORAGE_KEY = 'wiez.device.id.v1';
 
+export const ARU_DEVICE_ID_HEADER = 'x-aru-device-id';
 export const WIEZ_DEVICE_ID_HEADER = 'x-wiez-device-id';
+export const DEVICE_ID_HEADER = ARU_DEVICE_ID_HEADER;
 
 const createId = () =>
   `anon_${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;

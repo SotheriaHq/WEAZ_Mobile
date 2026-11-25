@@ -64,7 +64,7 @@ export function AnalyticsConsentSheet() {
             Help improve your feed?
           </AppText>
           <AppText variant="bodyRegular" tone="muted">
-            With your OK, WIEZ uses what you view and tap in the app to shape your Runway and
+            With your OK, ARU uses what you view and tap in the app to shape your Runway and
             Market, and measures how fast screens load. We never sell this or use it for ads.
           </AppText>
           <AppText variant="captionRegular" tone="muted">

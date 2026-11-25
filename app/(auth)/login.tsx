@@ -13,7 +13,7 @@ import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { InlineNavLink } from '@/components/ui/InlineNavLink';
-import WiezMark from '@/src/brand/WiezMark';
+import AruMark from '@/src/brand/AruMark';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
@@ -410,12 +410,12 @@ export default function LoginScreen() {
         return;
       }
 
-      // No WIEZ account for this Google email. The API refuses to create one
+      // No ARU account for this Google email. The API refuses to create one
       // from the login screen on purpose — an account needs a type and current
       // legal acceptances — so hand the user to signup instead of showing them
       // a dead end they cannot resolve from here.
       if (error instanceof AuthRequestError && error.code === 'GOOGLE_NO_ACCOUNT') {
-        toast.info("No WIEZ account for that Google email yet — let's get you signed up.");
+        toast.info("No ARU account for that Google email yet — let's get you signed up.");
         router.replace('/(auth)/signup');
         return;
       }
@@ -548,7 +548,7 @@ export default function LoginScreen() {
             accessibilityLabel="Go to home"
             accessibilityState={{ disabled: authFlow.busy }}
           >
-            <WiezMark size={36} />
+            <AruMark size={36} />
           </Pressable>
         </Animated.View>
 
@@ -630,7 +630,7 @@ export default function LoginScreen() {
               <View style={styles.statePanel}>
                 <AppText variant="bodyBold">This account uses Google sign-in.</AppText>
                 <AppText variant="caption" tone="muted" style={styles.statePanelText}>
-                  Continue with Google, or verify your email to create a WIEZ password.
+                  Continue with Google, or verify your email to create an ARU password.
                 </AppText>
               </View>
             ) : null}
@@ -716,7 +716,7 @@ export default function LoginScreen() {
               <View style={styles.inlineFlow}>
                 <AppText variant="bodyBold">Create your password</AppText>
                 <AppText variant="caption" tone="muted">
-                  This creates your first WIEZ password. You will sign in after it is saved.
+                  This creates your first ARU password. You will sign in after it is saved.
                 </AppText>
                 <FloatingLabelInput
                   label="New Password"
@@ -892,7 +892,7 @@ export default function LoginScreen() {
 
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">
-                New to WIEZ?
+                New to ARU?
               </AppText>
               <Pressable
                 onPress={authFlow.guard(() =>

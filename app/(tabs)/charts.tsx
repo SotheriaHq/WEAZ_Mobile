@@ -226,7 +226,7 @@ export default function ChartsScreen() {
               <AppText variant="subtitle">Where do you land?</AppText>
               <AppText variant="body" tone="muted">
                 {authenticated
-                  ? 'Add your measurements and WIEZ will find your closest size on each chart.'
+                  ? 'Add your measurements and ARU will find your closest size on each chart.'
                   : 'Sign in and add your measurements to see your closest size on each chart.'}
               </AppText>
             </>
@@ -560,7 +560,7 @@ export default function ChartsScreen() {
             measurements as the truth.
           </AppText>
           <AppText variant="bodyReadable" tone="secondary">
-            These are reference charts. On a product page, WIEZ recommends from that brand’s own
+            These are reference charts. On a product page, ARU recommends from that brand’s own
             approved chart for that garment.
           </AppText>
         </View>

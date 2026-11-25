@@ -119,11 +119,11 @@ export function PermissionWarning({ onOpenSettings }: { onOpenSettings: () => vo
     >
       <View style={styles.rowCopy}>
         <AppText variant="bodyBold" tone="warning">
-          Notifications are off for WIEZ on this phone
+          Notifications are off for ARU on this phone
         </AppText>
         <AppText variant="captionRegular" tone="muted">
-          Notifications are enabled in WIEZ, but disabled at device level. Allow them in your phone's settings and
-          WIEZ picks it up when you come back.
+          Notifications are enabled in ARU, but disabled at device level. Allow them in your phone's settings and
+          ARU picks it up when you come back.
         </AppText>
       </View>
       <Button title="Open settings" size="sm" variant="secondary" onPress={onOpenSettings} />
@@ -210,10 +210,10 @@ export function DeviceStatusPanel({
   onRetry: () => void;
 }) {
   const rows: Array<[string, string]> = [
-    ['Notifications in WIEZ', 'On'],
+    ['Notifications in ARU', 'On'],
     ['Phone permission', PERMISSION_LABELS[permission]],
     ['This phone', PHONE_LABELS[status.phone]],
-    ['Saved with WIEZ', SERVER_LABELS[status.server]],
+    ['Saved with ARU', SERVER_LABELS[status.server]],
   ];
   const showRetry = status.retryable && status.server !== 'saved' && status.phone !== 'not-checked';
   return (

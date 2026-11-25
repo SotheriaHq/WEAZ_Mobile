@@ -465,7 +465,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
               <Card variant="tinted" padding="lg">
                 <AppText variant="h3">🛡️ Brand Verification Required</AppText>
                 <AppText variant="caption" style={{ marginTop: 4 }}>
-                  Subscription upgrades and custom order queue capacity are reserved for verified WIEZ brands. Complete seller verification to unlock all paid tiers.
+                  Subscription upgrades and custom order queue capacity are reserved for verified ARU brands. Complete seller verification to unlock all paid tiers.
                 </AppText>
                 <View style={{ marginTop: tokens.spacing.md }}>
                   <Button
@@ -652,7 +652,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                           Current atelier mode
                         </AppText>
                         <AppText variant="h2" style={{ marginTop: tokens.spacing.xs }}>
-                          WIEZ Creative Free Plan
+                          ARU Creative Free Plan
                         </AppText>
                       </View>
                       <AppBadge tone="success" label="ACTIVE FREE TIER" />

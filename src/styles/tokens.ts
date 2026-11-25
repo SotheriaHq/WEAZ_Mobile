@@ -360,6 +360,9 @@ export const tokens = {
      */
     wiezRingLight: '#6015e2',
     wiezRingDark: '#af87f4',
+    // ARU ring aliases (non-breaking forward-compatibility bridge aligned with web --aru-ring)
+    aruRingLight: '#6015e2',
+    aruRingDark: '#af87f4',
     /**
      * Loader backdrop and the two ambient orbs behind the mark.
      *

@@ -453,6 +453,20 @@ function main() {
     },
   );
   assert.deepEqual(
+    toJson(resolveMobileAuthRoute('arumobile://reset-password/abc123')),
+    {
+      pathname: '/(auth)/reset-password',
+      params: { token: 'abc123' },
+    },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('aru://reset-password/abc123')),
+    {
+      pathname: '/(auth)/reset-password',
+      params: { token: 'abc123' },
+    },
+  );
+  assert.deepEqual(
     toJson(resolveMobileAuthRoute('wiezmobile://reset-password/abc123')),
     {
       pathname: '/(auth)/reset-password',
@@ -470,15 +484,14 @@ function main() {
   assert.equal(resolveMobileAuthRoute('threadlymobile://brand/staff/invite?token=abc123'), null);
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-  // `scheme` is an array, and order matters: `Linking.createURL` uses the FIRST
-  // entry, so `wiezmobile` has to stay first or every in-app deep link changes
-  // scheme. The package entry is what lets Google's OAuth redirect
-  // (`com.wiez.wiez:/oauthredirect`) reach the app at all — prebuild only
-  // emits intent filters for declared schemes.
+  // Phase 4: `scheme` registers ARU primary custom schemes alongside legacy scheme:
+  // ["arumobile", "aru", "wiezmobile", "com.wiez.wiez"]
   const declaredSchemes = Array.isArray(appJson.expo.scheme)
     ? appJson.expo.scheme
     : [appJson.expo.scheme];
-  assert.equal(declaredSchemes[0], 'wiezmobile', 'Expo scheme must remain configured and stay first.');
+  assert.equal(declaredSchemes[0], 'arumobile', 'Expo primary scheme must be arumobile.');
+  assert.ok(declaredSchemes.includes('aru'), 'Expo schemes must include aru.');
+  assert.ok(declaredSchemes.includes('wiezmobile'), 'Expo schemes must include legacy wiezmobile.');
   assert.ok(
     declaredSchemes.includes(appJson.expo.android?.package),
     'Expo schemes must include the Android package so the Google OAuth redirect can reach the app.',

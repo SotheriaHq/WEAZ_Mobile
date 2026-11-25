@@ -24,7 +24,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import WiezMark from '@/src/brand/WiezMark';
+import AruMark from '@/src/brand/AruMark';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
@@ -238,7 +238,7 @@ export default function SignupScreen() {
         legalAcceptances,
       });
       navigateAfterAuth();
-      toast.success('Welcome to WIEZ! 🎉');
+      toast.success('Welcome to ARU! 🎉');
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Signup failed. Please try again.';
@@ -291,18 +291,18 @@ export default function SignupScreen() {
         legalAcceptances,
       });
       navigateAfterAuth();
-      toast.success('Welcome to WIEZ!');
+      toast.success('Welcome to ARU!');
     } catch (error) {
       // Backing out of the Google sheet is a decision, not a failure.
       if (error instanceof GoogleSignInError && error.reason === 'cancelled') {
         return;
       }
 
-      // The mirror of login's `GOOGLE_NO_ACCOUNT`: this email already has a
-      // WIEZ account, and signup will never quietly log into it. Send them to
+      // The mirror of login's `GOOGLE_NO_ACCOUNT`: this email already has an
+      // ARU account, and signup will never quietly log into it. Send them to
       // the screen that can actually get them in.
       if (error instanceof AuthRequestError && error.code === 'EMAIL_ALREADY_EXISTS') {
-        toast.info('That email already has a WIEZ account — log in to continue.');
+        toast.info('That email already has an ARU account — log in to continue.');
         router.replace('/(auth)/login');
         return;
       }
@@ -314,7 +314,7 @@ export default function SignupScreen() {
   };
 
   const isBrand = userType === 'BRAND';
-  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN WIEZ';
+  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN ARU';
 
   // Theme-derived colors
   const bgGradient = [theme.colors.bg, theme.colors.bg, theme.colors.bg] as const;
@@ -364,7 +364,7 @@ export default function SignupScreen() {
             accessibilityLabel="Go to home"
             accessibilityState={{ disabled: authFlow.busy }}
           >
-            <WiezMark size={36} />
+            <AruMark size={36} />
           </Pressable>
         </Animated.View>
 

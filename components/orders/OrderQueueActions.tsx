@@ -102,8 +102,8 @@ export function OrderQueueActions({ order, onChange, onRefresh }: {
               ['Total withheld', quote.withheldAmount], ['Refund requested', quote.refundAmount],
             ] as const).map(([label, value]) => <AppText key={label} variant="body">{label}: {formatMoney(value, quote.currency)}</AppText>)}
             {quote.settlement?.status === 'RECORDED' && quote.settlement.currency !== quote.currency ? <AppText variant="body">Estimated refund to your original payment method: {formatMoney(Number(quote.settlement.amount), quote.settlement.currency)}. Uses the original payment rate of {quote.settlement.rate}. Minor-unit rounding is finalized when the refund is recorded.</AppText> : null}
-            {quote.settlement?.status === 'REQUIRES_RECONCILIATION' ? <AppText variant="body" tone="warning">Your cancellation will be recorded. WIEZ must verify the original payment conversion before submitting the refund.</AppText> : null}
-            <AppText variant="body" tone="muted">These deductions also apply if the brand, WIEZ or automatic expiry cancels before Active. Cancellation requests a refund; it does not confirm bank credit.</AppText>
+            {quote.settlement?.status === 'REQUIRES_RECONCILIATION' ? <AppText variant="body" tone="warning">Your cancellation will be recorded. ARU must verify the original payment conversion before submitting the refund.</AppText> : null}
+            <AppText variant="body" tone="muted">These deductions also apply if the brand, ARU or automatic expiry cancels before Active. Cancellation requests a refund; it does not confirm bank credit.</AppText>
             {quote.orderRevision !== queue.orderRevision ? <>
               <AppText variant="body" tone="warning">The order changed. Review an updated refund quote before confirming.</AppText>
               <Button title="Refresh refund quote" variant="ghost" disabled={busy} onPress={() => void operation(async () => { const started = generation.current; const value = await CustomOrderQueueApi.quote(order.id); if (started === generation.current) { setQuote(value); onRefresh(); } })} />
