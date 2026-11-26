@@ -9,7 +9,8 @@ type EnvKey =
   | 'EXPO_PUBLIC_TOKEN_STORAGE_KEY'
   | 'EXPO_PUBLIC_USER_STORAGE_KEY'
   | 'EXPO_PUBLIC_REFRESH_TOKEN_STORAGE_KEY'
-  | 'EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED';
+  | 'EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED'
+  | 'EXPO_PUBLIC_MARKET_V2';
 
 /**
  * Every `EXPO_PUBLIC_*` value, read through a STATIC member expression.
@@ -46,6 +47,7 @@ const RAW_ENV: Record<EnvKey, string | undefined> = {
   EXPO_PUBLIC_USER_STORAGE_KEY: process.env.EXPO_PUBLIC_USER_STORAGE_KEY,
   EXPO_PUBLIC_REFRESH_TOKEN_STORAGE_KEY: process.env.EXPO_PUBLIC_REFRESH_TOKEN_STORAGE_KEY,
   EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED: process.env.EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED,
+  EXPO_PUBLIC_MARKET_V2: process.env.EXPO_PUBLIC_MARKET_V2,
 };
 
 const getEnvVar = (key: EnvKey, fallback?: string): string => {
@@ -80,6 +82,14 @@ const mobileCheckoutEnabled = parseBoolean(
   getEnvVar('EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED', 'true'),
 );
 
+/**
+ * Server-composed Market on this build (proposed name, owner confirmation
+ * required). Off unless the value is exactly "true": the Market, its section
+ * pages and search then behave as they did before. When on, the app still
+ * returns to the retained Market if the server has not enabled the routes.
+ */
+const marketV2Enabled = parseBoolean(getEnvVar('EXPO_PUBLIC_MARKET_V2', 'false'));
+
 export const env = {
   apiBaseUrl,
   webAppUrl,
@@ -108,5 +118,8 @@ export const env = {
   userStorageKey,
   mobileCheckout: {
     enabled: mobileCheckoutEnabled,
+  },
+  marketV2: {
+    enabled: marketV2Enabled,
   },
 } as const;
