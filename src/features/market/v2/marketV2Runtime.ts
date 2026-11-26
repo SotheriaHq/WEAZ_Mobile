@@ -4,7 +4,7 @@
  * clips). The rules themselves live in the framework-free modules beside this
  * file; this one only connects them to the app.
  */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { MobileStoreApi } from '@/src/api/StoreApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
@@ -27,6 +27,19 @@ import {
 } from './marketV2Contract';
 
 const AVAILABILITY_KEY = 'market-mode:v2';
+
+/**
+ * The latest value for callbacks that run after commit (events, responses),
+ * written in a layout effect rather than during render, so a render React
+ * discards never leaks into it.
+ */
+export function useLatest<T>(value: T) {
+  const ref = useRef(value);
+  useLayoutEffect(() => {
+    ref.current = value;
+  });
+  return ref;
+}
 
 /**
  * One answer for the whole app. Persisted through the warm screen cache, which
@@ -195,8 +208,7 @@ export function useMarketV2Clips(viewerKey: string | null, signedIn: boolean, en
 export function useMarketV2CardActions(viewerKey: string | null, signedIn: boolean) {
   const toast = useToast();
   const { bagProduct, bagSource } = useMobileBagging();
-  const latest = useRef({ bagProduct, bagSource, toast, viewerKey, signedIn });
-  latest.current = { bagProduct, bagSource, toast, viewerKey, signedIn };
+  const latest = useLatest({ bagProduct, bagSource, toast, signedIn });
   const [busy, setBusy] = useState<Record<string, true>>({});
 
   const mark = useCallback((key: string, on: boolean) => {
@@ -225,7 +237,7 @@ export function useMarketV2CardActions(viewerKey: string | null, signedIn: boole
         mark(key, false);
       }
     },
-    [mark],
+    [latest, mark],
   );
 
   const clip = useCallback(
@@ -262,7 +274,7 @@ export function useMarketV2CardActions(viewerKey: string | null, signedIn: boole
         mark(key, false);
       }
     },
-    [mark],
+    [latest, mark],
   );
 
   return { bag, clip, busy };
