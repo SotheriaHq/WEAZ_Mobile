@@ -78,6 +78,19 @@ type UnifiedProductCardProps = {
   analyticsSourceScreen?: string;
   feedPosition?: number;
   allowSignedFallback?: boolean;
+  /** Stable image cache identity (`fileId:variant`); optional, URL caching otherwise. */
+  imageCacheKey?: string | null;
+  /**
+   * Let the title wrap onto as many lines as it needs instead of one line.
+   * The photo frame never changes; only the copy strip under it grows.
+   */
+  wrapTitle?: boolean;
+  /**
+   * The picture's address is being renewed (a saved card whose signed
+   * address expired): show the loading frame and request nothing until the
+   * caller has a current address.
+   */
+  mediaPending?: boolean;
   style?: StyleProp<ViewStyle>;
   onPress: () => void;
   /** Phase 5: fired on press-in to warm the destination before navigation. */
@@ -140,6 +153,9 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   analyticsSourceScreen = 'market',
   feedPosition,
   allowSignedFallback = true,
+  imageCacheKey,
+  wrapTitle = false,
+  mediaPending = false,
   style,
   onPress,
   onPressIn,
@@ -150,14 +166,14 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   const resolvedUri = useResolvedImageUri({
     src: mediaSrc,
     fileId: mediaFileId,
-    enabled: Boolean(mediaSrc || mediaFileId),
+    enabled: Boolean(mediaSrc || mediaFileId) && !mediaPending,
     allowSignedFallback,
   });
   // Same rule as CollectionCard: a source that is still resolving or decoding
   // shows a skeleton; "Image unavailable" is only for no source or a real error.
   // Paint/failure are keyed by URI, so a recycled cell that receives a new
   // product never shows the previous product's loaded or failed state.
-  const hasMediaSource = Boolean(mediaSrc || mediaFileId);
+  const hasMediaSource = Boolean(mediaSrc || mediaFileId) || mediaPending;
   const [paintedUri, setPaintedUri] = useState<string | null>(null);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const mediaFailed = Boolean(resolvedUri) && failedUri === resolvedUri;
@@ -185,13 +201,14 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         {showMediaSkeleton ? (
           <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
         ) : null}
-        {resolvedUri && !mediaFailed ? (
+        {resolvedUri && !mediaFailed && !mediaPending ? (
           <StableImage
             uri={resolvedUri}
             resizeMode="cover"
             containerStyle={StyleSheet.absoluteFill}
             imageStyle={StyleSheet.absoluteFill}
             fadeDuration={0}
+            cacheKey={imageCacheKey}
             onLoad={() => setPaintedUri(resolvedUri)}
             onError={() => setFailedUri(resolvedUri)}
           />
@@ -271,7 +288,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
       {/* The copy strip, attached under the photograph: the title, then the
           price with the compact Bag It at the end of the same row. */}
       <View style={styles.body}>
-        <AppText variant="smallBold" numberOfLines={1}>
+        <AppText variant="smallBold" numberOfLines={wrapTitle ? undefined : 1}>
           {title}
         </AppText>
         <View style={styles.priceRow}>

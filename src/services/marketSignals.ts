@@ -5,6 +5,7 @@ import { analyticsPermitted } from '@/src/privacy/consent';
 import { getCachedDeviceId, getDeviceId } from '@/src/utils/deviceId';
 
 import {
+  MARKET_SIGNAL_TELEMETRY_FIELDS,
   sendMarketSignalBatch,
   type MarketSignalEvent,
 } from '@/src/api/MarketApi';
@@ -43,6 +44,27 @@ let runtimeSubscribers = 0;
 let anonymousSessionId: string | null = null;
 let marketSessionId: string | null = null;
 let lastClearedAt = 0;
+/**
+ * Set when the server refused the optional telemetry fields (an API that
+ * predates them rejects unknown properties). The events are resent without
+ * them, and later events leave them out for the rest of the session.
+ */
+let telemetryRefused = false;
+
+function hasTelemetry(event: MarketSignalEvent) {
+  return MARKET_SIGNAL_TELEMETRY_FIELDS.some((field) => event[field] !== undefined);
+}
+
+function withoutTelemetry<T extends MarketSignalEvent>(event: T): T {
+  if (!hasTelemetry(event)) return event;
+  const copy = { ...event };
+  for (const field of MARKET_SIGNAL_TELEMETRY_FIELDS) delete copy[field];
+  return copy;
+}
+
+function isValidationRefusal(error: unknown) {
+  return (error as { response?: { status?: unknown } } | null)?.response?.status === 400;
+}
 
 function createClientId(prefix: string) {
   const random =
@@ -264,7 +286,7 @@ export function trackMarketSignal(event: MarketSignalEvent) {
   if (!targetId || !event.targetType || !event.signalType || !event.surface) return;
 
   const normalized: QueuedMarketSignal['event'] = {
-    ...event,
+    ...(telemetryRefused ? withoutTelemetry(event) : event),
     clientEventId: event.clientEventId ?? createClientId('market_signal_event'),
     targetId,
     screenContext: event.screenContext ?? 'MARKET_HOME',
@@ -327,22 +349,37 @@ export async function flushMarketSignals() {
   queue = queue.filter((entry) => !batchIds.has(entry.event.clientEventId));
   persistMarketSignalState();
 
+  const events = batch.map((entry) => (telemetryRefused ? withoutTelemetry(entry.event) : entry.event));
+  const carriesTelemetry = events.some(hasTelemetry);
+  const clearedBeforeSend = lastClearedAt;
   try {
     await sendMarketSignalBatch({
       batchId: createClientId('market_signal_batch'),
       anonymousSessionId: firstDue.anonymousSessionId,
       sessionId: firstDue.sessionId,
-      events: batch.map((entry) => entry.event),
+      ...(carriesTelemetry ? { sentAt: new Date().toISOString() } : {}),
+      events,
     });
-  } catch {
+  } catch (error) {
     const retryAt = Date.now();
-    const retryEntries = batch
-      .map((entry) => ({
-        ...entry,
-        retryCount: entry.retryCount + 1,
-        nextAttemptAt: retryAt + getRetryDelay(entry.retryCount + 1),
-      }))
-      .filter((entry) => entry.retryCount <= MARKET_SIGNAL_MAX_RETRIES);
+    const refusedTelemetry = carriesTelemetry && isValidationRefusal(error);
+    if (refusedTelemetry) telemetryRefused = true;
+    // A sign-out while this batch was on the wire cleared the queue; the
+    // previous account's events must not come back into it.
+    const signedOutDuringSend = lastClearedAt !== clearedBeforeSend;
+    const retryEntries = signedOutDuringSend
+      ? []
+      : batch
+          .map((entry) =>
+            refusedTelemetry
+              ? { ...entry, event: withoutTelemetry(entry.event), nextAttemptAt: retryAt }
+              : {
+                  ...entry,
+                  retryCount: entry.retryCount + 1,
+                  nextAttemptAt: retryAt + getRetryDelay(entry.retryCount + 1),
+                },
+          )
+          .filter((entry) => entry.retryCount <= MARKET_SIGNAL_MAX_RETRIES);
     queue = [...retryEntries, ...queue].slice(-MARKET_SIGNAL_QUEUE_LIMIT);
     persistMarketSignalState();
   } finally {
@@ -410,6 +447,7 @@ export function startMarketSignalRuntime() {
 
 export const __marketSignalQueueTestUtils = {
   getQueueLength: () => queue.length,
+  isTelemetryRefused: () => telemetryRefused,
   getQueueSnapshot: () => queue.map((entry) => ({ ...entry, event: { ...entry.event } })),
   hydrate: hydrateMarketSignalState,
   reset: async () => {
@@ -421,6 +459,7 @@ export const __marketSignalQueueTestUtils = {
     anonymousSessionId = null;
     marketSessionId = null;
     lastClearedAt = 0;
+    telemetryRefused = false;
     runtimeSubscribers = 0;
     if (intervalId) clearInterval(intervalId);
     intervalId = null;

@@ -449,12 +449,32 @@ export type MarketSignalEvent = {
   sessionId?: string | null;
   position?: number | null;
   metadata?: Record<string, unknown>;
+  /**
+   * Optional telemetry (server-composed Market only). Each is sent only when
+   * it is known; servers that predate these fields reject them, and the
+   * signal queue then resends the events without them.
+   */
+  occurredAt?: string;
+  visibleMs?: number;
+  epoch?: string;
+  policyVersion?: string;
+  explore?: boolean;
 };
+
+export const MARKET_SIGNAL_TELEMETRY_FIELDS = [
+  'occurredAt',
+  'visibleMs',
+  'epoch',
+  'policyVersion',
+  'explore',
+] as const;
 
 export type MarketSignalBatchRequest = {
   batchId?: string;
   anonymousSessionId?: string;
   sessionId?: string;
+  /** Device send time; present only when an event carries telemetry. */
+  sentAt?: string;
   events: MarketSignalEvent[];
 };
 
